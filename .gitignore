@@ -12,11 +12,8 @@ dist
 dist-ssr
 *.local
 
-# 환경 변수 (API 키 등 — 절대 GitHub에 올리지 마세요)
+# 환경 변수 — .env 만 제외 (.env.example 등은 저장소에 포함)
 .env
-.env.*
-!.env.example
-!.env.local.example
 
 # Editor directories and files
 .vscode/*
