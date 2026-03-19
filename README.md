@@ -17,6 +17,6 @@ If you are developing a production application, we recommend using TypeScript wi
 
 ## Project Goal
 
-AI 바이브 코딩만으로 전국 지자체 별 전기차 충전소 현황을 리포트형 대시보드로 구현하는 테스트.
-반응형 구성.
-스타일 무시 / 컬러톤 제어 / liquid glass 스타일 적용
+AI 바이브 코딩만으로 전국 지자체 별 전기차 충전소 현황 및 사용가능한 MVP 구현하는 테스트.
+모바일 only 구성.
+스타일 개선
