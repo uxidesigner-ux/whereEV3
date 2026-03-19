@@ -11,7 +11,13 @@ import {
   useMediaQuery,
   IconButton,
   Chip,
+  Button,
+  Modal,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
 } from '@mui/material'
+import ExpandMore from '@mui/icons-material/ExpandMore'
 import EvStationIcon from '@mui/icons-material/EvStation'
 import ChevronLeft from '@mui/icons-material/ChevronLeft'
 import ChevronRight from '@mui/icons-material/ChevronRight'
@@ -33,11 +39,14 @@ import {
   Legend,
 } from 'recharts'
 import { fetchEvChargers } from './api/safemapEv.js'
+import { haversineDistanceKm } from './utils/geo.js'
 import { colors, spacing, radius, chartBlueScale, glass } from './theme/dashboardTheme.js'
 import { GlassPanel } from './components/GlassPanel.jsx'
 import { StatCard } from './components/StatCard.jsx'
 import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
 import { FilterModalSelect } from './components/FilterModalSelect.jsx'
+import { StationListMobile } from './components/StationListMobile.jsx'
+import { StationDetailModal } from './components/StationDetailModal.jsx'
 
 const SEOUL_CENTER = [37.5665, 126.978]
 
@@ -125,7 +134,29 @@ function LocationControl({ setUserLocation, setLocationError, setLocationLoading
   return null
 }
 
-function MapView({ stations }) {
+function MapCenterTracker({ setMapCenter }) {
+  const map = useMap()
+  useEffect(() => {
+    const update = () => {
+      const c = map.getCenter()
+      setMapCenter({ lat: c.lat, lng: c.lng })
+    }
+    map.on('moveend', update)
+    update()
+    return () => map.off('moveend', update)
+  }, [map, setMapCenter])
+  return null
+}
+
+function MapFocusOnStation({ selectedStation }) {
+  const map = useMap()
+  useEffect(() => {
+    if (selectedStation) map.flyTo([selectedStation.lat, selectedStation.lng], 16)
+  }, [map, selectedStation])
+  return null
+}
+
+function MapView({ stations, onDetailClick }) {
   return (
     <>
       <TileLayer
@@ -148,6 +179,16 @@ function MapView({ stations }) {
               <Typography variant="caption" display="block" sx={{ color: colors.gray[500] }}>
                 {s.adres || s.rnAdres || '-'}
               </Typography>
+              {onDetailClick && (
+                <Button
+                  size="small"
+                  variant="outlined"
+                  onClick={() => onDetailClick(s)}
+                  sx={{ mt: 1, fontSize: '0.75rem' }}
+                >
+                  상세 보기
+                </Button>
+              )}
             </Box>
           </Popup>
         </Marker>
@@ -176,6 +217,10 @@ function App() {
   const [userLocation, setUserLocation] = useState(null)
   const [locationError, setLocationError] = useState(null)
   const [locationLoading, setLocationLoading] = useState(false)
+  const [mapCenter, setMapCenter] = useState({ lat: SEOUL_CENTER[0], lng: SEOUL_CENTER[1] })
+  const [selectedStation, setSelectedStation] = useState(null)
+  const [filterMoreOpen, setFilterMoreOpen] = useState(false)
+  const [statsExpanded, setStatsExpanded] = useState(false)
 
   useEffect(() => {
     const key = import.meta.env.VITE_SAFEMAP_SERVICE_KEY
@@ -211,6 +256,16 @@ function App() {
       return true
     })
   }, [items, filterBusiNm, filterChgerTy, filterCtprvnCd, filterSggCd])
+
+  /** 모바일 목록용: 거리 기준 정렬. userLocation 있으면 내 위치, 없으면 지도 중심 기준. */
+  const sortedItemsForMobile = useMemo(() => {
+    const ref = userLocation || mapCenter
+    const withDist = filteredItems.map((s) => ({
+      ...s,
+      distanceKm: haversineDistanceKm(ref.lat, ref.lng, s.lat, s.lng),
+    }))
+    return withDist.sort((a, b) => a.distanceKm - b.distanceKm)
+  }, [filteredItems, userLocation, mapCenter])
 
   const kpis = useMemo(() => {
     const operators = new Set(filteredItems.map((s) => s.busiNm).filter(Boolean))
@@ -382,7 +437,7 @@ function App() {
           표시 {filteredItems.length}건
           {totalCount != null && totalCount !== items.length && ` · 전체 약 ${totalCount}건`}
         </Typography>
-        <Typography component="span" sx={{ color: colors.gray[400], fontSize: '0.7rem', lineHeight: 1.4, marginTop: 0.25 }}>© whereevcharger · Created by James</Typography>
+        <Typography component="span" sx={{ color: colors.gray[400], fontSize: '0.7rem', lineHeight: 1.4, marginTop: 0.25 }}>© whereEV2 · Created by James</Typography>
       </Box>
     </Box>
   )
@@ -427,7 +482,7 @@ function App() {
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
               <EvStationIcon sx={{ fontSize: 20, color: colors.blue.primary, flexShrink: 0 }} />
               <Typography variant="h6" sx={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.gray[800], lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                EV 충전소 인프라 현황
+                {userLocation ? '내 주변 충전소' : '현재 지도 영역'} · {sortedItemsForMobile.length}곳
               </Typography>
             </Box>
             <IconButton
@@ -460,7 +515,100 @@ function App() {
               display: mobileSheetOpen ? 'block' : 'none',
             }}
           >
-            <Box sx={{ '& > * > *:first-of-type': { display: 'none' } }}>{panelBodyContent}</Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Box>
+                <Typography variant="caption" sx={{ color: colors.gray[700], fontWeight: 600, display: 'block', mb: 0.5 }}>충전기 타입</Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                  {filterOptions.chgerTys.map((opt) => {
+                    const v = opt.value ?? opt
+                    const selected = filterChgerTy.includes(v)
+                    return (
+                      <Chip
+                        key={v}
+                        label={opt.label ?? v}
+                        size="small"
+                        onClick={() => setFilterChgerTy((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]))}
+                        sx={{ fontSize: '0.75rem', height: 24, bgcolor: selected ? colors.blue.primary : 'rgba(255,255,255,0.6)', color: selected ? colors.white : colors.gray[700], border: `1px solid ${selected ? colors.blue.primary : colors.gray[300]}`, '&:hover': { bgcolor: selected ? colors.blue.deep : 'rgba(255,255,255,0.9)', borderColor: selected ? colors.blue.deep : colors.gray[400] } }}
+                      />
+                    )
+                  })}
+                </Box>
+              </Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                <Chip label="가까운 순" size="small" sx={{ fontSize: '0.75rem', height: 24, bgcolor: colors.blue.muted, color: colors.blue.deep, border: `1px solid ${colors.blue.primary}` }} />
+                <Button size="small" variant="text" onClick={() => setFilterMoreOpen(true)} sx={{ fontSize: '0.75rem', color: colors.gray[600], minWidth: 0, px: 0.5 }}>
+                  필터 더 보기
+                </Button>
+              </Box>
+              <StationListMobile
+                stations={sortedItemsForMobile}
+                selectedId={selectedStation?.id}
+                onSelect={(s) => setSelectedStation(s)}
+              />
+              <Accordion expanded={statsExpanded} onChange={(_, exp) => setStatsExpanded(exp)} disableGutters sx={{ bgcolor: 'transparent', boxShadow: 'none', '&:before': { display: 'none' } }}>
+                <AccordionSummary expandIcon={<ExpandMore />} sx={{ minHeight: 40, py: 0, '& .MuiAccordionSummary-content': { my: 0.75 } }}>
+                  <Typography variant="subtitle2" sx={{ color: colors.gray[700], fontWeight: 600 }}>통계 보기</Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0, px: 0 }}>
+                  <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75 }}>
+                    <StatCard label="전체 충전기" value={kpis.totalChargers} />
+                    <StatCard label="운영기관 수" value={kpis.operatorCount} />
+                    <StatCard label="충전소 수" value={kpis.stationCount} />
+                    <StatCard label="충전기 타입" value={kpis.byChgerTy.length} />
+                  </Box>
+                  <Box sx={{ mt: 1.5 }}>
+                    <Typography variant="caption" sx={{ color: colors.gray[700], fontWeight: 600, display: 'block', mb: 0.5 }}>운영기관별 충전기 (Top 10)</Typography>
+                    <Box sx={{ width: '100%', height: 200 }}>
+                      {operatorChartData.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={operatorChartData} layout="vertical" margin={{ top: 4, right: 8, left: 48, bottom: 4 }}>
+                            <CartesianGrid strokeDasharray="2 2" stroke={colors.gray[200]} horizontal={false} />
+                            <XAxis type="number" allowDecimals={false} stroke={colors.gray[400]} tick={{ fontSize: 10 }} />
+                            <YAxis type="category" dataKey="name" width={44} tick={{ fontSize: 10 }} stroke={colors.gray[500]} />
+                            <Tooltip formatter={(v) => [`${v}대`, '']} contentStyle={{ borderRadius: radius.control, border: `1px solid ${colors.gray[200]}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
+                            <Bar dataKey="value" name="충전기" radius={[0, 3, 3, 0]}>
+                              {operatorChartData.map((_, i) => (
+                                <Cell key={i} fill={chartBlueScale[i % chartBlueScale.length]} />
+                              ))}
+                            </Bar>
+                          </BarChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <Typography variant="caption" sx={{ color: colors.gray[500], py: 2, display: 'block', textAlign: 'center' }}>필터 결과 없음</Typography>
+                      )}
+                    </Box>
+                  </Box>
+                  <Box sx={{ mt: 1 }}>
+                    <Typography variant="caption" sx={{ color: colors.gray[700], fontWeight: 600, display: 'block', mb: 0.5 }}>충전기 타입 분포</Typography>
+                    <Box sx={{ width: '100%', height: 168 }}>
+                      {kpis.byChgerTy.length > 0 ? (
+                        <ResponsiveContainer width="100%" height="100%">
+                          <PieChart margin={{ top: 4, right: 4, bottom: 28, left: 4 }}>
+                            <Pie data={kpis.byChgerTy} dataKey="count" nameKey="name" cx="50%" cy="42%" innerRadius={32} outerRadius={56} paddingAngle={1}>
+                              {kpis.byChgerTy.map((_, i) => (
+                                <Cell key={i} fill={chartBlueScale[i % chartBlueScale.length]} stroke="rgba(255,255,255,0.6)" strokeWidth={1} />
+                              ))}
+                            </Pie>
+                            <Tooltip formatter={(v) => [`${v}대`, '']} contentStyle={{ borderRadius: radius.control, border: `1px solid ${colors.gray[200]}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
+                            <Legend verticalAlign="bottom" layout="horizontal" wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
+                          </PieChart>
+                        </ResponsiveContainer>
+                      ) : (
+                        <Typography variant="caption" sx={{ color: colors.gray[500], py: 2, display: 'block', textAlign: 'center' }}>데이터 없음</Typography>
+                      )}
+                    </Box>
+                  </Box>
+                </AccordionDetails>
+              </Accordion>
+              <Box sx={{ flexShrink: 0, marginTop: 1, paddingTop: 1.5, borderTop: `1px solid ${colors.gray[200]}`, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', lineHeight: 1.4 }}>생활안전지도 API · 마커 클릭 시 상세</Typography>
+                <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', lineHeight: 1.4 }}>
+                  표시 {filteredItems.length}건
+                  {totalCount != null && totalCount !== items.length && ` · 전체 약 ${totalCount}건`}
+                </Typography>
+                <Typography component="span" sx={{ color: colors.gray[400], fontSize: '0.7rem', lineHeight: 1.4, marginTop: 0.25 }}>© whereEV2 · Created by James</Typography>
+              </Box>
+            </Box>
           </Box>
         </Box>
       )
@@ -525,12 +673,46 @@ function App() {
       <CssBaseline />
       <Box
         sx={{
+          position: 'fixed',
+          top: 12,
+          left: 12,
+          zIndex: 9999,
+          background: '#111827',
+          color: 'white',
+          padding: '8px 12px',
+          borderRadius: '8px',
+          fontSize: 14,
+          fontWeight: 700,
+        }}
+      >
+        whereEV2 TEST BUILD
+      </Box>
+      <Box
+        sx={{
           position: 'relative',
           width: '100vw',
           height: '100vh',
           overflow: 'hidden',
         }}
       >
+        {/* v2 식별: 지도 좌상단 작은 표시 */}
+        <Box
+          sx={{
+            position: 'absolute',
+            top: 10,
+            left: 10,
+            zIndex: 400,
+            px: 0.75,
+            py: 0.25,
+            borderRadius: 1,
+            bgcolor: 'rgba(255,255,255,0.85)',
+            boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          }}
+        >
+          <Typography component="span" sx={{ fontSize: '0.65rem', fontWeight: 600, color: colors.gray[600], letterSpacing: '0.02em' }}>
+            whereEV2
+          </Typography>
+        </Box>
         {/* Full-screen map */}
         <Box
           sx={{
@@ -546,7 +728,9 @@ function App() {
             scrollWheelZoom
             zoomControl={false}
           >
-            <MapView stations={filteredItems} />
+            <MapCenterTracker setMapCenter={setMapCenter} />
+            <MapFocusOnStation selectedStation={selectedStation} />
+            <MapView stations={filteredItems} onDetailClick={(s) => setSelectedStation(s)} />
             <ZoomControl position="topright" />
             <LocationControl
               setUserLocation={setUserLocation}
@@ -650,6 +834,35 @@ function App() {
 
         {/* 패널: 모바일 = 바텀시트, 데스크톱 = 좌측 패널 */}
         {panelEl}
+
+        <StationDetailModal open={!!selectedStation} station={selectedStation} onClose={() => setSelectedStation(null)} />
+
+        <Modal open={filterMoreOpen} onClose={() => setFilterMoreOpen(false)}>
+          <Box
+            sx={{
+              position: 'absolute',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              width: '90%',
+              maxWidth: 360,
+              maxHeight: '80vh',
+              overflow: 'auto',
+              bgcolor: 'background.paper',
+              borderRadius: 2,
+              boxShadow: 24,
+              p: 2,
+            }}
+          >
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1.5 }}>필터 더 보기</Typography>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <FilterModalSelect label="운영기관" value={filterBusiNm} onChange={setFilterBusiNm} options={filterOptions.busiNms} placeholder="전체" searchable />
+              <FilterModalSelect label="시도코드" value={filterCtprvnCd} onChange={setFilterCtprvnCd} options={filterOptions.ctprvnCds} placeholder="미선택" />
+              <FilterModalSelect label="시군구코드" value={filterSggCd} onChange={setFilterSggCd} options={filterOptions.sggCdsByCtprvn[filterCtprvnCd] ?? []} placeholder="미선택" disabled={!filterCtprvnCd} disabledMessage="시도 먼저 선택" />
+            </Box>
+            <Button variant="contained" onClick={() => setFilterMoreOpen(false)} sx={{ mt: 2, width: '100%' }}>적용</Button>
+          </Box>
+        </Modal>
       </Box>
     </ThemeProvider>
   )
