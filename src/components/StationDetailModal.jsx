@@ -1,13 +1,37 @@
-import { Dialog, DialogTitle, DialogContent, IconButton, Typography } from '@mui/material'
+import { useEffect, useState } from 'react'
+import { Dialog, DialogContent, IconButton, Typography, Box, CircularProgress } from '@mui/material'
 import Close from '@mui/icons-material/Close'
-import { colors, motion } from '../theme/dashboardTheme.js'
+import Refresh from '@mui/icons-material/Refresh'
+import { colors, motion, radius } from '../theme/dashboardTheme.js'
 import { StationDetailContent } from './StationDetailContent.jsx'
 
 /**
  * 데스크톱 전용: 충전소 상세 중앙 Dialog. 모바일은 StationDetailSheet 사용.
  */
-export function StationDetailModal({ open, station, onClose }) {
+export function StationDetailModal({
+  open,
+  station,
+  onClose,
+  onRefresh,
+  refreshLoading = false,
+  headerSubtitle = '',
+  chargerSummaryUpdatedInHeader = false,
+}) {
+  const [chargerStatFilter, setChargerStatFilter] = useState(/** @type {'all' | '2' | '3' | '5'} */ ('all'))
+  useEffect(() => {
+    if (open && station) setChargerStatFilter('all')
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- station?.id 의도적 제한
+  }, [open, station?.id])
+
   if (!station) return null
+
+  const refreshEnabled = typeof onRefresh === 'function'
+  const subtitle =
+    headerSubtitle ||
+    (() => {
+      const st = station.latestStatUpdDt || station.statUpdDt || ''
+      return st ? `충전기 상태 기준 ${st}` : ''
+    })()
 
   return (
     <Dialog
@@ -22,27 +46,53 @@ export function StationDetailModal({ open, station, onClose }) {
         },
       }}
     >
-      <DialogTitle
+      <Box
         sx={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'space-between',
           gap: 1,
-          pr: 1,
+          px: 2,
           pt: 1.5,
-          pb: 1.5,
+          pb: 1.25,
           borderBottom: `1px solid ${colors.gray[200]}`,
+          bgcolor: colors.gray[50],
         }}
       >
-        <Typography variant="h6" sx={{ fontWeight: 600, color: colors.gray[800], fontSize: '1rem' }}>
-          {station.statNm}
-        </Typography>
-        <IconButton onClick={onClose} aria-label="닫기" size="small" sx={{ color: colors.gray[600] }}>
-          <Close />
-        </IconButton>
-      </DialogTitle>
-      <DialogContent sx={{ pt: 1.5, pb: 2, px: 2 }}>
-        <StationDetailContent station={station} stackActions={false} />
+        <Box sx={{ minWidth: 0, flex: 1 }}>
+          <Typography variant="h6" sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1rem', lineHeight: 1.35 }}>
+            {station.statNm}
+          </Typography>
+          {subtitle ? (
+            <Typography variant="caption" sx={{ display: 'block', mt: 0.35, color: colors.gray[500], fontSize: '0.7rem', lineHeight: 1.35 }}>
+              {subtitle}
+            </Typography>
+          ) : null}
+        </Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25, flexShrink: 0 }}>
+          <IconButton
+            onClick={() => refreshEnabled && onRefresh?.()}
+            disabled={!refreshEnabled || refreshLoading}
+            aria-label={refreshEnabled ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
+            title={refreshEnabled ? '목록 데이터 다시 불러오기' : 'API 키가 설정된 경우에만 새로고침할 수 있습니다'}
+            size="small"
+            sx={{ color: colors.gray[600] }}
+          >
+            {refreshLoading ? <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} /> : <Refresh sx={{ fontSize: 22 }} />}
+          </IconButton>
+          <IconButton onClick={onClose} aria-label="닫기" size="small" sx={{ color: colors.gray[600] }}>
+            <Close />
+          </IconButton>
+        </Box>
+      </Box>
+      <DialogContent sx={{ pt: 1.5, pb: 2, px: 2, borderRadius: `0 0 ${radius.sm}px ${radius.sm}px` }}>
+        <StationDetailContent
+          station={station}
+          stackActions={false}
+          chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
+          chargerStatFilter={chargerStatFilter}
+          onChargerStatFilterChange={setChargerStatFilter}
+        />
       </DialogContent>
     </Dialog>
   )

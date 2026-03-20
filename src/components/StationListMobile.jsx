@@ -5,6 +5,7 @@ import SearchOff from '@mui/icons-material/SearchOff'
 import InboxOutlined from '@mui/icons-material/InboxOutlined'
 import { colors, motion, radius } from '../theme/dashboardTheme.js'
 import { formatDistanceKm } from '../utils/geo.js'
+import { pickPrimaryAddress } from '../api/safemapEv.js'
 
 const EMPTY_ICONS = {
   no_data: InboxOutlined,
@@ -92,6 +93,7 @@ export function StationListMobile({
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.625 }}>
       {stations.map((s) => {
         const isSelected = selectedId != null && s.id === selectedId
+        const addrLine = pickPrimaryAddress(s)
         return (
           <Box
             key={s.id}
@@ -156,6 +158,23 @@ export function StationListMobile({
                 <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '0.875rem', color: colors.gray[800], lineHeight: 1.3 }}>
                   {s.statNm}
                 </Typography>
+                {addrLine && (
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: colors.gray[600],
+                      fontSize: '0.68rem',
+                      display: 'block',
+                      mt: 0.2,
+                      lineHeight: 1.35,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {addrLine}
+                  </Typography>
+                )}
                 <Typography variant="body2" sx={{ color: colors.gray[600], fontSize: '0.75rem', display: 'block', mt: 0.25 }}>
                   {s.busiNm} · {s.chgerTyLabel}
                 </Typography>

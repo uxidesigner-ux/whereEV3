@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react'
-import { Drawer, Box, IconButton, Typography } from '@mui/material'
+import { useEffect, useRef, useMemo, useState } from 'react'
+import { Drawer, Box, IconButton, Typography, CircularProgress } from '@mui/material'
 import Close from '@mui/icons-material/Close'
+import Refresh from '@mui/icons-material/Refresh'
 import { colors, radius, motion } from '../theme/dashboardTheme.js'
 import { StationDetailContent } from './StationDetailContent.jsx'
 
@@ -14,12 +15,36 @@ const MOVE_BUFFER_MAX = 12
  * 모바일 전용: 상세 bottom sheet. 핸들+헤더 줄만 스와이프 다운으로 닫기(본문 스크롤과 분리).
  * 닫기 조건: 이동 거리 또는 최근 구간 속도(내부 스크롤과 분리).
  */
-export function StationDetailSheet({ open, station, onClose }) {
+export function StationDetailSheet({
+  open,
+  station,
+  onClose,
+  onRefresh,
+  refreshLoading = false,
+  headerSubtitle = '',
+  chargerSummaryUpdatedInHeader = false,
+}) {
   const dragStartY = useRef(0)
   const dragging = useRef(false)
   const closeBtnRef = useRef(null)
   /** 최근 포인터 이동 샘플로 속도 추정 */
   const moveSamples = useRef(/** @type {{ y: number; t: number }[]} */ ([]))
+
+  const refreshEnabled = typeof onRefresh === 'function'
+
+  const [chargerStatFilter, setChargerStatFilter] = useState(/** @type {'all' | '2' | '3' | '5'} */ ('all'))
+  useEffect(() => {
+    if (open && station) setChargerStatFilter('all')
+    // station 객체 참조만 바뀌면 필터 유지(같은 id). 열림/다른 장소 id에서만 초기화.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- station?.id 의도적 제한
+  }, [open, station?.id])
+
+  const subtitle = useMemo(() => {
+    if (!station) return ''
+    if (headerSubtitle) return headerSubtitle
+    const st = station.latestStatUpdDt || station.statUpdDt || ''
+    return st ? `충전기 상태 기준 ${st}` : ''
+  }, [station, headerSubtitle])
 
   useEffect(() => {
     if (!open || !station) return
@@ -123,21 +148,39 @@ export function StationDetailSheet({ open, station, onClose }) {
             onPointerCancel={headerPointerCancel}
             sx={{
               flexShrink: 0,
-              pt: 1,
+              pt: 1.25,
               px: 2,
-              pb: 1,
+              pb: 1.75,
               borderBottom: `1px solid ${colors.gray[200]}`,
+              bgcolor: colors.gray[50],
               touchAction: 'none',
               cursor: 'grab',
               '&:active': { cursor: 'grabbing' },
             }}
           >
-            <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto', mb: 1 }} aria-hidden />
+            <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto', mb: 1.125 }} aria-hidden />
             <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, pointerEvents: 'none' }}>
-              <Typography id="ev-detail-sheet-title" variant="h6" component="h2" sx={{ fontWeight: 600, color: colors.gray[800], fontSize: '1.05rem', lineHeight: 1.35, pr: 0.5 }}>
-                {station.statNm}
-              </Typography>
-              <Box sx={{ pointerEvents: 'auto', mt: -0.25 }}>
+              <Box sx={{ minWidth: 0, flex: 1, pr: 0.5 }}>
+                <Typography id="ev-detail-sheet-title" variant="h6" component="h2" sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1.05rem', lineHeight: 1.35 }}>
+                  {station.statNm}
+                </Typography>
+                {subtitle ? (
+                  <Typography variant="caption" sx={{ display: 'block', mt: 0.35, color: colors.gray[500], fontSize: '0.7rem', lineHeight: 1.35 }}>
+                    {subtitle}
+                  </Typography>
+                ) : null}
+              </Box>
+              <Box sx={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 0.25, flexShrink: 0, mt: -0.25 }}>
+                <IconButton
+                  onClick={() => refreshEnabled && onRefresh?.()}
+                  disabled={!refreshEnabled || refreshLoading}
+                  aria-label={refreshEnabled ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
+                  title={refreshEnabled ? '목록 데이터 다시 불러오기' : 'API 키가 설정된 경우에만 새로고침할 수 있습니다'}
+                  size="small"
+                  sx={{ color: colors.gray[600] }}
+                >
+                  {refreshLoading ? <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} /> : <Refresh sx={{ fontSize: 22 }} />}
+                </IconButton>
                 <IconButton ref={closeBtnRef} onClick={onClose} aria-label="상세 닫기" size="small" sx={{ color: colors.gray[600] }}>
                   <Close />
                 </IconButton>
@@ -152,13 +195,19 @@ export function StationDetailSheet({ open, station, onClose }) {
               minHeight: 0,
               overflow: 'auto',
               px: 2,
-              pt: 1.5,
-              pb: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+              pt: 1.25,
+              pb: 1,
               WebkitOverflowScrolling: 'touch',
               touchAction: 'pan-y',
             }}
           >
-            <StationDetailContent station={station} stackActions />
+            <StationDetailContent
+              station={station}
+              stackActions
+              chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
+              chargerStatFilter={chargerStatFilter}
+              onChargerStatFilterChange={setChargerStatFilter}
+            />
           </Box>
         </>
       ) : null}

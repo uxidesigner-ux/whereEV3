@@ -38,8 +38,53 @@ import {
   Pie,
   Legend,
 } from 'recharts'
-import { fetchEvChargers, aggregateStatCounts, getLatestStatUpdDt, formatStatSummary } from './api/safemapEv.js'
+import {
+  fetchEvChargers,
+  aggregateStatCounts,
+  getLatestStatUpdDt,
+  formatStatSummary,
+  pickPrimaryAddress,
+} from './api/safemapEv.js'
+import { getDevMockEvChargers } from './dev/mockEvChargers.js'
 import { haversineDistanceKm, placeKey, formatListSummary } from './utils/geo.js'
+
+/** 상세/마커 동기화용: 동일 장소(placeKey) 행으로 그룹 객체 재구성 */
+function buildPlaceGroupFromRows(rows, distanceKmPreserve) {
+  if (!rows?.length) return null
+  const first = rows[0]
+  const statCounts = aggregateStatCounts(rows)
+  let adres = ''
+  let rnAdres = ''
+  for (const r of rows) {
+    if (!adres && (r.adres || '').trim()) adres = (r.adres || '').trim()
+    if (!rnAdres && (r.rnAdres || '').trim()) rnAdres = (r.rnAdres || '').trim()
+    if (adres && rnAdres) break
+  }
+  return {
+    id: placeKey(first),
+    statNm: first.statNm,
+    lat: first.lat,
+    lng: first.lng,
+    distanceKm: distanceKmPreserve != null ? distanceKmPreserve : 0,
+    totalChargers: rows.length,
+    statCounts,
+    statSummary: formatStatSummary(statCounts),
+    latestStatUpdDt: getLatestStatUpdDt(rows),
+    busiNm: formatListSummary(rows.map((r) => r.busiNm), 2),
+    chgerTyLabel: formatListSummary(rows.map((r) => r.displayChgerLabel ?? r.chgerTyLabel), 2),
+    rows,
+    adres: adres || (first.adres || '').trim(),
+    rnAdres: rnAdres || (first.rnAdres || '').trim(),
+    useTm: first.useTm,
+    telno: first.telno,
+  }
+}
+
+function rowsMatchingDetailStation(prev, flatItems) {
+  if (!prev || !flatItems?.length) return []
+  const key = Array.isArray(prev.rows) && prev.rows.length ? prev.id : placeKey(prev)
+  return flatItems.filter((r) => placeKey(r) === key)
+}
 import { cssEscapeAttr } from './utils/cssEscape.js'
 import { colors, spacing, radius, chartBlueScale, glass, motion, sheetLayout } from './theme/dashboardTheme.js'
 import { GlassPanel } from './components/GlassPanel.jsx'
@@ -325,49 +370,57 @@ function MapView({ stations, onDetailClick, selectedId, isMobile, defaultMarkerI
         subdomains="abcd"
         maxZoom={20}
       />
-      {stations.map((s) => (
-        <Marker key={s.id} position={[s.lat, s.lng]} icon={icon(s.id)}>
-          <Popup maxWidth={isMobile ? 220 : 320}>
-            <Box component="div" sx={{ fontFamily: muiTheme.typography.fontFamily }}>
-              {isMobile ? (
-                <>
-                  <Typography variant="subtitle2" sx={{ color: colors.blue.primary, fontWeight: 600, fontSize: '0.8125rem', lineHeight: 1.3 }}>
-                    {s.statNm}
-                  </Typography>
-                  <Typography variant="caption" display="block" sx={{ color: colors.gray[600], fontSize: '0.7rem', mt: 0.25 }}>
-                    {s.displayChgerLabel ?? s.chgerTyLabel}
-                  </Typography>
-                  {onDetailClick && (
-                    <Button size="small" variant="contained" onClick={() => onDetailClick(s)} sx={{ mt: 0.75, fontSize: '0.7rem', py: 0.5, bgcolor: colors.blue.primary }}>
-                      상세 보기
-                    </Button>
-                  )}
-                </>
-              ) : (
-                <>
-                  <Typography variant="subtitle2" sx={{ color: colors.blue.primary, fontWeight: 600, mb: 0.5 }}>
-                    {s.statNm}
-                  </Typography>
-                  <Typography variant="caption" display="block" sx={{ color: colors.gray[600] }}>
-                    운영기관 {s.busiNm} · {s.displayChgerLabel ?? s.chgerTyLabel}
-                  </Typography>
-                  <Typography variant="caption" display="block" sx={{ color: colors.gray[500], mt: 0.5 }}>
-                    이용시간 {s.useTm || '-'} · 전화 {s.telno || '-'}
-                  </Typography>
-                  <Typography variant="caption" display="block" sx={{ color: colors.gray[500] }}>
-                    {s.adres || s.rnAdres || '-'}
-                  </Typography>
-                  {onDetailClick && (
-                    <Button size="small" variant="outlined" onClick={() => onDetailClick(s)} sx={{ mt: 1, fontSize: '0.75rem' }}>
-                      상세 보기
-                    </Button>
-                  )}
-                </>
-              )}
-            </Box>
-          </Popup>
-        </Marker>
-      ))}
+      {stations.map((s) => {
+        const addrLine = pickPrimaryAddress(s)
+        return (
+          <Marker key={s.id} position={[s.lat, s.lng]} icon={icon(s.id)}>
+            <Popup maxWidth={isMobile ? 220 : 320}>
+              <Box component="div" sx={{ fontFamily: muiTheme.typography.fontFamily }}>
+                {isMobile ? (
+                  <>
+                    <Typography variant="subtitle2" sx={{ color: colors.blue.primary, fontWeight: 600, fontSize: '0.8125rem', lineHeight: 1.3 }}>
+                      {s.statNm}
+                    </Typography>
+                    {addrLine && (
+                      <Typography variant="caption" display="block" sx={{ color: colors.gray[600], fontSize: '0.65rem', mt: 0.25, lineHeight: 1.35 }}>
+                        {addrLine}
+                      </Typography>
+                    )}
+                    <Typography variant="caption" display="block" sx={{ color: colors.gray[600], fontSize: '0.7rem', mt: 0.25 }}>
+                      {s.displayChgerLabel ?? s.chgerTyLabel}
+                    </Typography>
+                    {onDetailClick && (
+                      <Button size="small" variant="contained" onClick={() => onDetailClick(s)} sx={{ mt: 0.75, fontSize: '0.7rem', py: 0.5, bgcolor: colors.blue.primary }}>
+                        상세 보기
+                      </Button>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Typography variant="subtitle2" sx={{ color: colors.blue.primary, fontWeight: 600, mb: 0.5 }}>
+                      {s.statNm}
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ color: colors.gray[600] }}>
+                      운영기관 {s.busiNm} · {s.displayChgerLabel ?? s.chgerTyLabel}
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ color: colors.gray[500], mt: 0.5 }}>
+                      이용시간 {s.useTm || '-'} · 전화 {s.telno || '-'}
+                    </Typography>
+                    <Typography variant="caption" display="block" sx={{ color: colors.gray[500] }}>
+                      {addrLine || '-'}
+                    </Typography>
+                    {onDetailClick && (
+                      <Button size="small" variant="outlined" onClick={() => onDetailClick(s)} sx={{ mt: 1, fontSize: '0.75rem' }}>
+                        상세 보기
+                      </Button>
+                    )}
+                  </>
+                )}
+              </Box>
+            </Popup>
+          </Marker>
+        )
+      })}
     </>
   )
 }
@@ -377,6 +430,9 @@ function App() {
   const [totalCount, setTotalCount] = useState(null)
   const [loading, setLoading] = useState(true)
   const [apiError, setApiError] = useState(null)
+  const [lastEvFetchAt, setLastEvFetchAt] = useState(null)
+  const [detailRefreshing, setDetailRefreshing] = useState(false)
+  const canRefetchEv = !!(import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
   const [filterBusiNm, setFilterBusiNm] = useState('')
   const [filterSpeed, setFilterSpeed] = useState('') // '' | '급속' | '완속'
   const [filterCtprvnCd, setFilterCtprvnCd] = useState('')
@@ -610,10 +666,21 @@ function App() {
   }, [liveMapBounds])
 
   useEffect(() => {
-    const key = import.meta.env.VITE_SAFEMAP_SERVICE_KEY
+    const key = (import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
     if (!key) {
-      setApiError('VITE_SAFEMAP_SERVICE_KEY를 .env 또는 .env.local에 설정해 주세요.')
       setLoading(false)
+      if (import.meta.env.DEV) {
+        const mock = getDevMockEvChargers()
+        setApiError(null)
+        setItems(mock)
+        setTotalCount(mock.length)
+        setLastEvFetchAt(new Date().toISOString())
+        console.info(
+          `[whereEV3] API 키 없음 — 로컬 대체 충전소 데이터 ${mock.length}건(dev-mock). 실제 Safemap 데이터는 .env.local의 VITE_SAFEMAP_SERVICE_KEY 설정 후 재시작하세요. (docs/DATA-SOURCES.md)`
+        )
+        return
+      }
+      setApiError('VITE_SAFEMAP_SERVICE_KEY를 .env 또는 .env.local에 설정해 주세요.')
       return
     }
     let cancelled = false
@@ -624,6 +691,7 @@ function App() {
         if (cancelled) return
         setItems(list)
         setTotalCount(total)
+        setLastEvFetchAt(new Date().toISOString())
       })
       .catch((err) => {
         if (!cancelled) setApiError(err.message || '데이터를 불러오지 못했습니다.')
@@ -634,6 +702,53 @@ function App() {
     return () => { cancelled = true }
   }, [])
 
+  const refreshEvData = useCallback(async () => {
+    if (!canRefetchEv) return
+    setDetailRefreshing(true)
+    setApiError(null)
+    try {
+      const { items: list, totalCount: total } = await fetchEvChargers({ pageNo: 1, numOfRows: 200, maxPages: 3 })
+      setItems(list)
+      if (total != null) setTotalCount(total)
+      setLastEvFetchAt(new Date().toISOString())
+      const prev = detailStationRef.current
+      if (prev) {
+        const matched = rowsMatchingDetailStation(prev, list)
+        const prevKey = Array.isArray(prev.rows) && prev.rows.length ? prev.id : placeKey(prev)
+        if (matched.length === 0) {
+          setDetailStation(null)
+          detailStationRef.current = null
+          const sel = mapSelectedStationRef.current
+          if (sel) {
+            const selKey = Array.isArray(sel.rows) && sel.rows.length ? sel.id : placeKey(sel)
+            if (selKey === prevKey) {
+              setMapSelectedStation(null)
+              mapSelectedStationRef.current = null
+            }
+          }
+        } else {
+          const preserveKm = Array.isArray(prev.rows) && prev.rows.length ? prev.distanceKm : undefined
+          const next =
+            matched.length === 1 ? matched[0] : buildPlaceGroupFromRows(matched, preserveKm)
+          setDetailStation(next)
+          detailStationRef.current = next
+          const sel = mapSelectedStationRef.current
+          if (sel) {
+            const selKey = Array.isArray(sel.rows) && sel.rows.length ? sel.id : placeKey(sel)
+            if (selKey === prevKey) {
+              setMapSelectedStation(next)
+              mapSelectedStationRef.current = next
+            }
+          }
+        }
+      }
+    } catch (err) {
+      setApiError(err.message || '데이터를 불러오지 못했습니다.')
+    } finally {
+      setDetailRefreshing(false)
+    }
+  }, [canRefetchEv])
+
   const filteredItems = useMemo(() => {
     const q = searchQuery.trim().toLowerCase()
     return items.filter((s) => {
@@ -642,7 +757,10 @@ function App() {
       if (filterCtprvnCd && s.ctprvnCd !== filterCtprvnCd) return false
       if (filterSggCd && s.sggCd !== filterSggCd) return false
       if (q) {
-        const hay = [s.statNm, s.adres, s.rnAdres, s.busiNm].filter(Boolean).join(' ').toLowerCase()
+        const hay = [s.statNm, s.adres, s.rnAdres, s.busiNm, s.chgerNm, s.outputKw]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
         if (!hay.includes(q)) return false
       }
       return true
@@ -687,6 +805,13 @@ function App() {
       .map(([id, { rows, distanceKm }]) => {
         const first = rows[0]
         const statCounts = aggregateStatCounts(rows)
+        let adres = ''
+        let rnAdres = ''
+        for (const r of rows) {
+          if (!adres && (r.adres || '').trim()) adres = (r.adres || '').trim()
+          if (!rnAdres && (r.rnAdres || '').trim()) rnAdres = (r.rnAdres || '').trim()
+          if (adres && rnAdres) break
+        }
         return {
           id,
           statNm: first.statNm,
@@ -700,8 +825,8 @@ function App() {
           busiNm: formatListSummary(rows.map((r) => r.busiNm), 2),
           chgerTyLabel: formatListSummary(rows.map((r) => r.displayChgerLabel ?? r.chgerTyLabel), 2),
           rows,
-          adres: first.adres,
-          rnAdres: first.rnAdres,
+          adres: adres || (first.adres || '').trim(),
+          rnAdres: rnAdres || (first.rnAdres || '').trim(),
           useTm: first.useTm,
           telno: first.telno,
         }
@@ -820,6 +945,26 @@ function App() {
     }
   }, [items])
 
+  const detailHeaderSubtitle = useMemo(() => {
+    if (!detailStation) return ''
+    const st = (detailStation.latestStatUpdDt || detailStation.statUpdDt || '').trim()
+    if (st) return `충전기 상태 기준 ${st}`
+    if (lastEvFetchAt) {
+      try {
+        const d = new Date(lastEvFetchAt)
+        return `목록 조회 ${d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+      } catch {
+        return ''
+      }
+    }
+    return ''
+  }, [detailStation, lastEvFetchAt])
+
+  const chargerSummaryUpdatedInHeader = useMemo(
+    () => !!(detailStation && (detailStation.latestStatUpdDt || detailStation.statUpdDt)),
+    [detailStation]
+  )
+
   if (loading) {
     return (
       <ThemeProvider theme={muiTheme}>
@@ -937,7 +1082,7 @@ function App() {
     ? (
         <MobileBottomSheet
           key="mobile-bottom-sheet"
-          topOffsetPx={sheetLayout.topChromePx + 8}
+          topOffsetPx={sheetLayout.mobileTopBarStackPx}
           collapsedPx={sheetLayout.collapsedPx}
           halfVhRatio={sheetLayout.halfVhRatio}
           snap={mobileSheetSnap}
@@ -945,33 +1090,68 @@ function App() {
           listScrollRef={sheetListScrollRef}
           onSnapHeightPxChange={handleSheetSnapHeightPx}
           renderHeader={({ snap, cycleSnap }) => (
-            <Box sx={{ pt: 0.75, pb: 0.5, userSelect: 'none' }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'column',
+                flexShrink: 0,
+                boxSizing: 'border-box',
+                minHeight: 76,
+                pt: 1,
+                userSelect: 'none',
+                bgcolor: colors.gray[50],
+                /* 접힘/펼침 동일: 헤더 블록 높이·패딩 고정, 구분선은 헤더 밖이 아닌 이 블록 하단만 */
+                borderBottom: `1px solid ${colors.gray[200]}`,
+              }}
+            >
               <Box
                 sx={{
-                  width: 36,
-                  height: 4,
-                  borderRadius: 2,
-                  bgcolor: colors.gray[300],
-                  mx: 'auto',
-                  mb: 0.75,
+                  flexShrink: 0,
+                  display: 'flex',
+                  justifyContent: 'center',
+                  width: '100%',
                 }}
                 aria-hidden
-              />
+              >
+                <Box
+                  sx={{
+                    width: 36,
+                    height: 4,
+                    borderRadius: 2,
+                    bgcolor: colors.gray[300],
+                    mb: 1.5,
+                  }}
+                />
+              </Box>
               <Box
                 sx={{
-                  display: 'flex',
+                  flex: 1,
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 1,
-                  px: 1.25,
-                  minHeight: 40,
+                  columnGap: 1,
+                  alignSelf: 'stretch',
+                  px: 2.5,
+                  pb: 2,
+                  minHeight: 44,
                   boxSizing: 'border-box',
-                  borderBottom: snap !== 'collapsed' ? `1px solid ${colors.gray[200]}` : 'none',
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
-                  <EvStationIcon sx={{ fontSize: 18, color: colors.gray[600], flexShrink: 0 }} />
-                  <Typography variant="h6" sx={{ fontSize: '0.875rem', fontWeight: 600, color: colors.gray[800], lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+                  <EvStationIcon sx={{ fontSize: 20, color: colors.gray[600], flexShrink: 0 }} />
+                  <Typography
+                    variant="h6"
+                    component="div"
+                    sx={{
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      color: colors.gray[800],
+                      lineHeight: 1.35,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
                     {mapSelectedStation
                       ? mapSelectedStation.statNm
                       : appliedMapBounds == null
@@ -987,17 +1167,19 @@ function App() {
                   aria-label={snap === 'collapsed' ? '목록 펼치기' : snap === 'full' ? '시트 접기' : '시트 크기 전환'}
                   size="small"
                   sx={{
-                    flexShrink: 0,
+                    gridColumn: 2,
+                    justifySelf: 'end',
                     width: 40,
                     height: 40,
                     minWidth: 40,
                     minHeight: 40,
-                    bgcolor: colors.gray[50],
+                    p: 0,
+                    bgcolor: colors.white,
                     color: colors.gray[800],
                     border: `1px solid ${colors.gray[200]}`,
                     transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, transform ${motion.duration.enter}ms ${motion.easing.standard}`,
                     '& .MuiSvgIcon-root': { opacity: 1, color: 'inherit' },
-                    '&:hover': { bgcolor: colors.gray[100], borderColor: colors.gray[300] },
+                    '&:hover': { bgcolor: colors.gray[50], borderColor: colors.gray[300] },
                     '&:active': { transform: 'scale(0.96)' },
                   }}
                 >
@@ -1125,7 +1307,7 @@ function App() {
             fontWeight: 600,
           }}
         >
-          v2
+          v3
         </Box>
       )}
       <Box
@@ -1145,10 +1327,12 @@ function App() {
               left: 0,
               right: 0,
               zIndex: 450,
-              pt: 'env(safe-area-inset-top, 0px)',
-              pl: 'max(10px, env(safe-area-inset-left, 0px))',
-              pr: 'max(10px, env(safe-area-inset-right, 0px))',
-              pb: 0.75,
+              boxSizing: 'border-box',
+              /* 세이프 영역 + 동일 인셋: 노치 아래·좌우·하단 시각적으로 같은 여백 */
+              pt: `calc(env(safe-area-inset-top, 0px) + ${sheetLayout.mobileTopBarInsetPx}px)`,
+              pl: `max(${sheetLayout.mobileTopBarInsetPx}px, env(safe-area-inset-left, 0px))`,
+              pr: `max(${sheetLayout.mobileTopBarInsetPx}px, env(safe-area-inset-right, 0px))`,
+              pb: `${sheetLayout.mobileTopBarInsetPx}px`,
               bgcolor: 'rgba(255,255,255,0.92)',
               backdropFilter: 'blur(10px)',
               WebkitBackdropFilter: 'blur(10px)',
@@ -1156,7 +1340,16 @@ function App() {
               boxShadow: '0 1px 0 rgba(0,0,0,0.04)',
             }}
           >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minHeight: 48 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 1,
+                height: sheetLayout.mobileTopBarControlPx,
+                minHeight: sheetLayout.mobileTopBarControlPx,
+                boxSizing: 'border-box',
+              }}
+            >
               <TextField
                 size="small"
                 placeholder="충전소·주소 검색"
@@ -1166,7 +1359,11 @@ function App() {
                 sx={{
                   flex: 1,
                   minWidth: 0,
+                  height: sheetLayout.mobileTopBarControlPx,
                   '& .MuiOutlinedInput-root': {
+                    height: sheetLayout.mobileTopBarControlPx,
+                    minHeight: sheetLayout.mobileTopBarControlPx,
+                    boxSizing: 'border-box',
                     fontSize: '0.8125rem',
                     bgcolor: colors.gray[50],
                     borderRadius: `${radius.sm}px`,
@@ -1174,8 +1371,14 @@ function App() {
                     '& fieldset': { borderColor: colors.gray[200] },
                     '&:hover fieldset': { borderColor: colors.gray[300] },
                     '&.Mui-focused fieldset': { borderColor: colors.blue.primary, borderWidth: 1 },
+                    alignItems: 'center',
                   },
-                  '& .MuiInputBase-input': { py: 0.875 },
+                  '& .MuiInputBase-input': {
+                    py: 0,
+                    height: `${sheetLayout.mobileTopBarControlPx}px`,
+                    boxSizing: 'border-box',
+                    lineHeight: `${sheetLayout.mobileTopBarControlPx}px`,
+                  },
                 }}
                 slotProps={{
                   input: {
@@ -1192,8 +1395,11 @@ function App() {
                 aria-label="현재 위치로 이동"
                 sx={{
                   flexShrink: 0,
-                  width: 44,
-                  height: 44,
+                  width: sheetLayout.mobileTopBarControlPx,
+                  height: sheetLayout.mobileTopBarControlPx,
+                  minWidth: sheetLayout.mobileTopBarControlPx,
+                  minHeight: sheetLayout.mobileTopBarControlPx,
+                  boxSizing: 'border-box',
                   bgcolor: colors.gray[50],
                   border: `1px solid ${colors.gray[200]}`,
                   borderRadius: `${radius.sm}px`,
@@ -1211,8 +1417,11 @@ function App() {
                 disabled={!!detailStation}
                 sx={{
                   flexShrink: 0,
-                  width: 44,
-                  height: 44,
+                  width: sheetLayout.mobileTopBarControlPx,
+                  height: sheetLayout.mobileTopBarControlPx,
+                  minWidth: sheetLayout.mobileTopBarControlPx,
+                  minHeight: sheetLayout.mobileTopBarControlPx,
+                  boxSizing: 'border-box',
                   bgcolor: colors.gray[50],
                   border: `1px solid ${colors.gray[200]}`,
                   borderRadius: `${radius.sm}px`,
@@ -1299,10 +1508,16 @@ function App() {
             <Box
               sx={{
                 position: 'absolute',
-                top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 56px)' : 52,
-                right: isMobile ? 'max(10px, env(safe-area-inset-right, 0px))' : 14,
+                top: isMobile
+                  ? `calc(env(safe-area-inset-top, 0px) + ${sheetLayout.mobileTopBarStackPx}px)`
+                  : 52,
+                right: isMobile
+                  ? `max(${sheetLayout.mobileTopBarInsetPx}px, env(safe-area-inset-right, 0px))`
+                  : 14,
                 zIndex: 500,
-                maxWidth: isMobile ? 'calc(100% - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))' : 'calc(100% - 24px)',
+                maxWidth: isMobile
+                  ? `calc(100% - ${2 * sheetLayout.mobileTopBarInsetPx}px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))`
+                  : 'calc(100% - 24px)',
               }}
             >
               {locationLoading && (
@@ -1447,9 +1662,25 @@ function App() {
         />
 
         {isMobile ? (
-          <StationDetailSheet open={!!detailStation} station={detailStation} onClose={handleCloseDetail} />
+          <StationDetailSheet
+            open={!!detailStation}
+            station={detailStation}
+            onClose={handleCloseDetail}
+            onRefresh={canRefetchEv ? refreshEvData : undefined}
+            refreshLoading={detailRefreshing}
+            headerSubtitle={detailHeaderSubtitle}
+            chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
+          />
         ) : (
-          <StationDetailModal open={!!detailStation} station={detailStation} onClose={closeDetailFromOverlay} />
+          <StationDetailModal
+            open={!!detailStation}
+            station={detailStation}
+            onClose={closeDetailFromOverlay}
+            onRefresh={canRefetchEv ? refreshEvData : undefined}
+            refreshLoading={detailRefreshing}
+            headerSubtitle={detailHeaderSubtitle}
+            chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
+          />
         )}
       </Box>
     </ThemeProvider>

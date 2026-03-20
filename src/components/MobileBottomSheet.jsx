@@ -199,9 +199,10 @@ export function MobileBottomSheet({
             overflow: 'auto',
             display: snap === 'collapsed' ? 'none' : 'block',
             WebkitOverflowScrolling: 'touch',
-            px: 1.25,
+            px: 2.5,
             pb: 1,
-            pt: 0.5,
+            /* 헤더 borderBottom 직후 ~12px — 펼침 시에만 보이며 헤더 레이아웃과 분리 */
+            pt: 1.5,
           }}
         >
           {children}

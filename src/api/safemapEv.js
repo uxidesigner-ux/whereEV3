@@ -104,6 +104,101 @@ export function getLatestStatUpdDt(rows) {
   return withDt[0].statUpdDt
 }
 
+/** 그룹/단일 충전소에서 표시용 주소 후보 행 목록 */
+function addressSourceRows(station) {
+  if (!station) return []
+  if (Array.isArray(station.rows) && station.rows.length) return station.rows
+  return [station]
+}
+
+/**
+ * 목록 한 줄용: 도로명 우선, 없으면 지번·기타 (행 순회).
+ */
+export function pickPrimaryAddress(station) {
+  for (const r of addressSourceRows(station)) {
+    const rn = (r.rnAdres || '').trim()
+    if (rn) return rn
+  }
+  for (const r of addressSourceRows(station)) {
+    const a = (r.adres || '').trim()
+    if (a) return a
+  }
+  return ''
+}
+
+/**
+ * 상세용: 행 순서대로 고유 주소 문자열 (지번·도로명 구분 없이 API 필드 순; 중복 문구 제거).
+ */
+export function formatAddressBlockLines(station) {
+  const lines = []
+  const seen = new Set()
+  for (const r of addressSourceRows(station)) {
+    for (const raw of [r.adres, r.rnAdres]) {
+      const t = (raw || '').trim()
+      if (t && !seen.has(t)) {
+        seen.add(t)
+        lines.push(t)
+      }
+    }
+  }
+  return lines
+}
+
+/** stat=사용 중(3)일 때만 의미 있음. 원본에 명시된 값이 있을 때만 문자열 반환(추정 없음). */
+export function formatChargerExplicitTime(row) {
+  if (!row || String(row.stat).trim() !== '3') return null
+  const raw = row.remainingMinutesRaw
+  if (raw !== '' && raw != null) {
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) return `약 ${n}분`
+  }
+  const end = (row.expectedEndAt || '').trim()
+  if (end) return `종료 ${end}`
+  return null
+}
+
+/** API가 명시한 충전 진행률(0~100)만. 없으면 null — 추정 금지. */
+export function parseExplicitProgressPercent(row) {
+  if (!row) return null
+  const v = row.progressPercent
+  if (v === '' || v == null) return null
+  const n = Number(v)
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null
+  return n
+}
+
+/** 사용 중(3)이면서 남은 분 또는 종료 시각이 원본에 있을 때(세션 힌트). 진행률 없을 때 인디터미넛 바용. */
+export function hasChargerExplicitSessionHint(row) {
+  if (!row || String(row.stat).trim() !== '3') return false
+  const raw = row.remainingMinutesRaw
+  if (raw !== '' && raw != null) {
+    const n = Number(raw)
+    if (Number.isFinite(n) && n > 0) return true
+  }
+  return !!(row.expectedEndAt || '').trim()
+}
+
+function parseExplicitPercent0to100(v) {
+  if (v === '' || v == null) return null
+  const n = Number(v)
+  if (!Number.isFinite(n) || n < 0 || n > 100) return null
+  return n
+}
+
+/**
+ * 목표 충전량(100%) 대비 현재 도달 비율용. current·target 둘 다 API에 있을 때만 반환(추정 금지).
+ * barValue = min(100, current/target*100) — 예: 40/80 → 50, 64/80 → 80.
+ */
+export function parseExplicitChargePercentPair(row) {
+  if (!row) return null
+  const current = parseExplicitPercent0to100(row.currentChargePercent)
+  const target = parseExplicitPercent0to100(row.targetChargePercent)
+  if (current == null || target == null) return null
+  if (target <= 0) return null
+  const barValue = Math.min(100, Math.max(0, (current / target) * 100))
+  return { current, target, barValue }
+}
+
 /**
  * API 원본 항목을 앱에서 쓰는 형태로 정규화.
  * x,y는 Web Mercator일 수 있으므로 WGS84(lat,lng)로 변환 후 반환.
@@ -131,6 +226,8 @@ export function normalizeCharger(item, index) {
   const chgerTyCode = get(item, 'chger_ty', 'chgerTy') || ''
   const chgerTyLabel = getChgerTyLabel(chgerTyCode)
   return {
+    /** 데이터 출처 구분: UI는 표시하지 않으나 mock/API 구분·디버깅용 */
+    dataSource: 'safemap',
     id: get(item, 'chger_id', 'chgerId', 'objt_id', 'objtId') || `ev-${index}`,
     statId: get(item, 'stat_id', 'statId'),
     statNm: get(item, 'stat_nm', 'statNm') || '이름 없음',
@@ -145,8 +242,45 @@ export function normalizeCharger(item, index) {
     busiId: get(item, 'busi_id', 'busiId'),
     busiNm: get(item, 'busi_nm', 'busiNm') || '-',
     telno: get(item, 'telno'),
-    adres: get(item, 'adres', 'rn_adres', 'rnAdres'),
-    rnAdres: get(item, 'rn_adres', 'rnAdres'),
+    /** 지번·기타 주소 (도로명은 rnAdres에만 — 과거에는 rn을 adres에 넣어 도로명이 중복·누락처럼 보일 수 있었음). API에 주소가 없으면 빈 값 — 역지오코딩은 별도 범위. */
+    adres: get(
+      item,
+      'adres',
+      'addr',
+      'address',
+      'stat_addr',
+      'statAddr',
+      'jibun_addr',
+      'jibunAddr',
+      'lot_addr',
+      'lotAddr',
+      'location',
+      'daddr',
+      'detail_addr',
+      'detailAddr'
+    ),
+    rnAdres: get(item, 'rn_adres', 'rnAdres', 'road_addr', 'roadAddr', 'road_address', 'roadAddress', 'new_addr', 'newAddr'),
+    chgerNm: get(item, 'chger_nm', 'chgerNm', 'chger_name', 'chgerName'),
+    outputKw: get(
+      item,
+      'output',
+      'output_kw',
+      'outputKw',
+      'chger_kw',
+      'chgerKw',
+      'chg_kw',
+      'chgKw',
+      'power',
+      'eltv_spd',
+      'eltvSpd',
+      'chger_out_put',
+      'chgerOutPut',
+      'delng'
+    ),
+    /**
+     * 진행률·잔여시간·종료예정 등「세션」성 필드는 공공데이터 row에 넣지 않는다(MVP 분리).
+     * UI는 `src/data/chargerSessionMvp.js`의 getChargerSessionForUi 만 사용.
+     */
     ctprvnCd: get(item, 'ctprvn_cd', 'ctprvnCd'),
     sggCd: get(item, 'sgg_cd', 'sggCd'),
     emdCd: get(item, 'emd_cd', 'emdCd'),

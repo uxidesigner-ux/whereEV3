@@ -102,9 +102,17 @@ export const motion = {
 
 /** 바텀 시트 스냅(뷰포트 대비 비율은 MobileBottomSheet props로 조정) */
 export const sheetLayout = {
-  collapsedPx: 72,
+  /** 목록 시트 접힘 높이 — 헤더(핸들+타이틀 행+divider) min 높이와 맞춤 */
+  collapsedPx: 90,
   halfVhRatio: 0.42,
+  /** 모바일 상단 바: 검색·내 위치·필터 행 높이 */
   topChromePx: 56,
+  /** 상단 바 콘텐츠 박스 인셋(상하좌우 시각 균일). safe-area는 App에서 별도 가산 */
+  mobileTopBarInsetPx: 12,
+  /** topChromePx와 동일 권장 — 컨트롤 세트 높이 */
+  mobileTopBarControlPx: 56,
+  /** 인셋 + 컨트롤행 + 인셋 + border(1) → Leaflet/시트 오프셋. iOS 노치 높이는 CSS env(safe-area-inset-top)로 가산 */
+  mobileTopBarStackPx: 12 + 56 + 12 + 1,
 }
 
 export const chartBlueScale = [

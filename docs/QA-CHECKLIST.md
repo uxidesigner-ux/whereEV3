@@ -7,6 +7,7 @@
 - [ ] 모바일: Chrome / Safari (iOS), 뷰포트 ≤900px
 - [ ] 데스크톱: Chrome, 뷰포트 >900px
 - [ ] 필요 시: 브라우저 뒤로가기·제스처 뒤로가기(모바일 Safari)
+- [ ] 데이터: Safemap 기본 필드는 `normalizeCharger` (`dataSource: safemap`). 키 없음·DEV만 목록 대체 (`dev-mock`). 사용 중 진행·잔여시간은 **세션 목업** `chargerSessionMvp.js`만 — [DATA-SOURCES.md](./DATA-SOURCES.md)
 
 ---
 
