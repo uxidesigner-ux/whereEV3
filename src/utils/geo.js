@@ -22,6 +22,24 @@ export function formatDistanceKm(km) {
   return `약 ${km.toFixed(1)}km`
 }
 
+/**
+ * 뷰포트 boundsLiteral 을 비율로 확장(지도 마커·클러스터용 프리로드 영역).
+ * @param {{ southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} bounds
+ * @param {number} [padRatio] 각 변 바깥으로 늘릴 비율(예: 0.42)
+ */
+export function expandLiteralBounds(bounds, padRatio = 0.42) {
+  if (!bounds?.southWest || !bounds?.northEast) return null
+  const sw = bounds.southWest
+  const ne = bounds.northEast
+  const dLat = ne.lat - sw.lat
+  const dLng = ne.lng - sw.lng
+  const p = padRatio
+  return {
+    southWest: { lat: sw.lat - dLat * p, lng: sw.lng - dLng * p },
+    northEast: { lat: ne.lat + dLat * p, lng: ne.lng + dLng * p },
+  }
+}
+
 /** 같은 장소 그룹 키: statNm + 좌표(소수 5자리). */
 export function placeKey(row) {
   const lat = Number(row.lat).toFixed(5)

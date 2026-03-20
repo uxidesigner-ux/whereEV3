@@ -356,3 +356,59 @@ export async function fetchEvChargers({ pageNo = 1, numOfRows = 100, maxPages = 
 
   return { items: all, totalCount: totalCount ?? all.length }
 }
+
+/**
+ * 페이지 단위 점진 로드: 첫 페이지 직후 콜백으로 UI를 먼저 열고, 이어서 순차 fetch.
+ * 서버 bbox 미지원 시 전국 데이터는 결국 전부 받되, 체감 TTFB·첫 페인트를 줄인다.
+ * @param {{ numOfRows?: number, maxPages?: number, signal?: AbortSignal, onPage?: (p: { batch: object[], pageIndex: number, isFirst: boolean, totalCount: number | null, isLast: boolean }) => void | Promise<void> }} opts
+ */
+export async function fetchEvChargersProgressive({
+  numOfRows = 500,
+  maxPages = 200,
+  signal,
+  onPage,
+} = {}) {
+  let page = 1
+  let globalIndex = 0
+  let reportedTotal = null
+
+  while (page <= maxPages) {
+    if (signal?.aborted) {
+      return { aborted: true, loadedCount: globalIndex, totalCount: reportedTotal }
+    }
+    const data = await fetchEvChargersPage({ pageNo: page, numOfRows })
+    if (signal?.aborted) {
+      return { aborted: true, loadedCount: globalIndex, totalCount: reportedTotal }
+    }
+    const list = extractListFromResponse(data)
+    const totalRaw = data.response?.body?.totalCount ?? data.body?.totalCount ?? data.totalCount
+    if (totalRaw != null) reportedTotal = Number(totalRaw)
+
+    const batch = []
+    for (let i = 0; i < list.length; i++) {
+      const n = normalizeCharger(list[i], globalIndex + i)
+      if (n) batch.push(n)
+    }
+
+    const shortPage = list.length < numOfRows
+    const reachedTotal =
+      reportedTotal != null && globalIndex + batch.length >= reportedTotal
+    const isLast = shortPage || reachedTotal || page >= maxPages
+
+    if (onPage) {
+      await onPage({
+        batch,
+        pageIndex: page,
+        isFirst: page === 1,
+        totalCount: reportedTotal,
+        isLast,
+      })
+    }
+
+    globalIndex += batch.length
+    if (isLast) break
+    page += 1
+  }
+
+  return { aborted: false, loadedCount: globalIndex, totalCount: reportedTotal ?? globalIndex }
+}

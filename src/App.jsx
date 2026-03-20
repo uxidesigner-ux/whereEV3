@@ -38,6 +38,7 @@ import {
 } from 'recharts'
 import {
   fetchEvChargers,
+  fetchEvChargersProgressive,
   aggregateStatCounts,
   getLatestStatUpdDt,
   formatStatSummary,
@@ -49,6 +50,7 @@ import {
   formatListSummary,
   summarizeSpeedCategories,
   pickShortLocationHint,
+  expandLiteralBounds,
 } from './utils/geo.js'
 import { groupChargerRowsByPlace } from './utils/evStationGroup.js'
 
@@ -122,6 +124,9 @@ import { MobileFilterSheet } from './components/MobileFilterSheet.jsx'
 import { ThemeAppearanceControl } from './components/ThemeAppearanceControl.jsx'
 
 const SEOUL_CENTER = [37.5665, 126.978]
+
+/** 지도 클러스터용 뷰포트 반영 지연(패닝 시 연산·마커 갱신 부담 완화) */
+const MAP_CLUSTER_BOUNDS_DEBOUNCE_MS = 320
 
 /** 브랜드 원형 마커: r=39.5, stroke·fill은 CSS 변수(라이트 흰 테두리 / 다크 검정 테두리) */
 const EV_MAP_MARKER_SVG = `<svg class="ev-marker-brand-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none" aria-hidden="true" focusable="false"><circle class="ev-marker-brand-circle" cx="40" cy="40" r="39.5" fill="var(--ev-map-marker-fill, #1F45FF)" stroke="var(--ev-map-marker-stroke, #fff)"/><path d="M33.0072 19L29 43.15H37.0057L33.0072 61L52 35.8H43.0034L51.0004 19H33.0072Z" fill="var(--ev-map-marker-bolt, #FCFC07)"/></svg>`
@@ -733,11 +738,30 @@ function App() {
   const [locationLoading, setLocationLoading] = useState(false)
   const [mapCenter, setMapCenter] = useState({ lat: SEOUL_CENTER[0], lng: SEOUL_CENTER[1] })
   const [liveMapBounds, setLiveMapBounds] = useState(null)
+  /** 디바운스된 뷰포트 — 지도 마커/클러스터 계산에만 사용 */
+  const [mapClusterBoundsRaw, setMapClusterBoundsRaw] = useState(null)
+  const mapClusterDebouncePrimedRef = useRef(false)
   const [appliedMapBounds, setAppliedMapBounds] = useState(null)
   const liveMapBoundsRef = useRef(null)
   useEffect(() => {
     liveMapBoundsRef.current = liveMapBounds
   }, [liveMapBounds])
+
+  useEffect(() => {
+    if (!liveMapBounds) return undefined
+    if (!mapClusterDebouncePrimedRef.current) {
+      mapClusterDebouncePrimedRef.current = true
+      setMapClusterBoundsRaw(liveMapBounds)
+      return undefined
+    }
+    const id = window.setTimeout(() => setMapClusterBoundsRaw(liveMapBounds), MAP_CLUSTER_BOUNDS_DEBOUNCE_MS)
+    return () => window.clearTimeout(id)
+  }, [liveMapBounds])
+
+  const mapClusterBoundsPadded = useMemo(
+    () => expandLiteralBounds(mapClusterBoundsRaw, 0.42),
+    [mapClusterBoundsRaw]
+  )
 
   /** 「이 지역 검색」: 영역 적용 + 목록 시트를 검색 결과 모드로(포커스·상세 초기화) */
   const applySearchAreaFromMap = useCallback(() => {
@@ -769,23 +793,47 @@ function App() {
       setApiError('VITE_SAFEMAP_SERVICE_KEY를 .env 또는 .env.local에 설정해 주세요.')
       return
     }
+    const ac = new AbortController()
     let cancelled = false
+    let receivedFirstPage = false
     setLoading(true)
     setApiError(null)
-    fetchEvChargers({ pageNo: 1, numOfRows: 500, maxPages: 200 })
-      .then(({ items: list, totalCount: total }) => {
-        if (cancelled) return
-        setItems(list)
-        setTotalCount(total)
-        setLastEvFetchAt(new Date().toISOString())
-      })
-      .catch((err) => {
-        if (!cancelled) setApiError(err.message || '데이터를 불러오지 못했습니다.')
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false)
-      })
-    return () => { cancelled = true }
+    setItems([])
+
+    ;(async () => {
+      try {
+        await fetchEvChargersProgressive({
+          signal: ac.signal,
+          numOfRows: 500,
+          maxPages: 200,
+          onPage: ({ batch, isFirst, totalCount, isLast }) => {
+            if (cancelled) return
+            if (isFirst) {
+              receivedFirstPage = true
+              setItems(batch)
+              setTotalCount(totalCount != null ? totalCount : batch.length)
+              setLoading(false)
+            } else if (batch.length > 0) {
+              setItems((prev) => [...prev, ...batch])
+            }
+            if (isLast && !cancelled) {
+              setLastEvFetchAt(new Date().toISOString())
+            }
+          },
+        })
+      } catch (err) {
+        if (!cancelled) {
+          setApiError(err.message || '데이터를 불러오지 못했습니다.')
+        }
+      } finally {
+        if (!cancelled && !receivedFirstPage) setLoading(false)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+      ac.abort()
+    }
   }, [])
 
   const refreshEvData = useCallback(async () => {
@@ -1010,21 +1058,28 @@ function App() {
   }, [appliedMapBounds, searchNavActive, stationsForMobileList.length])
 
   /**
-   * 지도 전용: API 전체 `items`를 장소 단위로 묶은 분포(검색/필터/뷰포트와 무관).
-   * 선택된 장소는 목록·필터와 무관하게 강조·포커스할 수 있도록 배열에 합류.
+   * 지도 전용: 현재 로드된 `items` 중 디바운스+패딩 뷰포트 안만 클러스터(성능).
+   * 시트·필터 파이프라인은 그대로 `items` 기준. 선택 마커는 뷰 밖이어도 포함.
    */
   const groupedAllStationsForMap = useMemo(() => {
-    const validItems = items.filter((r) => {
+    let validItems = items.filter((r) => {
       const la = Number(r.lat)
       const ln = Number(r.lng)
       return Number.isFinite(la) && Number.isFinite(ln)
     })
+    if (mapClusterBoundsPadded) {
+      const b = L.latLngBounds(
+        [mapClusterBoundsPadded.southWest.lat, mapClusterBoundsPadded.southWest.lng],
+        [mapClusterBoundsPadded.northEast.lat, mapClusterBoundsPadded.northEast.lng]
+      )
+      validItems = validItems.filter((r) => b.contains([r.lat, r.lng]))
+    }
     const grouped = groupChargerRowsByPlace(validItems)
     const sel = mapSelectedStation
     if (!sel) return grouped
     if (grouped.some((s) => s.id === sel.id)) return grouped
     return [sel, ...grouped]
-  }, [items, mapSelectedStation])
+  }, [items, mapSelectedStation, mapClusterBoundsPadded])
 
   /** live와 applied가 충분히 다를 때만 "이 지역 충전소 검색하기" 노출 (중심 거리 > 0.15km) */
   const showSearchAreaButton = useMemo(() => {
