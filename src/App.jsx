@@ -613,23 +613,6 @@ function App() {
     return () => clearTimeout(tid)
   }, [searchQuery, isMobile])
 
-  /** 검색 fitNonce가 바뀔 때만 탐색 fence 갱신(타이핑만으로는 갱신 안 함) */
-  useEffect(() => {
-    if (!isMobile) return
-    if (searchViewportFitNonce === prevSearchFenceNonceRef.current) return
-    prevSearchFenceNonceRef.current = searchViewportFitNonce
-    if (searchViewportFitNonce < 1) return
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) {
-      setMapExploreFenceBounds(null)
-      setMapExploreFenceVersion((v) => v + 1)
-      return
-    }
-    const b = computeExploreHighlightBoundsForSearch(searchQuery, filteredItems)
-    setMapExploreFenceBounds(b)
-    setMapExploreFenceVersion((v) => v + 1)
-  }, [searchViewportFitNonce, searchQuery, filteredItems, isMobile])
-
   useEffect(() => {
     if (!isMobile) {
       setMapExploreFenceBounds(null)
@@ -961,6 +944,23 @@ function App() {
       return true
     })
   }, [items, filterBusiNm, filterSpeed, filterCtprvnCd, filterSggCd, searchQuery])
+
+  /** 검색 fitNonce가 바뀔 때만 탐색 fence 갱신(타이핑만으로는 갱신 안 함). filteredItems 아래에 두어 TDZ(선언 전 참조) 방지. */
+  useEffect(() => {
+    if (!isMobile) return
+    if (searchViewportFitNonce === prevSearchFenceNonceRef.current) return
+    prevSearchFenceNonceRef.current = searchViewportFitNonce
+    if (searchViewportFitNonce < 1) return
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) {
+      setMapExploreFenceBounds(null)
+      setMapExploreFenceVersion((v) => v + 1)
+      return
+    }
+    const b = computeExploreHighlightBoundsForSearch(searchQuery, filteredItems)
+    setMapExploreFenceBounds(b)
+    setMapExploreFenceVersion((v) => v + 1)
+  }, [searchViewportFitNonce, searchQuery, filteredItems, isMobile])
 
   /** 초기: live 수신 시 applied가 없으면 적용. 이후는 버튼 탭 시에만 applied 갱신. */
   useEffect(() => {
