@@ -1417,12 +1417,52 @@ function App() {
     return [sel, ...grouped]
   }, [items, mapSelectedStation, mapClusterBoundsPadded])
 
-  /** 부트 오버레이 동안은 bounds 대기 없이 `groupedBootMarkers`로 먼저 그린 뒤, 종료 후 일반 뷰포트 데이터로 전환 */
-  const stationsForMapLayer = useMemo(() => {
-    if (!awaitingInitialMapPaint) return groupedAllStationsForMap
-    if (groupedBootMarkers.length > 0) return groupedBootMarkers
-    return groupedAllStationsForMap
-  }, [awaitingInitialMapPaint, groupedBootMarkers, groupedAllStationsForMap])
+  /**
+   * 지도 마커 전용 소스 (`items` → 라이트 그룹). 시트/검색의 filteredItems·itemsInScope·groupedItemsInScope와 무관.
+   * - 뷰포트 클러스터용 `groupedAllStationsForMap` 우선
+   * - 부트 직후 bounds 불일치·디바운스로 뷰포트가 비면 `groupedBootMarkers`(중심 반경 summary)로 폴백
+   */
+  const mapStations = useMemo(() => {
+    const viewportGrouped = groupedAllStationsForMap
+    const boot = groupedBootMarkers
+    if (awaitingInitialMapPaint) {
+      if (boot.length > 0) return boot
+      if (viewportGrouped.length > 0) return viewportGrouped
+      return boot
+    }
+    if (viewportGrouped.length > 0) return viewportGrouped
+    if (boot.length > 0) return boot
+    return viewportGrouped
+  }, [awaitingInitialMapPaint, groupedAllStationsForMap, groupedBootMarkers])
+
+  const mapBootDiagPrevAwaitingRef = useRef(false)
+  useEffect(() => {
+    if (!import.meta.env.DEV) {
+      mapBootDiagPrevAwaitingRef.current = awaitingInitialMapPaint
+      return
+    }
+    if (mapBootDiagPrevAwaitingRef.current && !awaitingInitialMapPaint) {
+      console.debug('[whereEV3] map sources after initial map paint', {
+        items: items.length,
+        filteredItems: filteredItems.length,
+        itemsInScope: itemsInScope.length,
+        mapStations: mapStations.length,
+        groupedBootMarkers: groupedBootMarkers.length,
+        groupedAllStationsForMap: groupedAllStationsForMap.length,
+        mapClusterBoundsPadded: !!mapClusterBoundsPadded,
+      })
+    }
+    mapBootDiagPrevAwaitingRef.current = awaitingInitialMapPaint
+  }, [
+    awaitingInitialMapPaint,
+    items.length,
+    filteredItems.length,
+    itemsInScope.length,
+    mapStations.length,
+    groupedBootMarkers.length,
+    groupedAllStationsForMap.length,
+    mapClusterBoundsPadded,
+  ])
 
   /** live와 applied가 충분히 다를 때만 "이 지역 충전소 검색하기" 노출 (중심 거리 > 0.15km) */
   const showSearchAreaButton = useMemo(() => {
@@ -2420,7 +2460,7 @@ function App() {
               center={leafletInitial.center}
               zoom={leafletInitial.zoom}
               itemsLength={items.length}
-              markerCount={stationsForMapLayer.length}
+              markerCount={mapStations.length}
               primeClusterBoundsNow={primeClusterBoundsForBoot}
               onReady={onBootMapPaintReady}
             />
@@ -2434,7 +2474,7 @@ function App() {
             />
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer
-              stations={stationsForMapLayer}
+              stations={mapStations}
               onDetailClick={openDetailPreserve}
               onClusterTap={handleClusterStationsTap}
               selectedId={mapSelectedStation?.id}
@@ -2445,7 +2485,8 @@ function App() {
               uiColors={colors}
               mapTileUrl={tokens.map.tileUrl}
               mapTileAttribution={tokens.map.tileAttribution}
-              markerClusterChunked={!awaitingInitialMapPaint && stationsForMapLayer.length > 1200}
+              markerClusterChunked={!awaitingInitialMapPaint && mapStations.length > 1200}
+              removeOutsideVisibleBounds={mapStations.length > 2000}
             />
             {!isMobile && <ZoomControl position="topright" />}
             {!isMobile && (

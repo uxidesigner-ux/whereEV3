@@ -36,6 +36,8 @@ export function EvStationMapLayer({
   mapTileAttribution,
   /** false면 초기 마커를 한 번에 올려 체감 지연 완화(대량일 때만 true 권장) */
   markerClusterChunked = true,
+  /** true면 화면 밖 마커를 클러스터에서 제거(대량 시 유리). 초기 페인트에서 마커가 비는 경우가 있어 기본은 false */
+  removeOutsideVisibleBounds = false,
 }) {
   const map = useMap()
   const muiThemeLocal = useTheme()
@@ -78,7 +80,7 @@ export function EvStationMapLayer({
         showCoverageOnHover={false}
         zoomToBoundsOnClick={false}
         disableClusteringAtZoom={17}
-        removeOutsideVisibleBounds
+        removeOutsideVisibleBounds={removeOutsideVisibleBounds}
         iconCreateFunction={iconCreateFunction}
         // react-leaflet-cluster: onClick → Leaflet "clusterclick" (onClusterClick는 clusterclusterclick로 잘못 매핑됨)
         onClick={(e) => {
