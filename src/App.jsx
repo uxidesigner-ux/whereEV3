@@ -1925,6 +1925,12 @@ function App() {
             height: '100dvh',
           },
           overflow: 'hidden',
+          ...(isMobile
+            ? {
+                overscrollBehavior: 'none',
+                overscrollBehaviorY: 'none',
+              }
+            : {}),
         }}
       >
         {/* 모바일: 상단 플로팅 크롬 — fixed + wrapper가 safe-area 흡수 (노치/다이내믹 아일랜드) */}

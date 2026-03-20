@@ -49,7 +49,11 @@ function buildDetailUi(colors, tokens) {
   }
   const statFilterPalettes = {
     all: {
-      idle: { border: `1px solid ${colors.gray[300]}`, bgcolor: tokens.bg.paper, color: colors.gray[700] },
+      idle: {
+        border: `1px solid ${tokens.border.default}`,
+        bgcolor: tokens.bg.chipIdle,
+        color: colors.gray[700],
+      },
       active: {
         border: `1px solid ${colors.blue.primary}`,
         bgcolor: tokens.blue.mutedStrong,
@@ -59,12 +63,12 @@ function buildDetailUi(colors, tokens) {
     },
     avail: {
       idle: {
-        border: `1px solid ${tokens.status.avail.border}`,
-        bgcolor: tokens.status.avail.rowBg,
-        color: tokens.status.avail.fg,
+        border: `1px solid ${tokens.border.default}`,
+        bgcolor: tokens.bg.chipIdle,
+        color: colors.gray[700],
       },
       active: {
-        border: `1px solid ${tokens.status.avail.fg}`,
+        border: `1px solid ${tokens.status.avail.border}`,
         bgcolor: tokens.status.avail.chipBg,
         color: tokens.status.avail.fg,
         boxShadow: 'none',
@@ -72,21 +76,25 @@ function buildDetailUi(colors, tokens) {
     },
     use: {
       idle: {
-        border: `1px solid ${tokens.status.use.border}`,
-        bgcolor: tokens.status.use.rowBg,
-        color: tokens.status.use.fg,
+        border: `1px solid ${tokens.border.default}`,
+        bgcolor: tokens.bg.chipIdle,
+        color: colors.gray[700],
       },
       active: {
-        border: `1px solid ${tokens.status.use.fg}`,
+        border: `1px solid ${tokens.status.use.border}`,
         bgcolor: tokens.status.use.chipBg,
         color: tokens.status.use.fg,
         boxShadow: 'none',
       },
     },
     maint: {
-      idle: { border: `1px solid ${colors.gray[300]}`, bgcolor: tokens.bg.muted, color: colors.gray[600] },
+      idle: {
+        border: `1px solid ${tokens.border.default}`,
+        bgcolor: tokens.bg.chipIdle,
+        color: colors.gray[600],
+      },
       active: {
-        border: `1px solid ${colors.gray[500]}`,
+        border: `1px solid ${tokens.border.strong}`,
         bgcolor: tokens.status.maint.chipBg,
         color: tokens.text.primary,
         boxShadow: 'none',
@@ -470,13 +478,13 @@ export function StationDetailContent({
                       position: 'sticky',
                       top: 0,
                       zIndex: 4,
-                      bgcolor: 'transparent',
+                      bgcolor: tokens.bg.paper,
                       mx: -2,
                       px: 2,
                       pt: 0.25,
                       pb: 1,
                       mb: 0.5,
-                      borderBottom: 'none',
+                      borderBottom: `1px solid ${tokens.border.subtle}`,
                       boxShadow: 'none',
                     }
                   : {}

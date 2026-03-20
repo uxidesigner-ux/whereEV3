@@ -69,6 +69,27 @@ body {
   box-sizing: border-box;
 }
 
+/* 모바일: 시트 드래그·스크롤이 지도/body 러버밴드·pull-to-refresh로 새지 않게 */
+@media (max-width: 900px) {
+  html {
+    height: 100%;
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+  }
+  body {
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+  }
+  #root {
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+  }
+  .leaflet-container {
+    overscroll-behavior: none;
+    overscroll-behavior-y: none;
+  }
+}
+
 /*
  * 모바일: 줌 컨트롤을 상단 검색 바 아래로 (App.jsx 상단 바와 동기)
  * 상단 플로팅: 검색 pill vs 내 위치 FAB 한 개 기준(대략 safeAreaInnerTopPad+max(pill,fab)+padY)
