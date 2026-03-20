@@ -70,12 +70,28 @@ body {
 
 /*
  * 모바일: 줌 컨트롤을 상단 검색 바 아래로 (App.jsx 상단 바와 동기)
- * stack = inset12 + control56 + inset12 + border1 → 81px, 세이프는 env(safe-area-inset-top)에 포함됨
+ * 상단 플로팅: 검색 pill vs 내 위치 FAB 한 개 기준(대략 safeAreaInnerTopPad+max(pill,fab)+padY)
  */
 @media (max-width: 900px) {
   .leaflet-top.leaflet-right {
-    margin-top: calc(env(safe-area-inset-top, 0px) + 81px);
+    margin-top: calc(env(safe-area-inset-top, 0px) + 70px);
     margin-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+}
+
+/* 탐색 지오펜스: 짙은 그레이, 마커보다 아래(overlayPane). 검정 미사용 */
+path.ev-map-explore-fence {
+  opacity: 0;
+  animation: evMapExploreFenceIn 0.45s ease-out forwards;
+}
+
+@keyframes evMapExploreFenceIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
   }
 }
 

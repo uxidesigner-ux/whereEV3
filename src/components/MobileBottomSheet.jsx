@@ -18,7 +18,7 @@ function computeHeights(topOffsetPx, collapsedPx, halfVhRatio, fullMarginPx) {
 }
 
 /**
- * 모바일 바텀 시트: 헤더/핸들 영역 드래그로 collapsed / half / full 스냅.
+ * 모바일 바텀 시트: 헤더(핸들) 드래그로 collapsed / half / full 스냅. 정렬·필터 rail은 renderHeader 내부에서 snap별로 분기.
  * 본문 스크롤과 충돌하지 않도록 드래그는 drag 영역에만 바인딩.
  *
  * 레이어(모바일): 지도(z0) < 본 시트(1000) < 이 지역 검색 FAB(1001) < 필터 Drawer(1200) < 상세 시트(1400).
@@ -37,8 +37,6 @@ export function MobileBottomSheet({
   /** 목록 스크롤 복원용 */
   listScrollRef,
   renderHeader,
-  /** 헤더(핸들+타이틀) 바로 아래, 스크롤 목록 위 — 정렬·필터 rail 등 */
-  renderToolbar,
   children,
 }) {
   const isControlled = snapProp !== undefined
@@ -190,22 +188,6 @@ export function MobileBottomSheet({
         >
           {renderHeader({ snap, cycleSnap })}
         </Box>
-        {renderToolbar ? (
-          <Box
-            sx={{
-              flexShrink: 0,
-              px: 2,
-              /* 정리선과 필터 rail 사이 */
-              pt: '14px',
-              pb: '14px',
-              borderBottom: '1px solid rgba(15, 23, 42, 0.07)',
-              bgcolor: colors.gray[50],
-              display: snap === 'collapsed' ? 'none' : 'block',
-            }}
-          >
-            {renderToolbar({ snap, cycleSnap })}
-          </Box>
-        ) : null}
         <Box
           ref={listScrollRef}
           tabIndex={-1}
@@ -219,8 +201,7 @@ export function MobileBottomSheet({
             WebkitOverflowScrolling: 'touch',
             px: 2.5,
             pb: 1,
-            /* 필터 rail 하단 정리선과 목록 사이 */
-            pt: '14px',
+            pt: '12px',
           }}
         >
           {children}

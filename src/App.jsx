@@ -16,11 +16,8 @@ import {
 import EvStationIcon from '@mui/icons-material/EvStation'
 import ChevronLeft from '@mui/icons-material/ChevronLeft'
 import ChevronRight from '@mui/icons-material/ChevronRight'
-import ChevronUp from '@mui/icons-material/KeyboardArrowUp'
-import ChevronDown from '@mui/icons-material/KeyboardArrowDown'
 import SearchIcon from '@mui/icons-material/Search'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
-import TuneIcon from '@mui/icons-material/Tune'
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Circle, CircleMarker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import {
@@ -95,7 +92,11 @@ import { cssEscapeAttr } from './utils/cssEscape.js'
 import { buildRegionFilterOptions } from './utils/regionDisplay.js'
 import { itemMatchesEvSearchQuery } from './utils/evSearch.js'
 import {
-  appMobileType,
+  SEARCH_REGION_KEYWORDS,
+  computeExploreHighlightBoundsForSearch,
+  cloneViewportBoundsLiteral,
+} from './utils/searchRegionBounds.js'
+import {
   colors,
   spacing,
   radius,
@@ -111,6 +112,8 @@ import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
 import { FilterModalSelect } from './components/FilterModalSelect.jsx'
 import { StationListMobile } from './components/StationListMobile.jsx'
 import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
+import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
+import { MapExploreHighlightFence } from './components/MapExploreHighlightFence.jsx'
 import { StationDetailModal } from './components/StationDetailModal.jsx'
 import { StationDetailSheet } from './components/StationDetailSheet.jsx'
 import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
@@ -498,6 +501,14 @@ function App() {
   const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
   const [searchBarFocused, setSearchBarFocused] = useState(false)
+  const [searchViewportFitNonce, setSearchViewportFitNonce] = useState(0)
+  /** 칩/Enter로 맞춤한 직후, debounce 지역 fit 중복 방지 */
+  const lastFittedSearchQueryRef = useRef('')
+  const searchQuerySyncRef = useRef(searchQuery)
+  /** 탐색 강조 사각형: 검색 확정·지역 fit·이 지역 검색 시에만 갱신 */
+  const [mapExploreFenceBounds, setMapExploreFenceBounds] = useState(/** @type {null | { southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} */ (null))
+  const [mapExploreFenceVersion, setMapExploreFenceVersion] = useState(0)
+  const prevSearchFenceNonceRef = useRef(0)
   const [geoNonce, setGeoNonce] = useState(0)
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
   const isMobile = useMediaQuery('(max-width: 900px)')
@@ -553,6 +564,10 @@ function App() {
     filterDrawerOpenRef.current = filterDrawerOpen
   }, [filterDrawerOpen])
 
+  useEffect(() => {
+    searchQuerySyncRef.current = searchQuery
+  }, [searchQuery])
+
   /** 모바일 탐색: 입력은 즉시 UI, 목록·마커 필터는 짧게 디바운스 */
   useEffect(() => {
     const id = window.setTimeout(() => setSearchQuery(searchInput), 140)
@@ -562,16 +577,65 @@ function App() {
   const clearNavSearch = useCallback(() => {
     setSearchInput('')
     setSearchQuery('')
+    lastFittedSearchQueryRef.current = ''
+    setMapExploreFenceBounds(null)
   }, [])
 
   const flushSearchFromInput = useCallback(() => {
+    const raw = searchInput.trim()
+    lastFittedSearchQueryRef.current = raw.toLowerCase()
     setSearchQuery(searchInput)
+    setSearchViewportFitNonce((n) => n + 1)
   }, [searchInput])
 
   const pickSearchSuggestion = useCallback((text) => {
+    const q = text.trim().toLowerCase()
+    lastFittedSearchQueryRef.current = q
     setSearchInput(text)
     setSearchQuery(text)
+    setSearchViewportFitNonce((n) => n + 1)
   }, [])
+
+  /**
+   * 직접 입력: 키워드가 사전 지역명과 정확히 일치할 때만(디바운스 후 추가 지연) 지도 맞춤.
+   * 칩/Enter는 pick/flush에서 이미 lastFittedSearchQueryRef 처리.
+   */
+  useEffect(() => {
+    if (!isMobile) return undefined
+    const q = searchQuery.trim().toLowerCase()
+    if (!q || !SEARCH_REGION_KEYWORDS.has(q)) return undefined
+    const tid = window.setTimeout(() => {
+      if (searchQuerySyncRef.current.trim().toLowerCase() !== q) return
+      if (lastFittedSearchQueryRef.current === q) return
+      lastFittedSearchQueryRef.current = q
+      setSearchViewportFitNonce((n) => n + 1)
+    }, 340)
+    return () => clearTimeout(tid)
+  }, [searchQuery, isMobile])
+
+  /** 검색 fitNonce가 바뀔 때만 탐색 fence 갱신(타이핑만으로는 갱신 안 함) */
+  useEffect(() => {
+    if (!isMobile) return
+    if (searchViewportFitNonce === prevSearchFenceNonceRef.current) return
+    prevSearchFenceNonceRef.current = searchViewportFitNonce
+    if (searchViewportFitNonce < 1) return
+    const q = searchQuery.trim().toLowerCase()
+    if (!q) {
+      setMapExploreFenceBounds(null)
+      setMapExploreFenceVersion((v) => v + 1)
+      return
+    }
+    const b = computeExploreHighlightBoundsForSearch(searchQuery, filteredItems)
+    setMapExploreFenceBounds(b)
+    setMapExploreFenceVersion((v) => v + 1)
+  }, [searchViewportFitNonce, searchQuery, filteredItems, isMobile])
+
+  useEffect(() => {
+    if (!isMobile) {
+      setMapExploreFenceBounds(null)
+      prevSearchFenceNonceRef.current = 0
+    }
+  }, [isMobile])
 
   /** 검색어가 있으면 포커스/제목이 충전소명에 묶이지 않도록 선택·상세 해제 */
   useEffect(() => {
@@ -789,11 +853,18 @@ function App() {
   /** 「이 지역 검색」: 영역 적용 + 목록 시트를 검색 결과 모드로(포커스·상세 초기화) */
   const applySearchAreaFromMap = useCallback(() => {
     setAppliedMapBounds(liveMapBoundsRef.current)
+    if (isMobile) {
+      const vb = cloneViewportBoundsLiteral(liveMapBoundsRef.current)
+      if (vb) {
+        setMapExploreFenceBounds(vb)
+        setMapExploreFenceVersion((v) => v + 1)
+      }
+    }
     mapSelectedStationRef.current = null
     setMapSelectedStation(null)
     setDetailStation(null)
     detailStationRef.current = null
-  }, [])
+  }, [isMobile])
 
   useEffect(() => {
     const key = (import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
@@ -1036,20 +1107,12 @@ function App() {
 
   const searchNavActive = searchQuery.trim().length > 0
 
-  const listSheetHeaderTitle = useMemo(() => {
-    if (listSheetHeaderMode === 'detail' && detailStation) return detailStation.statNm
-    if (listSheetHeaderMode === 'stationFocus' && mapSelectedStation) return mapSelectedStation.statNm
-    if (appliedMapBounds == null) return '지도 영역 확인 중…'
+  /** 큰 제목 대신 한 줄 메타(탐색 control rail 상단) */
+  const listSheetMetaLine = useMemo(() => {
+    if (appliedMapBounds == null) return '지도 영역 준비 중…'
     if (searchNavActive) return `검색 결과 ${stationsForMobileList.length}곳`
-    return `이 지역 충전소 ${stationsForMobileList.length}곳`
-  }, [
-    listSheetHeaderMode,
-    detailStation,
-    mapSelectedStation,
-    appliedMapBounds,
-    stationsForMobileList.length,
-    searchNavActive,
-  ])
+    return `이 지역 ${stationsForMobileList.length}곳`
+  }, [appliedMapBounds, searchNavActive, stationsForMobileList.length])
 
   /** 지도 마커용: 데스크탑=filteredItems, 모바일=applied 기준 groupedItemsInScope(1장소 1마커). 선택된 충전소는 범위 밖이어도 포함. */
   const displayStationsForMap = useMemo(() => {
@@ -1268,17 +1331,18 @@ function App() {
           onSnapChange={setMobileSheetSnap}
           listScrollRef={sheetListScrollRef}
           onSnapHeightPxChange={handleSheetSnapHeightPx}
-          renderHeader={({ snap, cycleSnap }) => (
+          renderHeader={({ snap }) => (
             <Box
+              data-ev-list-header-mode={listSheetHeaderMode}
               sx={{
                 display: 'flex',
                 flexDirection: 'column',
                 flexShrink: 0,
                 boxSizing: 'border-box',
-                minHeight: 88,
-                pt: 1,
                 userSelect: 'none',
                 bgcolor: colors.gray[50],
+                pt: 1,
+                pb: snap === 'collapsed' ? 1 : 0,
               }}
             >
               <Box
@@ -1296,152 +1360,162 @@ function App() {
                     height: 4,
                     borderRadius: 2,
                     bgcolor: colors.gray[300],
-                    mb: 1.75,
+                    mb: 1.25,
                   }}
                 />
               </Box>
-              <Box
+              <Typography
+                component="div"
+                aria-live="polite"
                 sx={{
-                  flex: 1,
-                  display: 'grid',
-                  gridTemplateColumns: 'minmax(0, 1fr) auto',
-                  alignItems: 'center',
-                  columnGap: 1,
-                  alignSelf: 'stretch',
-                  px: 2,
-                  /* 제목 블록과 정리선 사이 호흡 */
-                  pb: '18px',
-                  minHeight: 44,
-                  boxSizing: 'border-box',
+                  textAlign: 'center',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  letterSpacing: '-0.01em',
+                  color: colors.gray[600],
+                  px: 2.5,
+                  lineHeight: 1.4,
                 }}
               >
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-                  <EvStationIcon sx={{ fontSize: 20, color: colors.gray[600], flexShrink: 0 }} />
-                  <Typography
-                    variant="h6"
-                    component="div"
-                    data-ev-list-header-mode={listSheetHeaderMode}
-                    sx={{
-                      color: colors.gray[800],
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      ...appMobileType.listSheetTitle,
-                    }}
-                  >
-                    {listSheetHeaderTitle}
-                  </Typography>
-                </Box>
-                <IconButton
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    cycleSnap()
-                  }}
-                  aria-label={snap === 'collapsed' ? '목록 펼치기' : snap === 'full' ? '시트 접기' : '시트 크기 전환'}
-                  size="small"
+                {listSheetMetaLine}
+              </Typography>
+              {snap !== 'collapsed' ? (
+                <Box
+                  role="toolbar"
+                  aria-label="필터, 정렬 및 빠른 필터"
+                  onPointerDown={(e) => e.stopPropagation()}
                   sx={{
-                    gridColumn: 2,
-                    justifySelf: 'end',
-                    width: 40,
-                    height: 40,
-                    minWidth: 40,
-                    minHeight: 40,
-                    p: 0,
-                    bgcolor: colors.white,
-                    color: colors.gray[800],
-                    border: `1px solid ${colors.gray[200]}`,
-                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-                    '& .MuiSvgIcon-root': { opacity: 1, color: 'inherit' },
-                    '&:hover': { bgcolor: colors.gray[50], borderColor: colors.gray[300] },
-                    '&:active': { transform: 'scale(0.96)' },
+                    display: 'flex',
+                    flexWrap: 'nowrap',
+                    gap: '9px',
+                    overflowX: 'auto',
+                    overflowY: 'hidden',
+                    WebkitOverflowScrolling: 'touch',
+                    scrollbarWidth: 'none',
+                    '&::-webkit-scrollbar': { display: 'none' },
+                    px: 2.5,
+                    pt: 1.5,
+                    pb: 1.5,
+                    mt: 1,
+                    borderTop: '1px solid rgba(15, 23, 42, 0.05)',
                   }}
                 >
-                  {snap === 'collapsed' ? <ChevronUp sx={{ fontSize: 22, color: 'inherit' }} /> : <ChevronDown sx={{ fontSize: 22, color: 'inherit' }} />}
-                </IconButton>
-              </Box>
-              <Box
-                component="div"
-                aria-hidden
-                sx={{
-                  height: 1,
-                  flexShrink: 0,
-                  bgcolor: 'rgba(15, 23, 42, 0.07)',
-                  width: '100%',
-                }}
-              />
-            </Box>
-          )}
-          renderToolbar={() => (
-            <Box
-              role="toolbar"
-              aria-label="목록 정렬 및 빠른 필터"
-              sx={{
-                display: 'flex',
-                flexWrap: 'nowrap',
-                gap: '10px',
-                overflowX: 'auto',
-                overflowY: 'hidden',
-                WebkitOverflowScrolling: 'touch',
-                scrollbarWidth: 'none',
-                '&::-webkit-scrollbar': { display: 'none' },
-              }}
-            >
-              {[
-                { key: 'dist', label: '가까운 순', on: mobileListSort === 'distance', disabled: false, onClick: () => setMobileListSort('distance') },
-                { key: 'name', label: '이름순', on: mobileListSort === 'name', disabled: false, onClick: () => setMobileListSort('name') },
-                {
-                  key: 'fast',
-                  label: '급속',
-                  on: filterSpeed === '급속',
-                  disabled: false,
-                  onClick: () => setFilterSpeed((v) => (v === '급속' ? '' : '급속')),
-                },
-                {
-                  key: 'avail',
-                  label: '사용 가능만',
-                  on: mobileListAvailOnly,
-                  disabled: !hasAvailInGroupedScope,
-                  onClick: () => {
-                    if (!hasAvailInGroupedScope) return
-                    setMobileListAvailOnly((v) => !v)
-                  },
-                },
-              ].map((c) => (
-                <Chip
-                  key={c.key}
-                  label={c.label}
-                  disabled={c.disabled}
-                  onClick={c.disabled ? undefined : c.onClick}
-                  sx={{
-                    flexShrink: 0,
-                    height: 42,
-                    fontSize: '0.875rem',
-                    lineHeight: 1.25,
-                    fontWeight: c.on ? 600 : 500,
-                    borderRadius: 9999,
-                    bgcolor: c.disabled ? colors.gray[100] : c.on ? colors.blue.primary : colors.white,
-                    color: c.disabled ? colors.gray[400] : c.on ? colors.white : colors.gray[700],
-                    border: `1px solid ${
-                      c.disabled ? colors.gray[200] : c.on ? colors.blue.primary : colors.gray[200]
-                    }`,
-                    opacity: c.disabled ? 0.85 : 1,
-                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
-                    '& .MuiChip-label': { px: '15px', py: 0 },
-                    '&:hover': {
-                      bgcolor: c.disabled
-                        ? colors.gray[100]
-                        : c.on
-                          ? colors.blue.deep
-                          : colors.gray[50],
-                      borderColor: c.disabled
-                        ? colors.gray[200]
-                        : c.on
-                          ? colors.blue.deep
-                          : colors.gray[300],
+                  {[
+                    {
+                      key: 'filterSheet',
+                      kind: 'sheet',
+                      label: '필터',
+                      disabled: !!detailStation,
+                      onClick: () => openFilterDrawer(),
                     },
-                  }}
-                />
-              ))}
+                    {
+                      key: 'dist',
+                      kind: 'toggle',
+                      label: '가까운 순',
+                      on: mobileListSort === 'distance',
+                      disabled: false,
+                      onClick: () => setMobileListSort('distance'),
+                    },
+                    {
+                      key: 'name',
+                      kind: 'toggle',
+                      label: '이름순',
+                      on: mobileListSort === 'name',
+                      disabled: false,
+                      onClick: () => setMobileListSort('name'),
+                    },
+                    {
+                      key: 'fast',
+                      kind: 'toggle',
+                      label: '급속',
+                      on: filterSpeed === '급속',
+                      disabled: false,
+                      onClick: () => setFilterSpeed((v) => (v === '급속' ? '' : '급속')),
+                    },
+                    {
+                      key: 'avail',
+                      kind: 'toggle',
+                      label: '사용 가능만',
+                      on: mobileListAvailOnly,
+                      disabled: !hasAvailInGroupedScope,
+                      onClick: () => {
+                        if (!hasAvailInGroupedScope) return
+                        setMobileListAvailOnly((v) => !v)
+                      },
+                    },
+                  ].map((c) => {
+                    if (c.kind === 'sheet') {
+                      return (
+                        <Chip
+                          key={c.key}
+                          label={c.label}
+                          disabled={c.disabled}
+                          onClick={c.disabled ? undefined : c.onClick}
+                          aria-label={
+                            c.disabled ? '상세를 닫은 뒤 필터를 사용할 수 있습니다' : '전체 필터·지역 등 더 보기'
+                          }
+                          sx={{
+                            flexShrink: 0,
+                            height: 44,
+                            fontSize: '0.875rem',
+                            lineHeight: 1.2,
+                            fontWeight: 700,
+                            borderRadius: 9999,
+                            bgcolor: c.disabled ? colors.gray[100] : colors.gray[200],
+                            color: c.disabled ? colors.gray[400] : colors.gray[900],
+                            border: `2px solid ${c.disabled ? colors.gray[200] : colors.gray[400]}`,
+                            boxShadow: c.disabled ? 'none' : '0 1px 4px rgba(15, 23, 42, 0.08)',
+                            opacity: c.disabled ? 0.85 : 1,
+                            transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                            '& .MuiChip-label': { px: '16px', py: 0 },
+                            '&:hover': {
+                              bgcolor: c.disabled ? colors.gray[100] : colors.gray[300],
+                              borderColor: c.disabled ? colors.gray[200] : colors.gray[500],
+                            },
+                          }}
+                        />
+                      )
+                    }
+                    return (
+                      <Chip
+                        key={c.key}
+                        label={c.label}
+                        disabled={c.disabled}
+                        onClick={c.disabled ? undefined : c.onClick}
+                        sx={{
+                          flexShrink: 0,
+                          height: 44,
+                          fontSize: '0.875rem',
+                          lineHeight: 1.2,
+                          fontWeight: c.on ? 700 : 600,
+                          borderRadius: 9999,
+                          bgcolor: c.disabled ? colors.gray[100] : c.on ? colors.blue.primary : colors.white,
+                          color: c.disabled ? colors.gray[400] : c.on ? colors.white : colors.gray[800],
+                          border: `2px solid ${
+                            c.disabled ? colors.gray[200] : c.on ? colors.blue.primary : colors.gray[200]
+                          }`,
+                          boxShadow: c.on && !c.disabled ? '0 1px 8px rgba(37, 99, 235, 0.22)' : 'none',
+                          opacity: c.disabled ? 0.85 : 1,
+                          transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                          '& .MuiChip-label': { px: '16px', py: 0 },
+                          '&:hover': {
+                            bgcolor: c.disabled
+                              ? colors.gray[100]
+                              : c.on
+                                ? colors.blue.deep
+                                : colors.gray[50],
+                            borderColor: c.disabled
+                              ? colors.gray[200]
+                              : c.on
+                                ? colors.blue.deep
+                                : colors.gray[300],
+                          },
+                        }}
+                      />
+                    )
+                  })}
+                </Box>
+              ) : null}
             </Box>
           )}
         >
@@ -1599,19 +1673,10 @@ function App() {
                 onFocus={() => setSearchBarFocused(true)}
                 onBlur={() => setSearchBarFocused(false)}
                 onSuggestionPick={pickSearchSuggestion}
+                activeQuickQuery={searchQuery}
                 statusQuery={!searchBarFocused && searchQuery.trim() ? searchQuery : ''}
               />
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: `${mobileMapChrome.fabGap}px`,
-                  flexShrink: 0,
-                  /* Leaflet 줌(우하단)과 겹침 완화: 상단 우측 스택 */
-                  mt: 0,
-                }}
-              >
+              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, mt: 0 }}>
                 <IconButton
                   onClick={() => setGeoNonce((n) => n + 1)}
                   aria-label="현재 위치로 이동"
@@ -1636,37 +1701,6 @@ function App() {
                 >
                   <MyLocationIcon sx={{ fontSize: 24 }} />
                 </IconButton>
-                <IconButton
-                  onClick={openFilterDrawer}
-                  aria-label={detailStation ? '상세를 닫은 뒤 필터를 사용할 수 있습니다' : '필터'}
-                  disabled={!!detailStation}
-                  sx={{
-                    width: mobileMapChrome.fabSize,
-                    height: mobileMapChrome.fabSize,
-                    minWidth: mobileMapChrome.fabSize,
-                    minHeight: mobileMapChrome.fabSize,
-                    boxSizing: 'border-box',
-                    bgcolor: colors.white,
-                    border: '1px solid rgba(15,23,42,0.06)',
-                    borderRadius: '50%',
-                    color: colors.gray[800],
-                    boxShadow: mobileMapChrome.floatShadow,
-                    transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
-                    '&:hover': {
-                      bgcolor: colors.white,
-                      boxShadow: '0 6px 28px rgba(15, 23, 42, 0.14), 0 2px 12px rgba(15, 23, 42, 0.09)',
-                    },
-                    '&:active': { transform: 'scale(0.96)' },
-                    '&.Mui-disabled': {
-                      bgcolor: colors.gray[100],
-                      color: colors.gray[400],
-                      boxShadow: 'none',
-                      borderColor: colors.gray[200],
-                    },
-                  }}
-                >
-                  <TuneIcon sx={{ fontSize: 24 }} />
-                </IconButton>
               </Box>
             </Box>
           </Box>
@@ -1688,6 +1722,16 @@ function App() {
           >
             <MapCenterTracker setMapCenter={setMapCenter} />
             <MapBoundsTracker setMapBounds={setLiveMapBounds} />
+            <MapMobileSearchViewportFitter
+              enabled={isMobile}
+              fitNonce={searchViewportFitNonce}
+              searchQuery={searchQuery}
+              filteredItems={filteredItems}
+              setAppliedMapBounds={setAppliedMapBounds}
+            />
+            {isMobile && (
+              <MapExploreHighlightFence boundsLiteral={mapExploreFenceBounds} version={mapExploreFenceVersion} />
+            )}
             <MapFocusOnStation selectedStation={mapSelectedStation} />
             <MapView
                 stations={displayStationsForMap}

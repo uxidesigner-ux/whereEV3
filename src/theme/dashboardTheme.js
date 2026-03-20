@@ -244,15 +244,16 @@ export const mobileMapChrome = {
   safeAreaInnerTopPad: 8,
   /** 행 아래쪽만(위는 safeAreaInnerTopPad) */
   padY: 10,
-  padX: 14,
+  /** 좁힐수록 플로팅 검색 pill이 넓어짐 (safe-area min과 함께 사용) */
+  padX: 8,
   /** 그림자 톤 — 검색 pill·원형 FAB 공통 */
   floatShadow: '0 4px 24px rgba(15, 23, 42, 0.12), 0 2px 10px rgba(15, 23, 42, 0.08)',
 }
 
 /** 바텀 시트 스냅(뷰포트 대비 비율은 MobileBottomSheet props로 조정) */
 export const sheetLayout = {
-  /** 목록 시트 접힘 높이 — 헤더(핸들+타이틀 블록+얇은 정리선) min 높이와 맞춤 */
-  collapsedPx: 98,
+  /** 목록 시트 접힘 높이 — 핸들+결과 메타 한 줄 기준 */
+  collapsedPx: 78,
   halfVhRatio: 0.42,
   /** @deprecated 플로팅 크롬 — 호환용 */
   topChromePx: 56,
@@ -260,11 +261,11 @@ export const sheetLayout = {
   mobileTopBarControlPx: mobileMapChrome.searchPillH,
   /**
    * Leaflet/목록 시트·토스트 top 보정용(픽셀): safe-area는 CSS에서 별도 합산.
-   * = safeAreaInnerTopPad + max(pill, FAB열) + 하단 padY (FAB열 = fabSize*2 + fabGap)
+   * = safeAreaInnerTopPad + max(pill, FAB열) + 하단 padY (FAB열 = 내 위치 단일 버튼 높이)
    */
   mobileTopBarStackPx:
     mobileMapChrome.safeAreaInnerTopPad +
-    Math.max(mobileMapChrome.searchPillH, mobileMapChrome.fabSize * 2 + mobileMapChrome.fabGap) +
+    Math.max(mobileMapChrome.searchPillH, mobileMapChrome.fabSize) +
     mobileMapChrome.padY,
 }
 

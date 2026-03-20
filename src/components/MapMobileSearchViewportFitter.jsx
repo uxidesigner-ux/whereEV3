@@ -1,0 +1,104 @@
+import { useEffect, useRef } from 'react'
+import { useMap } from 'react-leaflet'
+import L from 'leaflet'
+import { getExactRegionBounds } from '../utils/searchRegionBounds.js'
+
+const FIT_PADDING_TL = [48, 24]
+const FIT_PADDING_BR = [24, 120]
+const FIT_MAX_ZOOM = 16
+const SINGLE_RESULT_ZOOM = 15
+
+function boundsFromLiteral(b) {
+  return L.latLngBounds(
+    [b.southWest.lat, b.southWest.lng],
+    [b.northEast.lat, b.northEast.lng]
+  )
+}
+
+function boundsLiteralFromLeaflet(b) {
+  const sw = b.getSouthWest()
+  const ne = b.getNorthEast()
+  return {
+    southWest: { lat: sw.lat, lng: sw.lng },
+    northEast: { lat: ne.lat, lng: ne.lng },
+  }
+}
+
+/**
+ * 모바일 검색: 칩/Enter/지역 키워드(debounce) 시에만 부모가 fitNonce를 올려 호출.
+ * 1) 사전 지역 bounds 2) 검색 결과 좌표 fit 3) 1건이면 flyTo
+ */
+export function MapMobileSearchViewportFitter({
+  enabled,
+  fitNonce,
+  searchQuery,
+  filteredItems,
+  setAppliedMapBounds,
+}) {
+  const map = useMap()
+  const lastProcessedNonceRef = useRef(0)
+  const searchQueryRef = useRef(searchQuery)
+  const filteredItemsRef = useRef(filteredItems)
+
+  useEffect(() => {
+    searchQueryRef.current = searchQuery
+    filteredItemsRef.current = filteredItems
+  }, [searchQuery, filteredItems])
+
+  useEffect(() => {
+    if (!enabled || fitNonce < 1) return
+    if (fitNonce === lastProcessedNonceRef.current) return
+    lastProcessedNonceRef.current = fitNonce
+
+    const q = (searchQueryRef.current || '').trim().toLowerCase()
+    if (!q) return
+
+    const region = getExactRegionBounds(q)
+    let bounds = null
+    let single = null
+
+    if (region && boundsFromLiteral(region).isValid()) {
+      bounds = boundsFromLiteral(region)
+    } else {
+      const pts = (filteredItemsRef.current || []).filter(
+        (s) => s != null && Number.isFinite(s.lat) && Number.isFinite(s.lng)
+      )
+      if (pts.length === 0) return
+      if (pts.length === 1) {
+        single = pts[0]
+      } else {
+        bounds = L.latLngBounds(pts.map((s) => [s.lat, s.lng]))
+      }
+    }
+
+    const applyAppliedFromMap = () => {
+      const b = map.getBounds()
+      if (!b || !b.isValid()) return
+      setAppliedMapBounds(boundsLiteralFromLeaflet(b))
+    }
+
+    map.once('moveend', applyAppliedFromMap)
+
+    if (single) {
+      map.flyTo([single.lat, single.lng], SINGLE_RESULT_ZOOM, { duration: 0.45 })
+      return () => {
+        map.off('moveend', applyAppliedFromMap)
+      }
+    }
+
+    if (bounds && bounds.isValid()) {
+      map.flyToBounds(bounds, {
+        paddingTopLeft: L.point(FIT_PADDING_TL[0], FIT_PADDING_TL[1]),
+        paddingBottomRight: L.point(FIT_PADDING_BR[0], FIT_PADDING_BR[1]),
+        maxZoom: FIT_MAX_ZOOM,
+        duration: 0.45,
+      })
+    }
+
+    return () => {
+      map.off('moveend', applyAppliedFromMap)
+    }
+  }, [enabled, fitNonce, map, setAppliedMapBounds])
+
+  return null
+}

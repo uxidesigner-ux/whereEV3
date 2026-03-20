@@ -7,11 +7,16 @@ import { colors, motion, radius, mobileMapChrome } from '../theme/dashboardTheme
 /** iOS Safari: input computed font-size < 16px 이면 포커스 시 페이지 자동 확대 */
 const SEARCH_INPUT_FONT_PX = 16
 
-const SUGGESTIONS = ['급속', '완속', '24시간', '환경부', '강남', '판교']
+const SUGGESTIONS = ['급속', '완속', '24시간', '환경부', '강남', '판교', '성수', '종로']
 
 /**
  * 모바일 지도 상단 플로팅 탐색 바 + 상태 칩·추천(오버레이, 상단 고정 높이 불변)
  */
+const QUICK_CHIP_H = 42
+const QUICK_CHIP_FONT_PX = 14
+const QUICK_CHIP_GAP_PX = 9
+const QUICK_CHIP_PAD_X = 15
+
 export function MobileMapSearchBar({
   value,
   onChange,
@@ -24,6 +29,8 @@ export function MobileMapSearchBar({
   onSuggestionPick,
   /** 비어 있지 않으면 필드 아래 상태 칩 */
   statusQuery = '',
+  /** 적용 검색어와 동일한 칩에 선택 강조 */
+  activeQuickQuery = '',
 }) {
   const blurTimer = useRef(0)
 
@@ -39,8 +46,11 @@ export function MobileMapSearchBar({
   }
 
   const applySuggestion = (text) => {
-    if (onSuggestionPick) onSuggestionPick(text)
-    else onChange(text)
+    if (onSuggestionPick) {
+      onSuggestionPick(text)
+      return
+    }
+    onChange(text)
     onSubmit?.()
   }
 
@@ -161,13 +171,16 @@ export function MobileMapSearchBar({
             position: 'absolute',
             top: '100%',
             left: 0,
-            mt: 0.5,
+            right: 0,
+            mt: 0.75,
             zIndex: 2,
             display: 'flex',
             flexWrap: 'wrap',
-            gap: 0.75,
-            maxWidth: 'min(100%, calc(100vw - 120px))',
-            p: 1,
+            alignItems: 'center',
+            gap: `${QUICK_CHIP_GAP_PX}px`,
+            width: '100%',
+            minWidth: 0,
+            p: 1.25,
             borderRadius: `${radius.md}px`,
             bgcolor: 'rgba(255,255,255,0.98)',
             boxShadow: mobileMapChrome.floatShadow,
@@ -175,26 +188,39 @@ export function MobileMapSearchBar({
             pointerEvents: 'auto',
           }}
         >
-          {SUGGESTIONS.map((label) => (
-            <Chip
-              key={label}
-              label={label}
-              size="small"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => applySuggestion(label)}
-              sx={{
-                height: 30,
-                fontSize: '0.75rem',
-                fontWeight: 600,
-                borderRadius: 9999,
-                bgcolor: colors.gray[100],
-                color: colors.gray[700],
-                border: `1px solid ${colors.gray[200]}`,
-                '& .MuiChip-label': { px: 1.25 },
-                '&:hover': { bgcolor: colors.gray[200] },
-              }}
-            />
-          ))}
+          {SUGGESTIONS.map((label) => {
+            const active = activeQuickQuery.trim() === label.trim()
+            return (
+              <Chip
+                key={label}
+                label={label}
+                onMouseDown={(e) => e.preventDefault()}
+                onClick={() => applySuggestion(label)}
+                sx={{
+                  height: QUICK_CHIP_H,
+                  borderRadius: 9999,
+                  fontSize: `${QUICK_CHIP_FONT_PX}px`,
+                  fontWeight: 600,
+                  bgcolor: active ? 'rgba(37, 99, 235, 0.14)' : colors.gray[100],
+                  color: active ? colors.blue.deep : colors.gray[800],
+                  border: active ? `2px solid ${colors.blue.primary}` : `1px solid ${colors.gray[200]}`,
+                  boxShadow: active ? '0 2px 10px rgba(37, 99, 235, 0.18)' : 'none',
+                  transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                  '& .MuiChip-label': {
+                    px: `${QUICK_CHIP_PAD_X}px`,
+                    py: 0,
+                  },
+                  '&:hover': {
+                    bgcolor: active ? 'rgba(37, 99, 235, 0.2)' : colors.gray[200],
+                    borderColor: active ? colors.blue.deep : colors.gray[300],
+                  },
+                  '&:active': {
+                    transform: 'scale(0.98)',
+                  },
+                }}
+              />
+            )
+          })}
         </Box>
       ) : null}
     </Box>
