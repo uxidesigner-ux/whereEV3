@@ -34,6 +34,8 @@ export function EvStationMapLayer({
   uiColors,
   mapTileUrl,
   mapTileAttribution,
+  /** false면 초기 마커를 한 번에 올려 체감 지연 완화(대량일 때만 true 권장) */
+  markerClusterChunked = true,
 }) {
   const map = useMap()
   const muiThemeLocal = useTheme()
@@ -68,9 +70,9 @@ export function EvStationMapLayer({
     <>
       <TileLayer attribution={mapTileAttribution} url={mapTileUrl} subdomains="abcd" maxZoom={20} />
       <MarkerClusterGroup
-        chunkedLoading
-        chunkInterval={180}
-        chunkDelay={40}
+        chunkedLoading={markerClusterChunked}
+        chunkInterval={markerClusterChunked ? 90 : 0}
+        chunkDelay={markerClusterChunked ? 24 : 0}
         maxClusterRadius={72}
         spiderfyOnMaxZoom
         showCoverageOnHover={false}

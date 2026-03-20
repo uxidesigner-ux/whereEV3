@@ -76,6 +76,8 @@ export function MobileBottomSheet({
   immersiveFull = true,
   /** true면 본문 스크롤 영역 상단 패딩 축소(상세 헤더↔필터 레일 간격 완화) */
   scrollContentTopDense = false,
+  /** 상단 패딩 직접 지정(숫자=MUI spacing, 문자열=CSS). 설정 시 scrollContentTopDense보다 우선 */
+  scrollBodyPaddingTop,
   /**
    * half 높이 상한 = (뷰포트 − top − margin) × 이 값. 목록은 0.68, 상세 등 더 크게 열 때 1에 가깝게.
    */
@@ -421,7 +423,16 @@ export function MobileBottomSheet({
             overscrollBehaviorY: 'contain',
             px: 2.5,
             pb: footer && snap !== 'closed' ? 0.5 : 1,
-            pt: scrollContentTopDense ? (isFull ? '8px' : '6px') : isFull ? '10px' : '12px',
+            pt:
+              scrollBodyPaddingTop !== undefined && scrollBodyPaddingTop !== null
+                ? scrollBodyPaddingTop
+                : scrollContentTopDense
+                  ? isFull
+                    ? '8px'
+                    : '6px'
+                  : isFull
+                    ? '10px'
+                    : '12px',
           }}
         >
           {snap === 'closed' ? null : children}

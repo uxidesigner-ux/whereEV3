@@ -120,6 +120,7 @@ import { StationListMobile } from './components/StationListMobile.jsx'
 import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
 import { MobileMapQuickSearchChipsRail } from './components/MobileMapQuickSearchChipsRail.jsx'
 import { EvStationMapLayer } from './components/EvStationMapLayer.jsx'
+import { MapBootMarkerReady } from './components/MapBootMarkerReady.jsx'
 import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
 import { StationDetailModal } from './components/StationDetailModal.jsx'
 import { StationDetailFooterActions } from './components/StationDetailContent.jsx'
@@ -175,6 +176,20 @@ function getBootstrapGeolocationPosition() {
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 120000 },
     )
   })
+}
+
+/** 클러스터 묶음 시트 빠른 필터용 */
+function clusterGroupedHasFastCharging(s) {
+  const badge = (s.speedBadge || '').trim()
+  if (badge.includes('급속')) return true
+  const rows = Array.isArray(s.rows) ? s.rows : []
+  return rows.some((r) => r.speedCategory === '급속')
+}
+
+function clusterGroupedMatchesBusiNm(s, needle) {
+  if (!needle) return true
+  const rows = Array.isArray(s.rows) ? s.rows : []
+  return rows.some((r) => (r.busiNm || '').trim() === needle)
 }
 
 /** 지도 클러스터용 뷰포트 반영 지연(패닝 시 연산·마커 갱신 부담 완화) */
@@ -449,9 +464,18 @@ function App() {
   const chartPalette = tokens.chartBlue
   const [items, setItems] = useState([])
   const [totalCount, setTotalCount] = useState(null)
-  const [appReady, setAppReady] = useState(false)
+  const [bootOverlayOpen, setBootOverlayOpen] = useState(true)
+  const [awaitingInitialMapPaint, setAwaitingInitialMapPaint] = useState(false)
   const [bootProgress, setBootProgress] = useState(0)
   const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
+  const bootMapPaintedRef = useRef(false)
+  const onBootMapPaintReady = useCallback(() => {
+    if (bootMapPaintedRef.current) return
+    bootMapPaintedRef.current = true
+    setAwaitingInitialMapPaint(false)
+    setBootProgress(100)
+    setBootOverlayOpen(false)
+  }, [])
   const [leafletInitial, setLeafletInitial] = useState(() => ({
     center: GWANGHWAMUN_CENTER,
     zoom: 11,
@@ -494,6 +518,10 @@ function App() {
   const [mobileListAvailOnly, setMobileListAvailOnly] = useState(false)
   /** 클러스터 탭으로 연 목록(지도 묶음 전용 — 상세·검색 파이프라인과 분리) */
   const [clusterBrowseGrouped, setClusterBrowseGrouped] = useState(null)
+  /** 묶음 시트 전용 빠른 필터(전역 필터 시트와 분리) */
+  const [clusterRailFastOnly, setClusterRailFastOnly] = useState(false)
+  const [clusterRailMin2Chargers, setClusterRailMin2Chargers] = useState(false)
+  const [clusterRailBusiNm, setClusterRailBusiNm] = useState('')
   /** 모바일 검색 확정(Enter·칩) 시 내 위치 기준 반경 단계 — 입력 디바운스와 분리 */
   const [mobileSearchGeo, setMobileSearchGeo] = useState(
     /** @type {null | { center: { lat: number, lng: number }, radiusKm: number, widenedHint: boolean }} */ (null),
@@ -881,13 +909,13 @@ function App() {
       setBootProgress(0)
       setBootStageMessage('시작하는 중')
 
-      setBootStageMessage('위치 확인 중')
-      const pLoc = easeBootProgress(setBootProgress, 0, 24, 500)
+      setBootStageMessage('현재 위치를 확인하고 있어요')
+      const pLoc = easeBootProgress(setBootProgress, 0, 18, 520)
       const pos = await getBootstrapGeolocationPosition()
       await pLoc
       if (cancelled) return
 
-      setBootProgress(25)
+      setBootProgress(20)
       const mapW = typeof window !== 'undefined' ? window.innerWidth : 400
       const spanM = pos.usedGeo ? 1000 : 2000
       const mapZ = zoomForHorizontalSpanMeters(mapW, spanM, pos.lat)
@@ -897,8 +925,8 @@ function App() {
       else setUserLocation(null)
 
       if (!key) {
-        setBootStageMessage('주변 충전소 불러오는 중')
-        await easeBootProgress(setBootProgress, 25, 65, 450)
+        setBootStageMessage('주변 충전소 정보를 불러오고 있어요')
+        await easeBootProgress(setBootProgress, 20, 72, 480)
         if (cancelled) return
         if (import.meta.env.DEV) {
           const mock = getDevMockEvChargers()
@@ -914,21 +942,17 @@ function App() {
           setItems([])
           setTotalCount(null)
         }
-        setBootStageMessage('지도 준비 중')
-        await easeBootProgress(setBootProgress, 70, 94, 420)
+        setBootStageMessage('지도를 준비하고 있어요')
+        await easeBootProgress(setBootProgress, 72, 94, 520)
         if (cancelled) return
-        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-        await new Promise((r) => setTimeout(r, 160))
-        if (cancelled) return
-        setBootProgress(100)
-        setAppReady(true)
+        setAwaitingInitialMapPaint(true)
         return
       }
 
       setApiError(null)
       setItems([])
-      setBootStageMessage('주변 충전소 불러오는 중')
-      const pFetch = easeBootProgress(setBootProgress, 25, 68, 2800)
+      setBootStageMessage('주변 충전소 정보를 불러오고 있어요')
+      const pFetch = easeBootProgress(setBootProgress, 20, 72, 3200)
       let first = /** @type {Awaited<ReturnType<typeof fetchEvChargersFirstPageBatch>> | null} */ (null)
       try {
         first = await fetchEvChargersFirstPageBatch({ numOfRows: 500, signal: ac.signal })
@@ -943,15 +967,10 @@ function App() {
         setTotalCount(first.totalCount != null ? first.totalCount : first.batch.length)
       }
 
-      setBootProgress(70)
-      setBootStageMessage('지도 준비 중')
-      await easeBootProgress(setBootProgress, 70, 94, 480)
+      setBootStageMessage('지도를 준비하고 있어요')
+      await easeBootProgress(setBootProgress, 72, 94, 560)
       if (cancelled) return
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
-      await new Promise((r) => setTimeout(r, 200))
-      if (cancelled) return
-      setBootProgress(100)
-      setAppReady(true)
+      setAwaitingInitialMapPaint(true)
 
       if (first && !first.aborted && !first.isLast) {
         fetchEvChargersProgressiveContinue({
@@ -1165,6 +1184,34 @@ function App() {
 
   const clusterBrowseActive = Array.isArray(clusterBrowseGrouped) && clusterBrowseGrouped.length > 0
 
+  const clusterOperatorTop = useMemo(() => {
+    if (!clusterBrowseGrouped?.length) return []
+    const counts = new Map()
+    for (const s of clusterBrowseGrouped) {
+      for (const r of s.rows || []) {
+        const b = (r.busiNm || '').trim()
+        if (b) counts.set(b, (counts.get(b) || 0) + 1)
+      }
+    }
+    return [...counts.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'ko'))
+      .slice(0, 4)
+      .map(([name]) => name)
+  }, [clusterBrowseGrouped])
+
+  const hasAvailInCluster = useMemo(
+    () => (clusterBrowseGrouped || []).some((s) => (s.statCounts?.['2'] ?? 0) > 0),
+    [clusterBrowseGrouped],
+  )
+  const hasFastInCluster = useMemo(
+    () => (clusterBrowseGrouped || []).some((s) => clusterGroupedHasFastCharging(s)),
+    [clusterBrowseGrouped],
+  )
+  const hasMultiChargerInCluster = useMemo(
+    () => (clusterBrowseGrouped || []).some((s) => (s.totalChargers ?? 0) >= 2),
+    [clusterBrowseGrouped],
+  )
+
   const clusterBrowseListSorted = useMemo(() => {
     if (clusterBrowseGrouped == null) return null
     const ref = userLocation || mapCenter
@@ -1174,6 +1221,9 @@ function App() {
     }))
     let g = withDist
     if (mobileListAvailOnly) g = g.filter((s) => (s.statCounts['2'] ?? 0) > 0)
+    if (clusterRailFastOnly) g = g.filter((s) => clusterGroupedHasFastCharging(s))
+    if (clusterRailMin2Chargers) g = g.filter((s) => (s.totalChargers ?? 0) >= 2)
+    if (clusterRailBusiNm) g = g.filter((s) => clusterGroupedMatchesBusiNm(s, clusterRailBusiNm))
     const arr = [...g]
     if (mobileListSort === 'name') {
       arr.sort((a, b) => a.statNm.localeCompare(b.statNm, 'ko', { numeric: true }))
@@ -1181,7 +1231,16 @@ function App() {
       arr.sort((a, b) => a.distanceKm - b.distanceKm)
     }
     return arr
-  }, [clusterBrowseGrouped, userLocation, mapCenter, mobileListAvailOnly, mobileListSort])
+  }, [
+    clusterBrowseGrouped,
+    userLocation,
+    mapCenter,
+    mobileListAvailOnly,
+    mobileListSort,
+    clusterRailFastOnly,
+    clusterRailMin2Chargers,
+    clusterRailBusiNm,
+  ])
 
   const stationsForMobileListEffective =
     clusterBrowseListSorted != null ? clusterBrowseListSorted : stationsForMobileList
@@ -1194,6 +1253,26 @@ function App() {
   useEffect(() => {
     if (!hasAvailInGroupedScope && mobileListAvailOnly) setMobileListAvailOnly(false)
   }, [hasAvailInGroupedScope, mobileListAvailOnly])
+
+  useEffect(() => {
+    if (clusterBrowseActive && !hasAvailInCluster && mobileListAvailOnly) setMobileListAvailOnly(false)
+  }, [clusterBrowseActive, hasAvailInCluster, mobileListAvailOnly])
+
+  useEffect(() => {
+    if (clusterBrowseActive && clusterRailFastOnly && !hasFastInCluster) setClusterRailFastOnly(false)
+  }, [clusterBrowseActive, clusterRailFastOnly, hasFastInCluster])
+
+  useEffect(() => {
+    if (clusterBrowseActive && clusterRailMin2Chargers && !hasMultiChargerInCluster) {
+      setClusterRailMin2Chargers(false)
+    }
+  }, [clusterBrowseActive, clusterRailMin2Chargers, hasMultiChargerInCluster])
+
+  useEffect(() => {
+    setClusterRailFastOnly(false)
+    setClusterRailMin2Chargers(false)
+    setClusterRailBusiNm('')
+  }, [clusterBrowseGrouped])
 
   /**
    * 모바일 목록이 비었을 때 메시지(원인별). filteredItems → itemsInScope → grouped 파이프라인 유지.
@@ -1386,53 +1465,6 @@ function App() {
     [detailStation]
   )
 
-  if (!appReady) {
-    const pct = Math.min(100, Math.max(0, Math.round(bootProgress)))
-    return (
-      <Box
-        sx={{
-          position: 'fixed',
-          inset: 0,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          bgcolor: tokens.bg.app,
-          zIndex: 2000,
-          px: 2,
-        }}
-      >
-        <GlassPanel
-          elevation="panel"
-          sx={{
-            width: '100%',
-            maxWidth: 360,
-            p: 2.5,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 1.5,
-          }}
-        >
-          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
-            {bootStageMessage}
-          </Typography>
-          <LinearProgress
-            variant="determinate"
-            value={pct}
-            sx={{
-              height: 6,
-              borderRadius: 1,
-              bgcolor: tokens.bg.subtle,
-              '& .MuiLinearProgress-bar': { borderRadius: 1, bgcolor: tokens.blue.main },
-            }}
-          />
-          <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'flex-end' }}>
-            {pct}%
-          </Typography>
-        </GlassPanel>
-      </Box>
-    )
-  }
-
   const panelBodyContent = (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
@@ -1539,6 +1571,7 @@ function App() {
           halfVhRatio={detailStation ? 0.7 : sheetLayout.halfVhRatio}
           halfMaxAvailableRatio={detailStation ? 1 : 0.68}
           scrollContentTopDense={!!detailStation}
+          scrollBodyPaddingTop={detailStation ? 0 : undefined}
           snap={mobileSheetSnap}
           onSnapChange={handleMobileSheetSnapChange}
           listScrollRef={sheetListScrollRef}
@@ -1663,7 +1696,7 @@ function App() {
                         gap: 1,
                         px: MOBILE_DETAIL_HEADER_GUTTER,
                         pt: 0.75,
-                        pb: 0.5,
+                        pb: 0,
                       }}
                     >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -1778,7 +1811,7 @@ function App() {
                 </Box>
                 <Box
                   role="toolbar"
-                  aria-label="필터, 정렬 및 빠른 필터"
+                  aria-label={clusterBrowseActive ? '묶음 결과 빠른 필터' : '필터, 정렬 및 빠른 필터'}
                   onPointerDown={(e) => e.stopPropagation()}
                   sx={{
                     display: 'flex',
@@ -1796,50 +1829,124 @@ function App() {
                     bgcolor: 'transparent',
                   }}
                 >
-                  {[
-                    {
-                      key: 'filterSheet',
-                      kind: 'sheet',
-                      label: '필터',
-                      disabled: !!detailStation,
-                      onClick: () => openFilterDrawer(),
-                    },
-                    {
-                      key: 'dist',
-                      kind: 'toggle',
-                      label: '가까운 순',
-                      on: mobileListSort === 'distance',
-                      disabled: false,
-                      onClick: () => setMobileListSort('distance'),
-                    },
-                    {
-                      key: 'name',
-                      kind: 'toggle',
-                      label: '이름순',
-                      on: mobileListSort === 'name',
-                      disabled: false,
-                      onClick: () => setMobileListSort('name'),
-                    },
-                    {
-                      key: 'fast',
-                      kind: 'toggle',
-                      label: '급속',
-                      on: filterSpeed === '급속',
-                      disabled: false,
-                      onClick: () => setFilterSpeed((v) => (v === '급속' ? '' : '급속')),
-                    },
-                    {
-                      key: 'avail',
-                      kind: 'toggle',
-                      label: '사용 가능만',
-                      on: mobileListAvailOnly,
-                      disabled: !hasAvailInGroupedScope,
-                      onClick: () => {
-                        if (!hasAvailInGroupedScope) return
-                        setMobileListAvailOnly((v) => !v)
-                      },
-                    },
-                  ].map((c) => {
+                  {(
+                    clusterBrowseActive
+                      ? [
+                          {
+                            key: 'dist',
+                            kind: 'toggle',
+                            label: '가까운 순',
+                            on: mobileListSort === 'distance',
+                            disabled: false,
+                            onClick: () => setMobileListSort('distance'),
+                          },
+                          {
+                            key: 'name',
+                            kind: 'toggle',
+                            label: '이름순',
+                            on: mobileListSort === 'name',
+                            disabled: false,
+                            onClick: () => setMobileListSort('name'),
+                          },
+                          {
+                            key: 'avail',
+                            kind: 'toggle',
+                            label: '사용 가능만',
+                            on: mobileListAvailOnly,
+                            disabled: !hasAvailInCluster,
+                            onClick: () => {
+                              if (!hasAvailInCluster) return
+                              setMobileListAvailOnly((v) => !v)
+                            },
+                          },
+                          {
+                            key: 'cFast',
+                            kind: 'toggle',
+                            label: '급속만',
+                            on: clusterRailFastOnly,
+                            disabled: !hasFastInCluster,
+                            onClick: () => {
+                              if (!hasFastInCluster) return
+                              setClusterRailFastOnly((v) => !v)
+                            },
+                          },
+                          {
+                            key: 'c2plus',
+                            kind: 'toggle',
+                            label: '2대 이상',
+                            on: clusterRailMin2Chargers,
+                            disabled: !hasMultiChargerInCluster,
+                            onClick: () => {
+                              if (!hasMultiChargerInCluster) return
+                              setClusterRailMin2Chargers((v) => !v)
+                            },
+                          },
+                          ...(clusterOperatorTop.length > 1
+                            ? [
+                                {
+                                  key: 'busiAll',
+                                  kind: 'toggle',
+                                  label: '전체 기관',
+                                  on: !clusterRailBusiNm,
+                                  disabled: false,
+                                  onClick: () => setClusterRailBusiNm(''),
+                                },
+                                ...clusterOperatorTop.map((name) => ({
+                                  key: `busi-${name}`,
+                                  kind: 'toggle',
+                                  label: name.length > 11 ? `${name.slice(0, 10)}…` : name,
+                                  on: clusterRailBusiNm === name,
+                                  disabled: false,
+                                  onClick: () => setClusterRailBusiNm((cur) => (cur === name ? '' : name)),
+                                })),
+                              ]
+                            : []),
+                        ]
+                      : [
+                          {
+                            key: 'filterSheet',
+                            kind: 'sheet',
+                            label: '필터',
+                            disabled: !!detailStation,
+                            onClick: () => openFilterDrawer(),
+                          },
+                          {
+                            key: 'dist',
+                            kind: 'toggle',
+                            label: '가까운 순',
+                            on: mobileListSort === 'distance',
+                            disabled: false,
+                            onClick: () => setMobileListSort('distance'),
+                          },
+                          {
+                            key: 'name',
+                            kind: 'toggle',
+                            label: '이름순',
+                            on: mobileListSort === 'name',
+                            disabled: false,
+                            onClick: () => setMobileListSort('name'),
+                          },
+                          {
+                            key: 'fast',
+                            kind: 'toggle',
+                            label: '급속',
+                            on: filterSpeed === '급속',
+                            disabled: false,
+                            onClick: () => setFilterSpeed((v) => (v === '급속' ? '' : '급속')),
+                          },
+                          {
+                            key: 'avail',
+                            kind: 'toggle',
+                            label: '사용 가능만',
+                            on: mobileListAvailOnly,
+                            disabled: !hasAvailInGroupedScope,
+                            onClick: () => {
+                              if (!hasAvailInGroupedScope) return
+                              setMobileListAvailOnly((v) => !v)
+                            },
+                          },
+                        ]
+                  ).map((c) => {
                     if (c.kind === 'sheet') {
                       return (
                         <Chip
@@ -1937,7 +2044,7 @@ function App() {
               }
               emptySubMessage={
                 clusterBrowseActive && stationsForMobileListEffective.length === 0
-                  ? '「사용 가능만」을 끄거나 정렬을 바꿔 보세요.'
+                  ? '위 빠른 필터(급속만·2대 이상·기관)를 바꾸거나「사용 가능만」을 끄고 다시 확인해 보세요.'
                   : groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
                     ? '빠른 필터를 바꾸거나 전체 필터에서 조건을 조정해 보세요.'
                     : mobileListEmptyInfo?.subtitle
@@ -2019,8 +2126,60 @@ function App() {
         </>
       )
 
+  const bootPct = Math.min(100, Math.max(0, Math.round(bootProgress)))
+
   return (
     <>
+      {bootOverlayOpen ? (
+        <Box
+          sx={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 2600,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            bgcolor: resolvedMode === 'dark' ? 'rgba(0, 0, 0, 0.48)' : 'rgba(15, 23, 42, 0.14)',
+            px: 2.5,
+          }}
+        >
+          <GlassPanel
+            elevation="panel"
+            sx={{
+              width: '100%',
+              maxWidth: 380,
+              borderRadius: '32px',
+              p: 3,
+              pt: 3.25,
+              pb: 3.25,
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              textAlign: 'center',
+              gap: 2,
+            }}
+          >
+            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, lineHeight: 1.45, px: 0.75 }}>
+              {bootStageMessage}
+            </Typography>
+            <LinearProgress
+              variant="determinate"
+              value={bootPct}
+              sx={{
+                width: '100%',
+                maxWidth: 288,
+                height: 7,
+                borderRadius: 999,
+                bgcolor: tokens.bg.subtle,
+                '& .MuiLinearProgress-bar': { borderRadius: 999, bgcolor: tokens.blue.main },
+              }}
+            />
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
+              {bootPct}%
+            </Typography>
+          </GlassPanel>
+        </Box>
+      ) : null}
       {import.meta.env.DEV && (
         <Box
           sx={{
@@ -2215,6 +2374,13 @@ function App() {
           >
             <MapCenterTracker setMapCenter={setMapCenter} />
             <MapBoundsTracker setMapBounds={setLiveMapBounds} />
+            <MapBootMarkerReady
+              active={awaitingInitialMapPaint}
+              itemsLength={items.length}
+              markerCount={groupedAllStationsForMap.length}
+              boundsReady={mapClusterBoundsRaw != null}
+              onReady={onBootMapPaintReady}
+            />
             <MapMobileSearchViewportFitter
               enabled={isMobile}
               fitNonce={searchViewportFitNonce}
@@ -2236,6 +2402,7 @@ function App() {
               uiColors={colors}
               mapTileUrl={tokens.map.tileUrl}
               mapTileAttribution={tokens.map.tileAttribution}
+              markerClusterChunked={groupedAllStationsForMap.length > 1200}
             />
             {!isMobile && <ZoomControl position="topright" />}
             {!isMobile && (

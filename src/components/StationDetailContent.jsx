@@ -481,9 +481,9 @@ export function StationDetailContent({
                       bgcolor: tokens.bg.paper,
                       mx: -2,
                       px: 2,
-                      pt: 1,
+                      pt: 0,
                       pb: 1,
-                      mb: 0.25,
+                      mb: 0,
                       borderBottom: `1px solid ${tokens.border.subtle}`,
                       boxShadow: 'none',
                     }
