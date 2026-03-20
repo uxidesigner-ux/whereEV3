@@ -910,23 +910,28 @@ function App() {
       setBootStageMessage('시작하는 중')
 
       setBootStageMessage('현재 위치를 확인하고 있어요')
-      const pLoc = easeBootProgress(setBootProgress, 0, 18, 520)
+      const pLoc = easeBootProgress(setBootProgress, 0, 22, 640)
       const pos = await getBootstrapGeolocationPosition()
       await pLoc
       if (cancelled) return
 
-      setBootProgress(20)
+      setBootProgress(25)
+      setBootStageMessage(
+        pos.usedGeo
+          ? '내 위치를 확인했어요. 주변 충전소 정보를 불러오고 있어요'
+          : '위치를 사용할 수 없어 기본 위치로 시작해요. 주변 충전소 정보를 불러오고 있어요',
+      )
       const mapW = typeof window !== 'undefined' ? window.innerWidth : 400
-      const spanM = pos.usedGeo ? 1000 : 2000
-      const mapZ = zoomForHorizontalSpanMeters(mapW, spanM, pos.lat)
+      /** 성공/실패 모두 화면 가로폭 ≈ 1000m에 맞춤 */
+      const INITIAL_MAP_SPAN_M = 1000
+      const mapZ = zoomForHorizontalSpanMeters(mapW, INITIAL_MAP_SPAN_M, pos.lat)
       const view = { center: /** @type {[number, number]} */ ([pos.lat, pos.lng]), zoom: mapZ }
       setLeafletInitial(view)
       if (pos.usedGeo) setUserLocation({ lat: pos.lat, lng: pos.lng })
       else setUserLocation(null)
 
       if (!key) {
-        setBootStageMessage('주변 충전소 정보를 불러오고 있어요')
-        await easeBootProgress(setBootProgress, 20, 72, 480)
+        await easeBootProgress(setBootProgress, 25, 72, 480)
         if (cancelled) return
         if (import.meta.env.DEV) {
           const mock = getDevMockEvChargers()
@@ -951,8 +956,7 @@ function App() {
 
       setApiError(null)
       setItems([])
-      setBootStageMessage('주변 충전소 정보를 불러오고 있어요')
-      const pFetch = easeBootProgress(setBootProgress, 20, 72, 3200)
+      const pFetch = easeBootProgress(setBootProgress, 25, 72, 3200)
       let first = /** @type {Awaited<ReturnType<typeof fetchEvChargersFirstPageBatch>> | null} */ (null)
       try {
         first = await fetchEvChargersFirstPageBatch({ numOfRows: 500, signal: ac.signal })

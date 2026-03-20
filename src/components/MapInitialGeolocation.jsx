@@ -6,8 +6,7 @@ import { zoomForHorizontalSpanMeters } from '../utils/mapZoomMeters.js'
 const FALLBACK_CENTER = [37.5759, 126.9769]
 
 /**
- * 앱 최초 1회: 위치 성공 시 현재 위치 + 가로폭 ≈ 1000m.
- * 실패·미지원 시 광화문 중심 + 가로폭 ≈ 2000m. (로딩 UI 없음)
+ * 앱 최초 1회: 위치 성공/실패 모두 가로폭 ≈ 1000m (부트스트랩과 동일 스케일).
  */
 export function MapInitialGeolocation({ setUserLocation }) {
   const map = useMap()
@@ -35,7 +34,7 @@ export function MapInitialGeolocation({ setUserLocation }) {
       const lat = FALLBACK_CENTER[0]
       const lng = FALLBACK_CENTER[1]
       const w = mapWidthPx()
-      const z = zoomForHorizontalSpanMeters(w, 2000, lat)
+      const z = zoomForHorizontalSpanMeters(w, 1000, lat)
       map.setView([lat, lng], z, { animate: false })
     }
 
