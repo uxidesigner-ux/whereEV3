@@ -104,23 +104,32 @@ export function MapBootMarkerReady({
       onReadyRef.current()
     }
 
+    /** 데이터가 있으면 마커가 1개 이상 준비된 뒤(다음 프레임 페인트 후)에만 오버레이 종료 */
+    const finishAfterPaint = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!cancelled) finish()
+        })
+      })
+    }
+
     if (itemsLength === 0) {
-      const t = window.setTimeout(finish, 0)
+      finishAfterPaint()
       return () => {
         cancelled = true
-        window.clearTimeout(t)
       }
     }
 
-    const delay =
-      markerCount > 0 ? 220 : markerCount === 0 && itemsLength > 0 ? 950 : 280
+    if (markerCount > 0) {
+      finishAfterPaint()
+      return () => {
+        cancelled = true
+      }
+    }
 
-    const t = window.setTimeout(finish, delay)
-    const safety = window.setTimeout(finish, 6500)
-
+    const safety = window.setTimeout(() => finish(), 15000)
     return () => {
       cancelled = true
-      window.clearTimeout(t)
       window.clearTimeout(safety)
     }
   }, [active, bootMoveGeneration, itemsLength, markerCount])

@@ -90,6 +90,24 @@ function buildPlaceGroupFromRows(rows, distanceKmPreserve) {
   }
 }
 
+/** 부트용: map bounds 디바운스 없이 center+zoom 기준으로 뷰 안 마커만 먼저 묶는다 */
+function groupChargersForBootMapView(items, centerLat, centerLng, radiiKm) {
+  for (const maxKm of radiiKm) {
+    const validItems = items.filter((r) => {
+      const la = Number(r.lat)
+      const ln = Number(r.lng)
+      return (
+        Number.isFinite(la) &&
+        Number.isFinite(ln) &&
+        haversineDistanceKm(la, ln, centerLat, centerLng) <= maxKm
+      )
+    })
+    const grouped = groupChargerRowsByPlaceMapLite(validItems)
+    if (grouped.length > 0) return grouped
+  }
+  return []
+}
+
 function rowsMatchingDetailStation(prev, flatItems) {
   if (!prev || !flatItems?.length) return []
   const key = Array.isArray(prev.rows) && prev.rows.length ? prev.id : placeKey(prev)
@@ -103,7 +121,12 @@ import {
   squareBoundsLiteralAroundCenter,
 } from './utils/mobileRadiusSearch.js'
 import { zoomForHorizontalSpanMeters } from './utils/mapZoomMeters.js'
-import { computeBootLeafletView, GWANGHWAMUN_FALLBACK, mapBootstrapWidthPx } from './utils/mapInitialView.js'
+import {
+  computeBootLeafletView,
+  GWANGHWAMUN_FALLBACK,
+  mapBootstrapWidthPx,
+  BOOT_MAP_MARKER_SEARCH_RADII_KM,
+} from './utils/mapInitialView.js'
 import {
   spacing,
   radius,
@@ -1363,6 +1386,13 @@ function App() {
     stationsForMobileListEffective.length,
   ])
 
+  /** 초기 로딩 중: `leafletInitial` 중심과 1000m 뷰에 맞는 반경부터 마커 후보(디바운스 bounds 비의존) */
+  const groupedBootMarkers = useMemo(() => {
+    const [lat0, lng0] = leafletInitial.center
+    if (!Number.isFinite(lat0) || !Number.isFinite(lng0) || items.length === 0) return []
+    return groupChargersForBootMapView(items, lat0, lng0, BOOT_MAP_MARKER_SEARCH_RADII_KM)
+  }, [items, leafletInitial.center])
+
   /**
    * 지도 전용: 현재 로드된 `items` 중 디바운스+패딩 뷰포트 안만 클러스터(성능).
    * 시트·필터 파이프라인은 그대로 `items` 기준. 선택 마커는 뷰 밖이어도 포함.
@@ -1386,6 +1416,13 @@ function App() {
     if (grouped.some((s) => s.id === sel.id)) return grouped
     return [sel, ...grouped]
   }, [items, mapSelectedStation, mapClusterBoundsPadded])
+
+  /** 부트 오버레이 동안은 bounds 대기 없이 `groupedBootMarkers`로 먼저 그린 뒤, 종료 후 일반 뷰포트 데이터로 전환 */
+  const stationsForMapLayer = useMemo(() => {
+    if (!awaitingInitialMapPaint) return groupedAllStationsForMap
+    if (groupedBootMarkers.length > 0) return groupedBootMarkers
+    return groupedAllStationsForMap
+  }, [awaitingInitialMapPaint, groupedBootMarkers, groupedAllStationsForMap])
 
   /** live와 applied가 충분히 다를 때만 "이 지역 충전소 검색하기" 노출 (중심 거리 > 0.15km) */
   const showSearchAreaButton = useMemo(() => {
@@ -2383,7 +2420,7 @@ function App() {
               center={leafletInitial.center}
               zoom={leafletInitial.zoom}
               itemsLength={items.length}
-              markerCount={groupedAllStationsForMap.length}
+              markerCount={stationsForMapLayer.length}
               primeClusterBoundsNow={primeClusterBoundsForBoot}
               onReady={onBootMapPaintReady}
             />
@@ -2397,7 +2434,7 @@ function App() {
             />
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer
-              stations={groupedAllStationsForMap}
+              stations={stationsForMapLayer}
               onDetailClick={openDetailPreserve}
               onClusterTap={handleClusterStationsTap}
               selectedId={mapSelectedStation?.id}
@@ -2408,7 +2445,7 @@ function App() {
               uiColors={colors}
               mapTileUrl={tokens.map.tileUrl}
               mapTileAttribution={tokens.map.tileAttribution}
-              markerClusterChunked={groupedAllStationsForMap.length > 1200}
+              markerClusterChunked={!awaitingInitialMapPaint && stationsForMapLayer.length > 1200}
             />
             {!isMobile && <ZoomControl position="topright" />}
             {!isMobile && (

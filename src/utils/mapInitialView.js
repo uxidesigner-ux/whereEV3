@@ -11,6 +11,13 @@ export const GWANGHWAMUN_FALLBACK = Object.freeze({
 
 const BOOT_HORIZONTAL_SPAN_M = 1000
 
+/**
+ * 부트 로딩 중 지도 마커 후보: 초기 1000m 가로폭 뷰에 맞는 거리부터 시도하고,
+ * 해당 반경에 충전소가 없을 때만 단계적으로 넓힌다(디바운스된 map bounds를 기다리지 않음).
+ * @type {readonly number[]}
+ */
+export const BOOT_MAP_MARKER_SEARCH_RADII_KM = Object.freeze([0.7, 1.05, 1.6, 2.8, 6])
+
 /** 지도 컨테이너 가로폭(px). Leaflet 컨테이너가 아직 없을 때 innerWidth 근사 */
 export function mapBootstrapWidthPx() {
   if (typeof window === 'undefined') return 400
