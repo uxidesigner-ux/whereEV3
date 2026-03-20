@@ -495,9 +495,14 @@ function App() {
   const onBootMapPaintReady = useCallback(() => {
     if (bootMapPaintedRef.current) return
     bootMapPaintedRef.current = true
-    setAwaitingInitialMapPaint(false)
     setBootProgress(100)
-    setBootOverlayOpen(false)
+    setBootStageMessage('준비했어요')
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setAwaitingInitialMapPaint(false)
+        setBootOverlayOpen(false)
+      })
+    })
   }, [])
 
   /** 부트 setView 직후 한 번: 클러스터용 bounds를 320ms 디바운스 없이 즉시 맞춤 */
@@ -979,8 +984,8 @@ function App() {
           setItems([])
           setTotalCount(null)
         }
-        setBootStageMessage('지도를 준비하고 있어요')
-        await easeBootProgress(setBootProgress, 72, 94, 520)
+        setBootStageMessage('지도와 충전소 마커를 표시하는 중이에요')
+        await easeBootProgress(setBootProgress, 72, 82, 520)
         if (cancelled) return
         setAwaitingInitialMapPaint(true)
         return
@@ -1003,8 +1008,8 @@ function App() {
         setTotalCount(first.totalCount != null ? first.totalCount : first.batch.length)
       }
 
-      setBootStageMessage('지도를 준비하고 있어요')
-      await easeBootProgress(setBootProgress, 72, 94, 560)
+      setBootStageMessage('지도와 충전소 마커를 표시하는 중이에요')
+      await easeBootProgress(setBootProgress, 72, 82, 560)
       if (cancelled) return
       setAwaitingInitialMapPaint(true)
 

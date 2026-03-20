@@ -121,9 +121,49 @@ export function MapBootMarkerReady({
     }
 
     if (markerCount > 0) {
-      finishAfterPaint()
+      let pollTimer = null
+      let maxTimer = null
+      const clearTimers = () => {
+        if (pollTimer != null) {
+          window.clearInterval(pollTimer)
+          pollTimer = null
+        }
+        if (maxTimer != null) {
+          window.clearTimeout(maxTimer)
+          maxTimer = null
+        }
+      }
+      const markerDomReady = () => {
+        try {
+          const pane = map.getPane?.('markerPane')
+          return !!(pane && pane.querySelector('.leaflet-marker-icon'))
+        } catch {
+          return false
+        }
+      }
+      const scheduleFinish = () => {
+        clearTimers()
+        finishAfterPaint()
+      }
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (cancelled) return
+          if (markerDomReady()) {
+            scheduleFinish()
+            return
+          }
+          pollTimer = window.setInterval(() => {
+            if (cancelled) return
+            if (markerDomReady()) scheduleFinish()
+          }, 40)
+          maxTimer = window.setTimeout(() => {
+            if (!cancelled) scheduleFinish()
+          }, 3200)
+        })
+      })
       return () => {
         cancelled = true
+        clearTimers()
       }
     }
 
@@ -132,7 +172,7 @@ export function MapBootMarkerReady({
       cancelled = true
       window.clearTimeout(safety)
     }
-  }, [active, bootMoveGeneration, itemsLength, markerCount])
+  }, [active, bootMoveGeneration, itemsLength, markerCount, map])
 
   return null
 }
