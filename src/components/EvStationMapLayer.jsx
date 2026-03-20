@@ -78,7 +78,8 @@ export function EvStationMapLayer({
         disableClusteringAtZoom={17}
         removeOutsideVisibleBounds
         iconCreateFunction={iconCreateFunction}
-        onClusterClick={(e) => {
+        // react-leaflet-cluster: onClick → Leaflet "clusterclick" (onClusterClick는 clusterclusterclick로 잘못 매핑됨)
+        onClick={(e) => {
           const layer = e.layer
           if (!layer) return
           const bounds = typeof layer.getBounds === 'function' ? layer.getBounds() : null

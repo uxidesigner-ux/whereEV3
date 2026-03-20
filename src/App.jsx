@@ -132,6 +132,11 @@ const SEOUL_CENTER = [37.5665, 126.978]
 /** 지도 클러스터용 뷰포트 반영 지연(패닝 시 연산·마커 갱신 부담 완화) */
 const MAP_CLUSTER_BOUNDS_DEBOUNCE_MS = 320
 
+/** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
+const MOBILE_DETAIL_HEADER_GUTTER = 2.5
+/** 상세 full 헤더 앱바 높이에 맞춘 최소 높이 */
+const MOBILE_DETAIL_FULL_HEADER_MIN_H = 56
+
 /** 브랜드 원형 마커: r=39.5, stroke·fill은 CSS 변수(라이트 흰 테두리 / 다크 검정 테두리) */
 const EV_MAP_MARKER_SVG = `<svg class="ev-marker-brand-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none" aria-hidden="true" focusable="false"><circle class="ev-marker-brand-circle" cx="40" cy="40" r="39.5" fill="var(--ev-map-marker-fill, #1F45FF)" stroke="var(--ev-map-marker-stroke, #fff)"/><path d="M33.0072 19L29 43.15H37.0057L33.0072 61L52 35.8H43.0034L51.0004 19H33.0072Z" fill="var(--ev-map-marker-bolt, #FCFC07)"/></svg>`
 
@@ -1433,35 +1438,50 @@ function App() {
                     <Box
                       sx={{
                         display: 'flex',
-                        alignItems: 'flex-start',
-                        gap: 0.5,
-                        px: 0.5,
-                        pt: 0.25,
-                        pb: 1,
-                        minHeight: 48,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        gap: 1,
+                        px: MOBILE_DETAIL_HEADER_GUTTER,
+                        py: 1,
+                        minHeight: MOBILE_DETAIL_FULL_HEADER_MIN_H,
+                        boxSizing: 'border-box',
                       }}
                     >
                       <IconButton
                         onClick={handleCloseDetail}
                         aria-label="뒤로"
                         size="small"
-                        sx={{ color: colors.gray[700], mt: 0.25 }}
+                        sx={{
+                          color: colors.gray[700],
+                          flexShrink: 0,
+                          width: 40,
+                          height: 40,
+                          minWidth: 40,
+                          minHeight: 40,
+                          p: 0,
+                          borderRadius: radius.md,
+                        }}
                       >
-                        <ArrowBack />
+                        <ArrowBack sx={{ fontSize: 24 }} />
                       </IconButton>
-                      <Box sx={{ flex: 1, minWidth: 0, pr: 0.5 }}>
+                      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', py: 0.25 }}>
                         <Typography
                           id="ev-mobile-detail-title"
                           variant="h6"
                           component="h2"
-                          sx={{ color: colors.gray[900], ...appMobileType.detailSheetTitle, lineHeight: 1.25 }}
+                          sx={{
+                            color: colors.gray[900],
+                            ...appMobileType.detailSheetTitle,
+                            lineHeight: 1.35,
+                            fontWeight: 700,
+                          }}
                         >
                           {d.statNm}
                         </Typography>
                         {detailHeaderSubtitle ? (
                           <Typography
                             variant="caption"
-                            sx={{ display: 'block', mt: 0.35, color: colors.gray[500], ...appMobileType.detailSheetSubtitle }}
+                            sx={{ display: 'block', mt: 0.25, color: colors.gray[500], ...appMobileType.detailSheetSubtitle, lineHeight: 1.35 }}
                           >
                             {detailHeaderSubtitle}
                           </Typography>
@@ -1472,7 +1492,16 @@ function App() {
                         disabled={!canRefetchEv || detailRefreshing}
                         aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
                         size="small"
-                        sx={{ color: colors.gray[600], mt: 0.25 }}
+                        sx={{
+                          color: colors.gray[600],
+                          flexShrink: 0,
+                          width: 40,
+                          height: 40,
+                          minWidth: 40,
+                          minHeight: 40,
+                          p: 0,
+                          borderRadius: radius.md,
+                        }}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         {detailRefreshing ? (
@@ -1502,17 +1531,26 @@ function App() {
                     }}
                   >
                     <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto' }} aria-hidden />
-                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, px: 0.5, pt: 0.75, pb: 0 }}>
-                      <Box sx={{ flex: 1, minWidth: 0, pr: 0.5 }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 1,
+                        px: MOBILE_DETAIL_HEADER_GUTTER,
+                        pt: 0.75,
+                        pb: 0.75,
+                      }}
+                    >
+                      <Box sx={{ flex: 1, minWidth: 0 }}>
                         <Typography
                           variant="subtitle1"
                           component="h2"
-                          sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1.0625rem', lineHeight: 1.3 }}
+                          sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1.0625rem', lineHeight: 1.35 }}
                         >
                           {d.statNm}
                         </Typography>
                         {detailHeaderSubtitle ? (
-                          <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: colors.gray[500] }}>
+                          <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: colors.gray[500], lineHeight: 1.35 }}>
                             {detailHeaderSubtitle}
                           </Typography>
                         ) : null}
@@ -1522,7 +1560,17 @@ function App() {
                         disabled={!canRefetchEv || detailRefreshing}
                         aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
                         size="small"
-                        sx={{ color: colors.gray[600], mt: -0.125, flexShrink: 0 }}
+                        sx={{
+                          color: colors.gray[600],
+                          flexShrink: 0,
+                          width: 40,
+                          height: 40,
+                          minWidth: 40,
+                          minHeight: 40,
+                          p: 0,
+                          mt: 0.125,
+                          borderRadius: radius.md,
+                        }}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         {detailRefreshing ? (
