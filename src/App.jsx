@@ -1558,6 +1558,9 @@ function App() {
           position: 'relative',
           width: '100vw',
           height: '100vh',
+          '@supports (height: 100dvh)': {
+            height: '100dvh',
+          },
           overflow: 'hidden',
         }}
       >

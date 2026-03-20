@@ -2,7 +2,10 @@ import { useRef } from 'react'
 import { Box, Chip, IconButton, InputAdornment, TextField } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import Close from '@mui/icons-material/Close'
-import { appMobileType, colors, motion, radius, mobileMapChrome } from '../theme/dashboardTheme.js'
+import { colors, motion, radius, mobileMapChrome } from '../theme/dashboardTheme.js'
+
+/** iOS Safari: input computed font-size < 16px 이면 포커스 시 페이지 자동 확대 */
+const SEARCH_INPUT_FONT_PX = 16
 
 const SUGGESTIONS = ['급속', '완속', '24시간', '환경부', '강남', '판교']
 
@@ -64,8 +67,9 @@ export function MobileMapSearchBar({
           '& .MuiOutlinedInput-root': {
             height: mobileMapChrome.searchPillH,
             minHeight: mobileMapChrome.searchPillH,
+            maxHeight: mobileMapChrome.searchPillH,
             boxSizing: 'border-box',
-            fontSize: appMobileType.searchField.fontSize,
+            fontSize: `${SEARCH_INPUT_FONT_PX}px`,
             bgcolor: colors.white,
             borderRadius: radius.full,
             boxShadow: focused
@@ -78,11 +82,20 @@ export function MobileMapSearchBar({
             '&:hover fieldset': { borderColor: 'rgba(15,23,42,0.1)' },
             '&.Mui-focused fieldset': { borderColor: colors.blue.primary, borderWidth: 1 },
             alignItems: 'center',
+            /* 포커스 시 높이·패딩 변화 없음(MUI small 기본 보정) */
+            '&.Mui-focused': {
+              minHeight: mobileMapChrome.searchPillH,
+              height: mobileMapChrome.searchPillH,
+            },
           },
-          '& .MuiInputBase-input': {
+          '& .MuiOutlinedInput-input': {
             py: 0,
+            px: 0,
             height: `${mobileMapChrome.searchPillH}px`,
+            minHeight: `${mobileMapChrome.searchPillH}px`,
+            maxHeight: `${mobileMapChrome.searchPillH}px`,
             boxSizing: 'border-box',
+            fontSize: `${SEARCH_INPUT_FONT_PX}px`,
             lineHeight: `${mobileMapChrome.searchPillH}px`,
           },
         }}

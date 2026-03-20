@@ -193,9 +193,10 @@ export const appMobileType = {
     lineHeight: 1.35,
     fontWeight: 500,
   },
+  /** 모바일 검색 등: iOS 자동 확대 방지를 위해 최소 16px 권장 */
   searchField: {
-    fontSize: '0.9375rem',
-    lineHeight: 1.4,
+    fontSize: '16px',
+    lineHeight: 1.35,
   },
   filterSectionLabel: {
     fontSize: '0.9375rem',
