@@ -3,7 +3,7 @@ import MapOutlined from '@mui/icons-material/MapOutlined'
 import InfoOutlined from '@mui/icons-material/InfoOutlined'
 import SearchOff from '@mui/icons-material/SearchOff'
 import InboxOutlined from '@mui/icons-material/InboxOutlined'
-import { colors, motion, radius } from '../theme/dashboardTheme.js'
+import { appMobileType, colors, motion, radius } from '../theme/dashboardTheme.js'
 import { formatDistanceKm } from '../utils/geo.js'
 import { pickPrimaryAddress } from '../api/safemapEv.js'
 
@@ -31,7 +31,7 @@ export function StationListMobile({
   if (loadingBounds) {
     return (
       <Box sx={{ py: 0.5 }}>
-        <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mb: 1, fontSize: '0.75rem', fontWeight: 600 }}>
+        <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mb: 1, ...appMobileType.secondary, fontWeight: 600 }}>
           {loadingHint}
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }} aria-busy="true" aria-label="목록 불러오는 중">
@@ -78,11 +78,14 @@ export function StationListMobile({
         >
           <IconCmp sx={{ fontSize: 26 }} />
         </Box>
-        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, fontSize: '0.875rem', color: colors.gray[800] }}>
+        <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 700, color: colors.gray[800], ...appMobileType.bodyStrong }}>
           {emptyMessage ?? '조건에 맞는 충전소가 없습니다.'}
         </Typography>
         {emptySubMessage && (
-          <Typography variant="caption" sx={{ display: 'block', mt: 0.75, fontSize: '0.75rem', lineHeight: 1.5, color: colors.gray[600], maxWidth: 280, mx: 'auto' }}>
+          <Typography
+            variant="caption"
+            sx={{ display: 'block', mt: 0.75, color: colors.gray[600], maxWidth: 280, mx: 'auto', ...appMobileType.secondary, lineHeight: 1.5 }}
+          >
             {emptySubMessage}
           </Typography>
         )}
@@ -152,10 +155,10 @@ export function StationListMobile({
                 <MapOutlined sx={{ fontSize: 18 }} />
               </Box>
               <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.65rem', fontWeight: 600, letterSpacing: '0.02em', display: 'block', mb: 0.125 }}>
+                <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mb: 0.125, ...appMobileType.listEyebrow }}>
                   지도에서 보기
                 </Typography>
-                <Typography variant="subtitle1" sx={{ fontWeight: 600, fontSize: '0.875rem', color: colors.gray[800], lineHeight: 1.3 }}>
+                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: colors.gray[900], lineHeight: 1.3, ...appMobileType.chargerCardTitle }}>
                   {s.statNm}
                 </Typography>
                 {addrLine && (
@@ -163,28 +166,27 @@ export function StationListMobile({
                     variant="caption"
                     sx={{
                       color: colors.gray[600],
-                      fontSize: '0.68rem',
                       display: 'block',
-                      mt: 0.2,
-                      lineHeight: 1.35,
+                      mt: 0.25,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      ...appMobileType.listMeta,
                     }}
                   >
                     {addrLine}
                   </Typography>
                 )}
-                <Typography variant="body2" sx={{ color: colors.gray[600], fontSize: '0.75rem', display: 'block', mt: 0.25 }}>
+                <Typography variant="body2" sx={{ color: colors.gray[600], display: 'block', mt: 0.35, ...appMobileType.body }}>
                   {s.busiNm} · {s.chgerTyLabel}
                 </Typography>
                 {(s.totalChargers != null && s.totalChargers > 0) && (
-                  <Typography variant="caption" sx={{ color: colors.gray[600], fontSize: '0.7rem', display: 'block', mt: 0.25 }}>
+                  <Typography variant="caption" sx={{ color: colors.gray[600], display: 'block', mt: 0.25, ...appMobileType.secondary }}>
                     총 {s.totalChargers}대{s.statSummary ? ` · ${s.statSummary}` : ''}
                   </Typography>
                 )}
                 {s.distanceKm != null && (
-                  <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.7rem', display: 'block', mt: 0.125 }}>
+                  <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mt: 0.125, ...appMobileType.caption }}>
                     {formatDistanceKm(s.distanceKm)}
                   </Typography>
                 )}
@@ -220,7 +222,7 @@ export function StationListMobile({
                 }}
               >
                 <InfoOutlined sx={{ fontSize: 22, color: colors.blue.primary }} />
-                <Typography variant="caption" sx={{ fontSize: '0.65rem', fontWeight: 700, color: colors.gray[700], lineHeight: 1 }}>
+                <Typography variant="caption" sx={{ color: colors.gray[700], ...appMobileType.detailTabLabel }}>
                   상세
                 </Typography>
               </Box>

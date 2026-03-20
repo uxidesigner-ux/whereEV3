@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, IconButton, Typography, Box, CircularProgress } from '@mui/material'
 import Close from '@mui/icons-material/Close'
 import Refresh from '@mui/icons-material/Refresh'
-import { colors, motion, radius } from '../theme/dashboardTheme.js'
+import { appMobileType, colors, motion, radius } from '../theme/dashboardTheme.js'
 import { StationDetailContent } from './StationDetailContent.jsx'
 
 /**
@@ -60,11 +60,11 @@ export function StationDetailModal({
         }}
       >
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="h6" sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1rem', lineHeight: 1.35 }}>
+          <Typography variant="h6" sx={{ color: colors.gray[900], ...appMobileType.detailSheetTitle }}>
             {station.statNm}
           </Typography>
           {subtitle ? (
-            <Typography variant="caption" sx={{ display: 'block', mt: 0.35, color: colors.gray[500], fontSize: '0.7rem', lineHeight: 1.35 }}>
+            <Typography variant="caption" sx={{ display: 'block', mt: 0.4, color: colors.gray[500], ...appMobileType.detailSheetSubtitle }}>
               {subtitle}
             </Typography>
           ) : null}

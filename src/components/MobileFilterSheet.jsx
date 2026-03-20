@@ -9,7 +9,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material'
-import { colors, radius, motion } from '../theme/dashboardTheme.js'
+import { appMobileType, colors, radius, motion } from '../theme/dashboardTheme.js'
 
 /**
  * 모바일 단일 필터 시트: Drawer + 스크롤 본문(칩·검색·리스트). 중첩 Modal 없음.
@@ -110,11 +110,11 @@ export function MobileFilterSheet({
           tabIndex={-1}
           variant="subtitle1"
           component="h2"
-          sx={{ fontWeight: 600, color: colors.gray[800], fontSize: '1rem', outline: 'none' }}
+          sx={{ color: colors.gray[900], outline: 'none', ...appMobileType.filterSheetTitle }}
         >
           필터
         </Typography>
-        <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mt: 0.25 }}>
+        <Typography variant="body2" sx={{ color: colors.gray[600], display: 'block', mt: 0.35, ...appMobileType.filterSheetHint }}>
           조건을 바꾼 뒤 닫으면 목록·지도에 반영됩니다.
         </Typography>
       </Box>
@@ -130,10 +130,10 @@ export function MobileFilterSheet({
           WebkitOverflowScrolling: 'touch',
         }}
       >
-        <Typography variant="caption" sx={{ fontWeight: 600, color: colors.gray[700], display: 'block', mb: 0.75 }}>
+        <Typography variant="subtitle2" component="h3" sx={{ color: colors.gray[800], display: 'block', mb: 0.85, ...appMobileType.filterSectionLabel }}>
           충전 타입
         </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 2 }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.625, mb: 2 }}>
           {speedOptions.map((opt) => {
             const v = opt.value
             const selected = filterSpeed === v
@@ -144,8 +144,9 @@ export function MobileFilterSheet({
                 size="small"
                 onClick={() => onFilterSpeedChange(v)}
                 sx={{
-                  fontSize: '0.75rem',
-                  height: 30,
+                  fontSize: appMobileType.filterChip.fontSize,
+                  height: appMobileType.filterChip.height,
+                  fontWeight: selected ? 700 : 600,
                   bgcolor: selected ? colors.blue.primary : colors.gray[50],
                   color: selected ? colors.white : colors.gray[700],
                   border: `1px solid ${selected ? colors.blue.primary : colors.gray[200]}`,
@@ -157,7 +158,7 @@ export function MobileFilterSheet({
           })}
         </Box>
 
-        <Typography variant="caption" sx={{ fontWeight: 600, color: colors.gray[700], display: 'block', mb: 0.5 }}>
+        <Typography variant="subtitle2" component="h3" sx={{ color: colors.gray[800], display: 'block', mb: 0.6, ...appMobileType.filterSectionLabel }}>
           운영기관
         </Typography>
         <TextField
@@ -166,13 +167,16 @@ export function MobileFilterSheet({
           placeholder="검색…"
           value={busiSearch}
           onChange={(e) => setBusiSearch(e.target.value)}
-          sx={{ mb: 0.75, '& .MuiOutlinedInput-root': { borderRadius: `${radius.sm}px`, fontSize: '0.8125rem' } }}
+          sx={{
+            mb: 0.75,
+            '& .MuiOutlinedInput-root': { borderRadius: `${radius.sm}px`, fontSize: appMobileType.searchField.fontSize },
+          }}
         />
         <List dense disablePadding sx={{ mb: 2, maxHeight: 168, overflow: 'auto', border: `1px solid ${colors.gray[200]}`, borderRadius: `${radius.sm}px` }}>
           <ListItemButton
             selected={!filterBusiNm}
             onClick={() => onFilterBusiNmChange('')}
-            sx={{ fontSize: '0.8125rem', py: 0.75 }}
+            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875 }}
           >
             전체
           </ListItemButton>
@@ -185,8 +189,8 @@ export function MobileFilterSheet({
                 selected={sel}
                 onClick={() => onFilterBusiNmChange(val)}
                 sx={{
-                  fontSize: '0.8125rem',
-                  py: 0.75,
+                  fontSize: appMobileType.filterListItem.fontSize,
+                  py: 0.875,
                   bgcolor: sel ? colors.blue.muted : undefined,
                 }}
               >
@@ -196,14 +200,14 @@ export function MobileFilterSheet({
           })}
         </List>
 
-        <Typography variant="caption" sx={{ fontWeight: 600, color: colors.gray[700], display: 'block', mb: 0.5 }}>
+        <Typography variant="subtitle2" component="h3" sx={{ color: colors.gray[800], display: 'block', mb: 0.6, ...appMobileType.filterSectionLabel }}>
           시도 코드
         </Typography>
         <List dense disablePadding sx={{ mb: 2, maxHeight: 140, overflow: 'auto', border: `1px solid ${colors.gray[200]}`, borderRadius: `${radius.sm}px` }}>
           <ListItemButton
             selected={!filterCtprvnCd}
             onClick={() => onFilterCtprvnCdChange('')}
-            sx={{ fontSize: '0.8125rem', py: 0.75 }}
+            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875 }}
           >
             미선택
           </ListItemButton>
@@ -215,7 +219,7 @@ export function MobileFilterSheet({
                 key={val}
                 selected={sel}
                 onClick={() => onFilterCtprvnCdChange(val)}
-                sx={{ fontSize: '0.8125rem', py: 0.75, bgcolor: sel ? colors.blue.muted : undefined }}
+                sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875, bgcolor: sel ? colors.blue.muted : undefined }}
               >
                 {opt.label ?? opt.value ?? val}
               </ListItemButton>
@@ -223,7 +227,7 @@ export function MobileFilterSheet({
           })}
         </List>
 
-        <Typography variant="caption" sx={{ fontWeight: 600, color: colors.gray[700], display: 'block', mb: 0.5 }}>
+        <Typography variant="subtitle2" component="h3" sx={{ color: colors.gray[800], display: 'block', mb: 0.6, ...appMobileType.filterSectionLabel }}>
           시군구 코드
         </Typography>
         <List
@@ -243,7 +247,7 @@ export function MobileFilterSheet({
             selected={!filterSggCd}
             disabled={!ctprvnSelected}
             onClick={() => onFilterSggCdChange('')}
-            sx={{ fontSize: '0.8125rem', py: 0.75 }}
+            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875 }}
           >
             미선택
           </ListItemButton>
@@ -256,7 +260,7 @@ export function MobileFilterSheet({
                 selected={sel}
                 disabled={!ctprvnSelected}
                 onClick={() => onFilterSggCdChange(val)}
-                sx={{ fontSize: '0.8125rem', py: 0.75, bgcolor: sel ? colors.blue.muted : undefined }}
+                sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875, bgcolor: sel ? colors.blue.muted : undefined }}
               >
                 {opt.label ?? opt.value ?? val}
               </ListItemButton>
@@ -272,8 +276,8 @@ export function MobileFilterSheet({
             py: 1.1,
             borderRadius: `${radius.sm}px`,
             bgcolor: colors.gray[800],
-            fontWeight: 600,
-            fontSize: '0.8125rem',
+            fontWeight: 700,
+            fontSize: appMobileType.body.fontSize.xs,
             textTransform: 'none',
             boxShadow: 'none',
             transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,

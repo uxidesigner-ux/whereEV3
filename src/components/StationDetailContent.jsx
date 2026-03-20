@@ -2,7 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { Typography, Box, Button, Chip, Stack, LinearProgress } from '@mui/material'
 import Directions from '@mui/icons-material/Directions'
 import Phone from '@mui/icons-material/Phone'
-import { colors, radius, motion } from '../theme/dashboardTheme.js'
+import { appMobileType, colors, radius, motion } from '../theme/dashboardTheme.js'
 import {
   formatAddressBlockLines,
   formatChargerExplicitTime,
@@ -81,13 +81,13 @@ function StatFilterChip({ label, selected, disabled, onClick, paletteKey }) {
       aria-pressed={selected}
       sx={{
         flexShrink: 0,
-        height: 38,
+        height: appMobileType.chipRail.height,
         borderRadius: 999,
-        fontSize: '0.75rem',
+        fontSize: appMobileType.chipRail.fontSize,
         fontWeight: selected ? 800 : 600,
         letterSpacing: selected ? '0.01em' : '0.005em',
         transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-        '& .MuiChip-label': { px: 1.35, py: 0 },
+        '& .MuiChip-label': { px: 1.4, py: 0.125 },
         ...tone,
         ...(selected && !disabled
           ? { transform: 'scale(1.02)', zIndex: 1 }
@@ -117,10 +117,9 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
       component="div"
       sx={{
         display: 'block',
-        mb: 0.625,
-        fontSize: '0.72rem',
-        lineHeight: 1.4,
+        mb: 0.75,
         letterSpacing: '0.02em',
+        ...appMobileType.railHeading,
       }}
     >
       <Box component="span" sx={{ fontWeight: 800, color: colors.gray[900] }}>
@@ -181,25 +180,36 @@ function ChargerCard({ row, idx }) {
     >
       <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={1} sx={{ mb: 1 }}>
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="caption" sx={{ color: colors.gray[800], fontWeight: 800, fontSize: '0.75rem', display: 'block' }}>
+          <Typography variant="caption" sx={{ color: colors.gray[800], display: 'block', ...appMobileType.chargerCardTitle }}>
             {title}
           </Typography>
         </Box>
-        <Chip label={chip.label} size="small" sx={{ ...chip.sx, flexShrink: 0, height: 26, fontSize: '0.7rem' }} />
+        <Chip
+          label={chip.label}
+          size="small"
+          sx={{
+            ...chip.sx,
+            flexShrink: 0,
+            height: appMobileType.statusChip.height,
+            fontSize: appMobileType.statusChip.fontSize,
+            fontWeight: appMobileType.statusChip.fontWeight,
+            '& .MuiChip-label': { px: 1 },
+          }}
+        />
       </Stack>
 
       <Box sx={{ mb: stat === '3' && (showChargeBar || timeLine) ? 1 : stat === '5' ? 0.75 : 0 }}>
-        <Typography variant="body2" sx={{ color: colors.gray[700], fontSize: '0.8125rem', lineHeight: 1.45 }}>
+        <Typography variant="body2" sx={{ color: colors.gray[700], ...appMobileType.body }}>
           타입 {typeLabel}
         </Typography>
-        <Typography variant="body2" sx={{ color: colors.gray[700], fontSize: '0.8125rem', lineHeight: 1.45 }}>
+        <Typography variant="body2" sx={{ color: colors.gray[700], ...appMobileType.body }}>
           출력 {outDisp || '—'}
         </Typography>
       </Box>
 
       {stat === '3' && showChargeBar && (
         <Box sx={{ mb: timeLine ? 0.75 : 0 }}>
-          <Typography variant="body2" sx={{ color: colors.gray[800], fontWeight: 600, fontSize: '0.8125rem', mb: 0.5 }}>
+          <Typography variant="body2" sx={{ color: colors.gray[800], mb: 0.5, ...appMobileType.bodyStrong }}>
             현재 {chargePair.current}% / 목표 {chargePair.target}%
           </Typography>
           <LinearProgress
@@ -212,20 +222,20 @@ function ChargerCard({ row, idx }) {
               '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: colors.blue.primary },
             }}
           />
-          <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.65rem', display: 'block', mt: 0.35 }}>
+          <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mt: 0.35, ...appMobileType.captionDense }}>
             목표 충전량 대비 진행 · MVP 세션 데이터
           </Typography>
         </Box>
       )}
 
       {stat === '3' && timeLine && (
-        <Typography variant="body2" sx={{ color: colors.gray[800], fontWeight: 600, fontSize: '0.875rem' }}>
+        <Typography variant="body2" sx={{ color: colors.gray[800], ...appMobileType.bodyStrong }}>
           {timeLine}
         </Typography>
       )}
 
       {stat === '5' && (
-        <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', display: 'block' }}>
+        <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', ...appMobileType.secondary }}>
           점검으로 현재 이용할 수 없습니다.
         </Typography>
       )}
@@ -233,8 +243,10 @@ function ChargerCard({ row, idx }) {
   )
 }
 
-const metaLabelSx = { color: colors.gray[400], fontWeight: 600, fontSize: '0.7rem', letterSpacing: '0.02em' }
-const metaBodySx = { color: colors.gray[600], fontSize: '0.8125rem', lineHeight: 1.5 }
+const sectionBlockTitleSx = { color: colors.gray[900], display: 'block', mb: 1, ...appMobileType.sectionBlock }
+const metaFieldLabelSx = { color: colors.gray[500], display: 'block', mb: 0.2, ...appMobileType.metaFieldLabel }
+const footerSectionTitleSx = { color: colors.gray[700], display: 'block', mb: 1, ...appMobileType.sectionBlock }
+const metaBodySx = { color: colors.gray[600], ...appMobileType.body }
 
 /**
  * 충전소 상세 본문(데스크톱 Dialog / 모바일 시트 공용).
@@ -345,7 +357,7 @@ export function StationDetailContent({
               {!chargerSummaryUpdatedInHeader && latestStatUpdDt && (
                 <Typography
                   variant="caption"
-                  sx={{ color: colors.gray[400], display: 'block', fontSize: '0.62rem', mt: 0.5, mb: 0.125, lineHeight: 1.35 }}
+                  sx={{ color: colors.gray[400], display: 'block', mt: 0.5, mb: 0.125, ...appMobileType.captionDense }}
                 >
                   상태 갱신 {latestStatUpdDt}
                 </Typography>
@@ -369,7 +381,7 @@ export function StationDetailContent({
               }}
             >
               {filteredChargerRows.length === 0 ? (
-                <Typography variant="body2" sx={{ color: colors.gray[500], fontSize: '0.8125rem', py: 0.75, px: 0.125 }}>
+                <Typography variant="body2" sx={{ color: colors.gray[500], py: 0.75, px: 0.125, ...appMobileType.secondary }}>
                   이 상태의 충전기가 없습니다.
                 </Typography>
               ) : (
@@ -390,11 +402,11 @@ export function StationDetailContent({
           borderTop: `1px dashed ${colors.gray[200]}`,
         }}
       >
-        <Typography variant="caption" sx={{ ...metaLabelSx, display: 'block', mb: 1 }}>
+        <Typography variant="subtitle2" component="h3" sx={sectionBlockTitleSx}>
           장소 정보
         </Typography>
         <Box sx={{ mb: 1.25 }}>
-          <Typography variant="caption" sx={{ ...metaLabelSx, display: 'block', mb: 0.2 }}>
+          <Typography variant="caption" component="p" sx={metaFieldLabelSx}>
             주소
           </Typography>
           <Typography
@@ -409,18 +421,19 @@ export function StationDetailContent({
           </Typography>
         </Box>
         <Box sx={{ mb: 1.25 }}>
-          <Typography variant="caption" sx={{ ...metaLabelSx, display: 'block', mb: 0.2 }}>
+          <Typography variant="caption" component="p" sx={metaFieldLabelSx}>
             이용시간
           </Typography>
           <Typography variant="body2" sx={metaBodySx}>{station.useTm || '-'}</Typography>
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, pb: 0.5 }}>
           <Typography variant="body2" sx={metaBodySx}>
-            <Box component="span" sx={{ color: colors.gray[400], fontWeight: 600 }}>운영기관</Box> {station.busiNm}
+            <Box component="span" sx={{ color: colors.gray[500], fontWeight: 700, fontSize: 'inherit' }}>운영기관</Box>{' '}
+            {station.busiNm}
           </Typography>
           {telno && (
             <Typography variant="body2" sx={metaBodySx}>
-              <Box component="span" sx={{ color: colors.gray[400], fontWeight: 600 }}>전화</Box> {telno}
+              <Box component="span" sx={{ color: colors.gray[500], fontWeight: 700, fontSize: 'inherit' }}>전화</Box> {telno}
             </Typography>
           )}
         </Box>
@@ -436,7 +449,7 @@ export function StationDetailContent({
           bgcolor: colors.gray[50],
         }}
       >
-        <Typography variant="caption" sx={{ ...metaLabelSx, display: 'block', mb: 1, color: colors.gray[500] }}>
+        <Typography variant="subtitle2" component="h3" sx={footerSectionTitleSx}>
           이동·문의
         </Typography>
         <Box sx={{ display: 'flex', flexDirection: stackActions ? 'column' : 'row', gap: 1 }}>
@@ -453,7 +466,7 @@ export function StationDetailContent({
               borderRadius: `${radius.sm}px`,
               bgcolor: colors.blue.primary,
               fontWeight: 600,
-              fontSize: stackActions ? '0.875rem' : undefined,
+              ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
               textTransform: 'none',
               boxShadow: '0 1px 4px rgba(37,99,235,0.25)',
               transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
@@ -477,7 +490,7 @@ export function StationDetailContent({
                 bgcolor: colors.white,
                 color: colors.gray[800],
                 fontWeight: 600,
-                fontSize: stackActions ? '0.875rem' : undefined,
+                ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
                 textTransform: 'none',
                 transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
                 '&:active': { transform: 'scale(0.98)' },

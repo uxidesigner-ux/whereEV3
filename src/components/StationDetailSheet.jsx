@@ -2,7 +2,7 @@ import { useEffect, useRef, useMemo, useState } from 'react'
 import { Drawer, Box, IconButton, Typography, CircularProgress } from '@mui/material'
 import Close from '@mui/icons-material/Close'
 import Refresh from '@mui/icons-material/Refresh'
-import { colors, radius, motion } from '../theme/dashboardTheme.js'
+import { appMobileType, colors, radius, motion } from '../theme/dashboardTheme.js'
 import { StationDetailContent } from './StationDetailContent.jsx'
 
 const SWIPE_CLOSE_PX = 56
@@ -161,11 +161,19 @@ export function StationDetailSheet({
             <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto', mb: 1.125 }} aria-hidden />
             <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, pointerEvents: 'none' }}>
               <Box sx={{ minWidth: 0, flex: 1, pr: 0.5 }}>
-                <Typography id="ev-detail-sheet-title" variant="h6" component="h2" sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1.05rem', lineHeight: 1.35 }}>
+                <Typography
+                  id="ev-detail-sheet-title"
+                  variant="h6"
+                  component="h2"
+                  sx={{ color: colors.gray[900], ...appMobileType.detailSheetTitle }}
+                >
                   {station.statNm}
                 </Typography>
                 {subtitle ? (
-                  <Typography variant="caption" sx={{ display: 'block', mt: 0.35, color: colors.gray[500], fontSize: '0.7rem', lineHeight: 1.35 }}>
+                  <Typography
+                    variant="caption"
+                    sx={{ display: 'block', mt: 0.4, color: colors.gray[500], ...appMobileType.detailSheetSubtitle }}
+                  >
                     {subtitle}
                   </Typography>
                 ) : null}

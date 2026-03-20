@@ -86,7 +86,7 @@ function rowsMatchingDetailStation(prev, flatItems) {
   return flatItems.filter((r) => placeKey(r) === key)
 }
 import { cssEscapeAttr } from './utils/cssEscape.js'
-import { colors, spacing, radius, chartBlueScale, glass, motion, sheetLayout } from './theme/dashboardTheme.js'
+import { appMobileType, colors, spacing, radius, chartBlueScale, glass, motion, sheetLayout } from './theme/dashboardTheme.js'
 import { GlassPanel } from './components/GlassPanel.jsx'
 import { StatCard } from './components/StatCard.jsx'
 import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
@@ -1096,7 +1096,7 @@ function App() {
                 flexDirection: 'column',
                 flexShrink: 0,
                 boxSizing: 'border-box',
-                minHeight: 76,
+                minHeight: 80,
                 pt: 1,
                 userSelect: 'none',
                 bgcolor: colors.gray[50],
@@ -1143,13 +1143,11 @@ function App() {
                     variant="h6"
                     component="div"
                     sx={{
-                      fontSize: '0.875rem',
-                      fontWeight: 600,
                       color: colors.gray[800],
-                      lineHeight: 1.35,
                       overflow: 'hidden',
                       textOverflow: 'ellipsis',
                       whiteSpace: 'nowrap',
+                      ...appMobileType.listSheetTitle,
                     }}
                   >
                     {mapSelectedStation
@@ -1217,12 +1215,19 @@ function App() {
               emptyVariant={mobileListEmptyInfo?.variant ?? 'no_in_view'}
             />
             <Box sx={{ flexShrink: 0, marginTop: 0.5, paddingTop: 1, borderTop: `1px solid ${colors.gray[200]}`, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-              <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.7rem', lineHeight: 1.35 }}>생활안전지도 API</Typography>
-              <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.7rem', lineHeight: 1.35 }}>
+              <Typography variant="caption" sx={{ color: colors.gray[500], ...appMobileType.caption, display: 'block' }}>
+                생활안전지도 API
+              </Typography>
+              <Typography variant="caption" sx={{ color: colors.gray[500], ...appMobileType.caption, display: 'block' }}>
                 표시 {appliedMapBounds == null ? '—' : groupedItemsInScope.length}곳
                 {totalCount != null && totalCount !== items.length && ` · 전체 약 ${totalCount}건`}
               </Typography>
-              <Typography component="span" sx={{ color: colors.gray[400], fontSize: '0.65rem', lineHeight: 1.35, marginTop: 0.125 }}>© whereEV2</Typography>
+              <Typography
+                component="span"
+                sx={{ color: colors.gray[400], display: 'block', marginTop: 0.125, ...appMobileType.captionDense }}
+              >
+                © whereEV2
+              </Typography>
             </Box>
           </Box>
         </MobileBottomSheet>
@@ -1364,7 +1369,7 @@ function App() {
                     height: sheetLayout.mobileTopBarControlPx,
                     minHeight: sheetLayout.mobileTopBarControlPx,
                     boxSizing: 'border-box',
-                    fontSize: '0.8125rem',
+                    fontSize: appMobileType.searchField.fontSize,
                     bgcolor: colors.gray[50],
                     borderRadius: `${radius.sm}px`,
                     transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
@@ -1531,7 +1536,8 @@ function App() {
                     borderRadius: 1,
                     bgcolor: 'rgba(255,255,255,0.92)',
                     boxShadow: 1,
-                    fontSize: '0.75rem',
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
                     color: colors.gray[700],
                   }}
                 >

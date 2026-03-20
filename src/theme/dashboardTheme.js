@@ -100,10 +100,135 @@ export const motion = {
   },
 }
 
+/**
+ * 모바일 앱형 타이포 스케일 (1rem = 16px).
+ * 상세 메인 20~22px, 섹션 16~18px, 본문 14~15px, 보조 13~14px, 칩 12~13px, 캡션 11~12px.
+ * 공유 컴포넌트는 xs(모바일) / md(데스크톱 패널)로 위계만 모바일에서 벌림.
+ */
+export const appMobileType = {
+  detailSheetTitle: {
+    fontSize: { xs: '1.3125rem', md: '1.125rem' },
+    lineHeight: { xs: 1.3, md: 1.35 },
+    fontWeight: 700,
+  },
+  detailSheetSubtitle: {
+    fontSize: { xs: '0.75rem', md: '0.7rem' },
+    lineHeight: { xs: 1.4, md: 1.35 },
+    fontWeight: 500,
+  },
+  listSheetTitle: {
+    fontSize: '1.0625rem',
+    lineHeight: 1.35,
+    fontWeight: 700,
+  },
+  filterSheetTitle: {
+    fontSize: '1.125rem',
+    lineHeight: 1.35,
+    fontWeight: 700,
+  },
+  filterSheetHint: {
+    fontSize: '0.8125rem',
+    lineHeight: 1.45,
+    fontWeight: 500,
+  },
+  /** 블록 섹션 제목(장소 정보, 이동·문의) */
+  sectionBlock: {
+    fontSize: { xs: '1.0625rem', md: '0.9375rem' },
+    lineHeight: { xs: 1.35, md: 1.35 },
+    fontWeight: 700,
+  },
+  /** 필드 라벨(주소, 이용시간) */
+  metaFieldLabel: {
+    fontSize: { xs: '0.8125rem', md: '0.7rem' },
+    lineHeight: 1.35,
+    fontWeight: 700,
+    letterSpacing: '0.02em',
+  },
+  body: {
+    fontSize: { xs: '0.875rem', md: '0.8125rem' },
+    lineHeight: { xs: 1.45, md: 1.5 },
+    fontWeight: 400,
+  },
+  bodyStrong: {
+    fontSize: { xs: '0.9375rem', md: '0.875rem' },
+    lineHeight: { xs: 1.45, md: 1.45 },
+    fontWeight: 600,
+  },
+  secondary: {
+    fontSize: { xs: '0.8125rem', md: '0.75rem' },
+    lineHeight: { xs: 1.4, md: 1.4 },
+    fontWeight: 500,
+  },
+  chargerCardTitle: {
+    fontSize: { xs: '1rem', md: '0.75rem' },
+    lineHeight: { xs: 1.3, md: 1.35 },
+    fontWeight: 800,
+  },
+  railHeading: {
+    fontSize: { xs: '0.8125rem', md: '0.72rem' },
+    lineHeight: 1.4,
+    fontWeight: 500,
+  },
+  chipRail: {
+    height: 40,
+    fontSize: '0.8125rem',
+  },
+  statusChip: {
+    height: 28,
+    fontSize: '0.75rem',
+    fontWeight: 700,
+  },
+  caption: {
+    fontSize: { xs: '0.75rem', md: '0.65rem' },
+    lineHeight: 1.35,
+    fontWeight: 500,
+  },
+  captionDense: {
+    fontSize: { xs: '0.6875rem', md: '0.62rem' },
+    lineHeight: 1.35,
+    fontWeight: 500,
+  },
+  searchField: {
+    fontSize: '0.9375rem',
+    lineHeight: 1.4,
+  },
+  filterSectionLabel: {
+    fontSize: '0.9375rem',
+    lineHeight: 1.35,
+    fontWeight: 700,
+  },
+  filterChip: {
+    fontSize: '0.8125rem',
+    height: 34,
+  },
+  filterListItem: {
+    fontSize: '0.875rem',
+  },
+  buttonPrimary: {
+    fontSize: { xs: '0.9375rem', md: '0.875rem' },
+  },
+  listMeta: {
+    fontSize: { xs: '0.8125rem', md: '0.68rem' },
+    lineHeight: { xs: 1.4, md: 1.35 },
+    fontWeight: 500,
+  },
+  listEyebrow: {
+    fontSize: { xs: '0.75rem', md: '0.65rem' },
+    lineHeight: 1.35,
+    fontWeight: 600,
+    letterSpacing: '0.02em',
+  },
+  detailTabLabel: {
+    fontSize: '0.75rem',
+    lineHeight: 1.2,
+    fontWeight: 700,
+  },
+}
+
 /** 바텀 시트 스냅(뷰포트 대비 비율은 MobileBottomSheet props로 조정) */
 export const sheetLayout = {
   /** 목록 시트 접힘 높이 — 헤더(핸들+타이틀 행+divider) min 높이와 맞춤 */
-  collapsedPx: 90,
+  collapsedPx: 94,
   halfVhRatio: 0.42,
   /** 모바일 상단 바: 검색·내 위치·필터 행 높이 */
   topChromePx: 56,
