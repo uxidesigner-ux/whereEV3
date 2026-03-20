@@ -66,17 +66,45 @@ export const spacing = {
 }
 
 export const radius = {
-  xs: 4,
-  sm: 6,
-  md: 10,
-  lg: 12,
-  xl: 16,
+  xs: 3,
+  sm: 5,
+  md: 8,
+  lg: 10,
+  xl: 12,
   /** liquid glass 컴포넌트 border-radius 고정 */
-  glass: 24,
-  panel: 24,
-  card: 24,
+  glass: 20,
+  panel: 20,
+  card: 12,
+  /** 모바일 시트·다이얼로그 상단 */
+  sheet: 12,
   control: 6,
   full: 9999,
+}
+
+/** 모바일 앱 느낌: 시트·페이퍼 전환 (미세 튜닝: 조금 짧게·감속 끝을 부드럽게) */
+export const motion = {
+  easing: {
+    standard: 'cubic-bezier(0.33, 0.72, 0.02, 1)',
+    emphasized: 'cubic-bezier(0.22, 0.82, 0.24, 1)',
+    /** 패널 슬라이드 등 단순 이동 */
+    panel: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+  },
+  duration: {
+    sheet: 300,
+    enter: 220,
+    exit: 180,
+    /** 좌측 데스크톱 패널 슬라이드 */
+    panelSlide: 260,
+    /** FAB 등 오버레이 해제 후 짧은 대기 */
+    fabReveal: 64,
+  },
+}
+
+/** 바텀 시트 스냅(뷰포트 대비 비율은 MobileBottomSheet props로 조정) */
+export const sheetLayout = {
+  collapsedPx: 72,
+  halfVhRatio: 0.42,
+  topChromePx: 56,
 }
 
 export const chartBlueScale = [

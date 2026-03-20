@@ -1,8 +1,8 @@
 import { Box } from '@mui/material'
-import { glass, spacing } from '../theme/dashboardTheme.js'
+import { glass, motion, spacing } from '../theme/dashboardTheme.js'
 
-const GLASS_PADDING = 24
-const GLASS_RADIUS = 24
+const GLASS_PADDING = 20
+const GLASS_RADIUS = 20
 
 /**
  * 지도 위 블롱 UI. MuiBox-root 단일 컨테이너, padding 24px / border-radius 24px 고정.
@@ -14,10 +14,13 @@ export function SideOverlayPanel({
   width = 320,
   mobileHeight = '45vh',
   mobilePosition = 'top',
+  /** 데스크톱 패널 본문 스크롤 컨테이너 (상세 닫기 후 위치 복원용) */
+  scrollRef,
   ...rest
 }) {
   return (
     <Box
+      ref={scrollRef}
       className="ev-glass-overlay"
       sx={{
         ...glass.panel,
@@ -34,7 +37,7 @@ export function SideOverlayPanel({
         display: 'flex',
         flexDirection: 'column',
         gap: spacing.lg,
-        transition: 'background 0.2s ease, box-shadow 0.2s ease',
+        transition: `background ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
         '&:hover': glass.panelHover,
         '@media (max-width: 900px)': {
           left: spacing.lg,

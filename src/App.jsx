@@ -12,12 +12,17 @@ import {
   IconButton,
   Chip,
   Button,
+  TextField,
+  InputAdornment,
 } from '@mui/material'
 import EvStationIcon from '@mui/icons-material/EvStation'
 import ChevronLeft from '@mui/icons-material/ChevronLeft'
 import ChevronRight from '@mui/icons-material/ChevronRight'
 import ChevronUp from '@mui/icons-material/KeyboardArrowUp'
 import ChevronDown from '@mui/icons-material/KeyboardArrowDown'
+import SearchIcon from '@mui/icons-material/Search'
+import MyLocationIcon from '@mui/icons-material/MyLocation'
+import TuneIcon from '@mui/icons-material/Tune'
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Circle, CircleMarker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import {
@@ -35,13 +40,17 @@ import {
 } from 'recharts'
 import { fetchEvChargers, aggregateStatCounts, getLatestStatUpdDt, formatStatSummary } from './api/safemapEv.js'
 import { haversineDistanceKm, placeKey, formatListSummary } from './utils/geo.js'
-import { colors, spacing, radius, chartBlueScale, glass } from './theme/dashboardTheme.js'
+import { cssEscapeAttr } from './utils/cssEscape.js'
+import { colors, spacing, radius, chartBlueScale, glass, motion, sheetLayout } from './theme/dashboardTheme.js'
 import { GlassPanel } from './components/GlassPanel.jsx'
 import { StatCard } from './components/StatCard.jsx'
 import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
 import { FilterModalSelect } from './components/FilterModalSelect.jsx'
 import { StationListMobile } from './components/StationListMobile.jsx'
 import { StationDetailModal } from './components/StationDetailModal.jsx'
+import { StationDetailSheet } from './components/StationDetailSheet.jsx'
+import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
+import { MobileFilterSheet } from './components/MobileFilterSheet.jsx'
 
 const SEOUL_CENTER = [37.5665, 126.978]
 
@@ -50,7 +59,7 @@ const muiTheme = createTheme({
     mode: 'light',
     primary: { main: colors.blue.primary },
     secondary: { main: colors.blue.deep },
-    background: { default: colors.gray[100] },
+    background: { default: colors.gray[100], paper: colors.white },
     text: { primary: colors.gray[800], secondary: colors.gray[500] },
   },
   typography: {
@@ -60,6 +69,23 @@ const muiTheme = createTheme({
     caption: { color: colors.gray[500] },
   },
   shape: { borderRadius: radius.control },
+  transitions: {
+    easing: { easeOut: motion.easing.standard, sharp: motion.easing.emphasized },
+    duration: { enteringScreen: motion.duration.enter, leavingScreen: motion.duration.exit, standard: motion.duration.sheet },
+  },
+  components: {
+    MuiDrawer: {
+      styleOverrides: {
+        paper: {
+          borderTopLeftRadius: radius.sheet,
+          borderTopRightRadius: radius.sheet,
+        },
+      },
+    },
+    MuiDialog: {
+      defaultProps: { scroll: 'paper' },
+    },
+  },
 })
 
 const DEFAULT_MARKER_ICON = L.divIcon({
@@ -87,9 +113,11 @@ function LocationControl({ setUserLocation, setLocationError, setLocationLoading
   const setUserRef = useRef(setUserLocation)
   const setErrorRef = useRef(setLocationError)
   const setLoadingRef = useRef(setLocationLoading)
-  setUserRef.current = setUserLocation
-  setErrorRef.current = setLocationError
-  setLoadingRef.current = setLocationLoading
+  useEffect(() => {
+    setUserRef.current = setUserLocation
+    setErrorRef.current = setLocationError
+    setLoadingRef.current = setLocationLoading
+  }, [setUserLocation, setLocationError, setLocationLoading])
 
   useEffect(() => {
     const LocControl = L.Control.extend({
@@ -142,6 +170,42 @@ function LocationControl({ setUserLocation, setLocationError, setLocationLoading
   return null
 }
 
+/** 모바일 상단「내 위치」와 동일 동작. geoNonce가 바뀔 때마다 한 번 실행. */
+function MapGeolocationSync({ geoNonce, setUserLocation, setLocationError, setLocationLoading }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!geoNonce) return
+    setLocationLoading(true)
+    setLocationError(null)
+    if (!navigator.geolocation) {
+      setLocationError('이 브라우저는 위치 기능을 지원하지 않습니다.')
+      setLocationLoading(false)
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const { latitude, longitude } = pos.coords
+        setUserLocation({ lat: latitude, lng: longitude })
+        map.setView([latitude, longitude], 15)
+        setLocationError(null)
+        setLocationLoading(false)
+      },
+      (err) => {
+        const msg =
+          err.code === 1
+            ? '위치 권한이 거부되었습니다.'
+            : err.code === 2
+              ? '위치를 찾을 수 없습니다.'
+              : '위치를 가져오는 중 오류가 발생했습니다.'
+        setLocationError(msg)
+        setLocationLoading(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }, [geoNonce, map, setUserLocation, setLocationError, setLocationLoading])
+  return null
+}
+
 function MapCenterTracker({ setMapCenter }) {
   const map = useMap()
   useEffect(() => {
@@ -187,8 +251,16 @@ function MapBoundsTracker({ setMapBounds }) {
 
 function MapFocusOnStation({ selectedStation }) {
   const map = useMap()
+  const lastFocusedIdRef = useRef(null)
   useEffect(() => {
-    if (selectedStation) map.flyTo([selectedStation.lat, selectedStation.lng], 16)
+    if (!selectedStation) {
+      lastFocusedIdRef.current = null
+      return
+    }
+    const id = selectedStation.id
+    if (id === lastFocusedIdRef.current) return
+    lastFocusedIdRef.current = id
+    map.flyTo([selectedStation.lat, selectedStation.lng], 16)
   }, [map, selectedStation])
   return null
 }
@@ -197,18 +269,12 @@ function LocationRipple({ userLocation }) {
   const map = useMap()
   const [point, setPoint] = useState(null)
   const update = useCallback(() => {
-    if (!userLocation) {
-      setPoint(null)
-      return
-    }
+    if (!userLocation) return
     const p = map.latLngToContainerPoint([userLocation.lat, userLocation.lng])
     setPoint({ x: p.x, y: p.y })
   }, [map, userLocation])
   useEffect(() => {
-    if (!userLocation) {
-      setPoint(null)
-      return
-    }
+    if (!userLocation) return
     update()
     map.on('moveend', update)
     map.on('zoomend', update)
@@ -315,14 +381,223 @@ function App() {
   const [filterSpeed, setFilterSpeed] = useState('') // '' | '급속' | '완속'
   const [filterCtprvnCd, setFilterCtprvnCd] = useState('')
   const [filterSggCd, setFilterSggCd] = useState('')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [geoNonce, setGeoNonce] = useState(0)
+  const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
   const isMobile = useMediaQuery('(max-width: 900px)')
   const [panelOpen, setPanelOpen] = useState(true)
-  const [mobileSheetOpen, setMobileSheetOpen] = useState(false)
   const panelW = isMobile ? 280 : 340
 
+  /**
+   * 모바일 상태 전이(데이터 파이프라인은 유지)
+   * - mapSelectedStation: 목록·마커 선택, 지도 flyTo, 마커 강조
+   * - detailStation: 상세 모달 전용(팝업「상세」·목록 chevron에서만 진입)
+   * - 목록 본문 탭: map만 갱신, 열려 있던 상세는 닫힘
+   */
+  const [mapSelectedStation, setMapSelectedStation] = useState(null)
+  const [detailStation, setDetailStation] = useState(null)
+  const detailStationRef = useRef(null)
+  /** 목록 시트 스냅: 상세 진입/복귀 시에도 부모가 유지 */
+  const [mobileSheetSnap, setMobileSheetSnap] = useState(/** @type {'collapsed' | 'half' | 'full'} */ ('collapsed'))
+  const sheetListScrollRef = useRef(null)
+  /** 데스크톱 좌측 패널(SideOverlayPanel 루트) 스크롤 — 상세 닫기 후 복원 */
+  const desktopPanelScrollRef = useRef(null)
+  const savedListScrollTopRef = useRef(0)
+  const mapSelectedStationRef = useRef(null)
+  const isMobileRef = useRef(isMobile)
+  const detailHistoryPushed = useRef(false)
+  const filterHistoryPushed = useRef(false)
+  /** popstate 한 번에 닫을 오버레이 종류 (push 순서) */
+  const overlayStackRef = useRef(/** @type {('detail'|'filter')[]} */ ([]))
+  /** 연속 탭으로 필터 히스토리가 중복 push 되지 않도록 */
+  const filterOpenPulseGuard = useRef(false)
+  const filterDrawerOpenRef = useRef(filterDrawerOpen)
+  const [mobileSheetHeightPx, setMobileSheetHeightPx] = useState(sheetLayout.collapsedPx)
+  const handleSheetSnapHeightPx = useCallback((px) => {
+    setMobileSheetHeightPx(px)
+  }, [])
+
   useEffect(() => {
-    if (isMobile) setMobileSheetOpen(false)
+    mapSelectedStationRef.current = mapSelectedStation
+  }, [mapSelectedStation])
+
+  useEffect(() => {
+    detailStationRef.current = detailStation
+  }, [detailStation])
+
+  useEffect(() => {
+    isMobileRef.current = isMobile
   }, [isMobile])
+
+  useEffect(() => {
+    filterDrawerOpenRef.current = filterDrawerOpen
+  }, [filterDrawerOpen])
+
+  /**
+   * 데스크톱 전환 시 스택·플래그만 정리(히스토리 엔트리는 브라우저에 남을 수 있음).
+   * 잔여 pushState는 전역 popstate(아래 effect)에서 열린 오버레이가 있으면 동기화한다.
+   */
+  useEffect(() => {
+    if (isMobile) return
+    overlayStackRef.current = []
+    detailHistoryPushed.current = false
+    filterHistoryPushed.current = false
+  }, [isMobile])
+
+  const restoreListAfterDetailClose = useCallback(() => {
+    const anchorId = mapSelectedStationRef.current?.id
+    const run = () => {
+      const scrollEl = isMobileRef.current ? sheetListScrollRef.current : desktopPanelScrollRef.current
+      if (!scrollEl) return
+      scrollEl.scrollTop = savedListScrollTopRef.current
+      if (anchorId != null && anchorId !== '') {
+        const q = `[data-ev-station-id="${cssEscapeAttr(String(anchorId))}"]`
+        scrollEl.querySelector(q)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+      }
+    }
+    requestAnimationFrame(() => requestAnimationFrame(run))
+  }, [])
+
+  const closeDetailFromOverlay = useCallback(() => {
+    detailHistoryPushed.current = false
+    setDetailStation(null)
+    detailStationRef.current = null
+    restoreListAfterDetailClose()
+  }, [restoreListAfterDetailClose])
+
+  const closeFilterFromOverlay = useCallback(() => {
+    filterHistoryPushed.current = false
+    setFilterDrawerOpen(false)
+  }, [])
+
+  const openDetailPreserve = useCallback((s) => {
+    const scrollSaveEl = isMobile ? sheetListScrollRef.current : desktopPanelScrollRef.current
+    if (scrollSaveEl) savedListScrollTopRef.current = scrollSaveEl.scrollTop
+    mapSelectedStationRef.current = s
+    setMapSelectedStation(s)
+    const cur = detailStationRef.current
+    const wasOpen = !!cur
+    const same = cur?.id === s.id
+    if (isMobile) {
+      if (!wasOpen) {
+        try {
+          window.history.pushState({ evOverlay: 'detail' }, '')
+          overlayStackRef.current.push('detail')
+          detailHistoryPushed.current = true
+        } catch {
+          detailHistoryPushed.current = false
+        }
+      } else if (!same) {
+        try {
+          window.history.replaceState({ evOverlay: 'detail' }, '')
+        } catch {
+          /* noop */
+        }
+      }
+    }
+    setDetailStation(s)
+    detailStationRef.current = s
+  }, [isMobile])
+
+  const handleCloseDetail = useCallback(() => {
+    if (isMobile && detailHistoryPushed.current) {
+      try {
+        window.history.back()
+      } catch {
+        overlayStackRef.current.pop()
+        closeDetailFromOverlay()
+      }
+      return
+    }
+    setDetailStation(null)
+    detailStationRef.current = null
+    restoreListAfterDetailClose()
+  }, [isMobile, restoreListAfterDetailClose, closeDetailFromOverlay])
+
+  const closeFilterDrawer = useCallback(() => {
+    if (isMobile && filterHistoryPushed.current) {
+      try {
+        window.history.back()
+      } catch {
+        overlayStackRef.current.pop()
+        closeFilterFromOverlay()
+      }
+      return
+    }
+    setFilterDrawerOpen(false)
+  }, [isMobile, closeFilterFromOverlay])
+
+  const openFilterDrawer = useCallback(() => {
+    if (filterDrawerOpen || filterOpenPulseGuard.current) return
+    /** 상세가 열린 상태에서 필터를 push하면 스택이 [detail,filter]가 되어, 이후 back이 필터를 먼저 닫아 상세 X와 어긋난다. */
+    if (isMobile && detailStationRef.current) return
+    filterOpenPulseGuard.current = true
+    if (isMobile) {
+      try {
+        window.history.pushState({ evOverlay: 'filter' }, '')
+        overlayStackRef.current.push('filter')
+        filterHistoryPushed.current = true
+      } catch {
+        filterHistoryPushed.current = false
+      }
+    }
+    setFilterDrawerOpen(true)
+    requestAnimationFrame(() => {
+      filterOpenPulseGuard.current = false
+    })
+  }, [isMobile, filterDrawerOpen])
+
+  /**
+   * popstate: 히스토리 1스텝 = 오버레이 1단계.
+   * - 모바일: overlayStackRef 와 push 순서를 맞춘다.
+   * - 데스크톱: 모바일에서 쌓인 잔여 엔트리로 popstate만 오는 경우가 있어, 스택 없이도 UI 동기화.
+   * 복구 시 시각적 쌓임(z-index)과 동일하게 상세(1400) > 필터(1200) → detail 먼저 닫기.
+   */
+  useEffect(() => {
+    const onPop = () => {
+      if (isMobileRef.current) {
+        const top = overlayStackRef.current.pop()
+        if (top === 'detail') {
+          closeDetailFromOverlay()
+        } else if (top === 'filter') {
+          closeFilterFromOverlay()
+        } else if (detailStationRef.current) {
+          closeDetailFromOverlay()
+        } else if (filterDrawerOpenRef.current) {
+          closeFilterFromOverlay()
+        }
+        return
+      }
+      if (detailStationRef.current) {
+        closeDetailFromOverlay()
+      } else if (filterDrawerOpenRef.current) {
+        closeFilterFromOverlay()
+      }
+    }
+    window.addEventListener('popstate', onPop)
+    return () => window.removeEventListener('popstate', onPop)
+  }, [closeDetailFromOverlay, closeFilterFromOverlay])
+
+  /** 상세·필터가 막을 때는 FAB를 끄고, 해제 후 exit 타이밍 뒤에 다시 드러냄 */
+  const mobileOverlayBlocking = !!(detailStation || filterDrawerOpen)
+  const [fabReveal, setFabReveal] = useState(true)
+  const fabWasBlockedRef = useRef(mobileOverlayBlocking)
+  useEffect(() => {
+    if (mobileOverlayBlocking) {
+      setFabReveal(false)
+      fabWasBlockedRef.current = true
+      return undefined
+    }
+    if (fabWasBlockedRef.current) {
+      fabWasBlockedRef.current = false
+      setFabReveal(false)
+      const delay = motion.duration.exit + motion.duration.fabReveal
+      const id = window.setTimeout(() => setFabReveal(true), delay)
+      return () => window.clearTimeout(id)
+    }
+    setFabReveal(true)
+    return undefined
+  }, [mobileOverlayBlocking])
   const [userLocation, setUserLocation] = useState(null)
   const [locationError, setLocationError] = useState(null)
   const [locationLoading, setLocationLoading] = useState(false)
@@ -330,8 +605,9 @@ function App() {
   const [liveMapBounds, setLiveMapBounds] = useState(null)
   const [appliedMapBounds, setAppliedMapBounds] = useState(null)
   const liveMapBoundsRef = useRef(null)
-  liveMapBoundsRef.current = liveMapBounds
-  const [selectedStation, setSelectedStation] = useState(null)
+  useEffect(() => {
+    liveMapBoundsRef.current = liveMapBounds
+  }, [liveMapBounds])
 
   useEffect(() => {
     const key = import.meta.env.VITE_SAFEMAP_SERVICE_KEY
@@ -359,14 +635,19 @@ function App() {
   }, [])
 
   const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
     return items.filter((s) => {
       if (filterBusiNm && s.busiNm !== filterBusiNm) return false
       if (filterSpeed && s.speedCategory !== filterSpeed) return false
       if (filterCtprvnCd && s.ctprvnCd !== filterCtprvnCd) return false
       if (filterSggCd && s.sggCd !== filterSggCd) return false
+      if (q) {
+        const hay = [s.statNm, s.adres, s.rnAdres, s.busiNm].filter(Boolean).join(' ').toLowerCase()
+        if (!hay.includes(q)) return false
+      }
       return true
     })
-  }, [items, filterBusiNm, filterSpeed, filterCtprvnCd, filterSggCd])
+  }, [items, filterBusiNm, filterSpeed, filterCtprvnCd, filterSggCd, searchQuery])
 
   /** 초기: live 수신 시 applied가 없으면 적용. 이후는 버튼 탭 시에만 applied 갱신. */
   useEffect(() => {
@@ -428,27 +709,45 @@ function App() {
       .sort((a, b) => a.distanceKm - b.distanceKm)
   }, [sortedItemsInScope])
 
-  /** bounds 준비 전 모바일 목록용: filteredItems 거리순. 초기 빈 플래시 방지. */
-  const sortedFilteredItems = useMemo(() => {
-    const ref = userLocation || mapCenter
-    return filteredItems
-      .map((s) => ({
-        ...s,
-        distanceKm: haversineDistanceKm(ref.lat, ref.lng, s.lat, s.lng),
-      }))
-      .sort((a, b) => a.distanceKm - b.distanceKm)
-  }, [filteredItems, userLocation, mapCenter])
+  /**
+   * 모바일 목록이 비었을 때 메시지(원인별). filteredItems → itemsInScope → grouped 파이프라인 유지.
+   */
+  const mobileListEmptyInfo = useMemo(() => {
+    if (!isMobile || appliedMapBounds == null) return null
+    if (items.length === 0) {
+      return {
+        variant: 'no_data',
+        title: '불러온 충전소가 없습니다',
+        subtitle: '네트워크·API 키를 확인한 뒤 다시 시도해 주세요.',
+      }
+    }
+    if (filteredItems.length === 0) {
+      return {
+        variant: 'no_filter',
+        title: '조건에 맞는 충전소가 없습니다',
+        subtitle: '검색어를 지우거나 필터를 느슨하게 조정해 보세요.',
+      }
+    }
+    if (itemsInScope.length === 0) {
+      return {
+        variant: 'no_in_view',
+        title: '이 지도 범위에는 표시할 곳이 없습니다',
+        subtitle: '지도를 옮긴 뒤「이 지역 충전소 검색하기」로 영역을 맞춰 주세요.',
+      }
+    }
+    return null
+  }, [isMobile, appliedMapBounds, items.length, filteredItems.length, itemsInScope.length])
 
   /** 지도 마커용: 데스크탑=filteredItems, 모바일=applied 기준 groupedItemsInScope(1장소 1마커). 선택된 충전소는 범위 밖이어도 포함. */
   const displayStationsForMap = useMemo(() => {
     const base = isMobile
       ? (appliedMapBounds ? groupedItemsInScope : [])
       : filteredItems
-    if (selectedStation && !base.some((s) => s.id === selectedStation.id)) {
-      return [selectedStation, ...base]
+    if (mapSelectedStation && !base.some((s) => s.id === mapSelectedStation.id)) {
+      return [mapSelectedStation, ...base]
     }
     return base
-  }, [isMobile, appliedMapBounds, groupedItemsInScope, filteredItems, selectedStation])
+  }, [isMobile, appliedMapBounds, groupedItemsInScope, filteredItems, mapSelectedStation])
 
   /** live와 applied가 충분히 다를 때만 "이 지역 충전소 검색하기" 노출 (중심 거리 > 0.15km) */
   const showSearchAreaButton = useMemo(() => {
@@ -634,105 +933,117 @@ function App() {
     </Box>
   )
 
-  const MOBILE_SHEET_HEADER_PX = 56
-
   const panelEl = isMobile
     ? (
-        <Box
-          sx={{
-            position: 'fixed',
-            bottom: 0,
-            left: 0,
-            right: 0,
-            zIndex: 1000,
-            display: 'flex',
-            flexDirection: 'column',
-            overflow: 'hidden',
-            borderRadius: '16px 16px 0 0',
-            ...glass.panel,
-            boxShadow: '0 -4px 24px rgba(0,0,0,0.12)',
-            height: mobileSheetOpen ? '60vh' : MOBILE_SHEET_HEADER_PX,
-            maxHeight: mobileSheetOpen ? '65vh' : MOBILE_SHEET_HEADER_PX,
-            minHeight: mobileSheetOpen ? '55vh' : MOBILE_SHEET_HEADER_PX,
-            transition: 'height 0.3s ease, max-height 0.3s ease, min-height 0.3s ease',
-          }}
-        >
-          <Box
-            sx={{
-              flexShrink: 0,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: 1,
-              px: 1.5,
-              py: 1,
-              minHeight: MOBILE_SHEET_HEADER_PX,
-              boxSizing: 'border-box',
-              borderBottom: mobileSheetOpen ? `1px solid ${colors.gray[200]}` : 'none',
-            }}
-          >
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-              <EvStationIcon sx={{ fontSize: 20, color: colors.blue.primary, flexShrink: 0 }} />
-              <Typography variant="h6" sx={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.gray[800], lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {selectedStation
-                  ? `선택: ${selectedStation.statNm}`
-                  : appliedMapBounds == null
-                    ? '현재 지도 영역 확인 중…'
-                    : `현재 지도 영역 · ${groupedItemsInScope.length}곳`}
-              </Typography>
-            </Box>
-            <IconButton
-              onClick={() => setMobileSheetOpen((prev) => !prev)}
-              aria-label={mobileSheetOpen ? '패널 닫기' : '패널 열기'}
-              size="small"
-              sx={{
-                flexShrink: 0,
-                width: 44,
-                height: 44,
-                minWidth: 44,
-                minHeight: 44,
-                bgcolor: '#fff',
-                color: colors.gray[900],
-                border: `1px solid ${colors.gray[400]}`,
-                boxShadow: '0 2px 10px rgba(0,0,0,0.14)',
-                '& .MuiSvgIcon-root': { opacity: 1, color: 'inherit' },
-                '&:hover': { bgcolor: colors.gray[50], borderColor: colors.gray[500], boxShadow: '0 2px 12px rgba(0,0,0,0.18)' },
-              }}
-            >
-              {mobileSheetOpen ? <ChevronDown sx={{ fontSize: 22, color: 'inherit' }} /> : <ChevronUp sx={{ fontSize: 22, color: 'inherit' }} />}
-            </IconButton>
-          </Box>
-          <Box
-            sx={{
-              flex: 1,
-              minHeight: 0,
-              overflow: 'auto',
-              px: 2,
-              pb: 2,
-              pt: 0.5,
-              display: mobileSheetOpen ? 'block' : 'none',
-            }}
-          >
-            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              <StationListMobile
-                key={`scope-${appliedMapBounds ? [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng, appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng].join(',') : 'none'}-${groupedItemsInScope.length}`}
-                stations={groupedItemsInScope}
-                selectedId={selectedStation?.id}
-                onSelect={(s) => setSelectedStation(s)}
-                emptyMessage={appliedMapBounds == null ? '지도 영역을 불러오는 중…' : '현재 지도 영역에 표시할 충전소가 없습니다'}
-                emptySubMessage={appliedMapBounds != null && groupedItemsInScope.length === 0 ? '지도를 이동하거나 필터를 조정해 보세요' : null}
+        <MobileBottomSheet
+          key="mobile-bottom-sheet"
+          topOffsetPx={sheetLayout.topChromePx + 8}
+          collapsedPx={sheetLayout.collapsedPx}
+          halfVhRatio={sheetLayout.halfVhRatio}
+          snap={mobileSheetSnap}
+          onSnapChange={setMobileSheetSnap}
+          listScrollRef={sheetListScrollRef}
+          onSnapHeightPxChange={handleSheetSnapHeightPx}
+          renderHeader={({ snap, cycleSnap }) => (
+            <Box sx={{ pt: 0.75, pb: 0.5, userSelect: 'none' }}>
+              <Box
+                sx={{
+                  width: 36,
+                  height: 4,
+                  borderRadius: 2,
+                  bgcolor: colors.gray[300],
+                  mx: 'auto',
+                  mb: 0.75,
+                }}
+                aria-hidden
               />
-              <Box sx={{ flexShrink: 0, marginTop: 1, paddingTop: 1.5, borderTop: `1px solid ${colors.gray[200]}`, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-                <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', lineHeight: 1.4 }}>생활안전지도 API · 마커 클릭 시 상세</Typography>
-                <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', lineHeight: 1.4 }}>
-                  표시 {appliedMapBounds == null ? '—' : groupedItemsInScope.length}건
-                  {totalCount != null && totalCount !== items.length && ` · 전체 약 ${totalCount}건`}
-                </Typography>
-                <Typography component="span" sx={{ color: colors.gray[400], fontSize: '0.7rem', lineHeight: 1.4, marginTop: 0.25 }}>© whereEV2 · Created by James</Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 1,
+                  px: 1.25,
+                  minHeight: 40,
+                  boxSizing: 'border-box',
+                  borderBottom: snap !== 'collapsed' ? `1px solid ${colors.gray[200]}` : 'none',
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
+                  <EvStationIcon sx={{ fontSize: 18, color: colors.gray[600], flexShrink: 0 }} />
+                  <Typography variant="h6" sx={{ fontSize: '0.875rem', fontWeight: 600, color: colors.gray[800], lineHeight: 1.25, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {mapSelectedStation
+                      ? mapSelectedStation.statNm
+                      : appliedMapBounds == null
+                        ? '지도 영역 확인 중…'
+                        : `이 지역 ${groupedItemsInScope.length}곳`}
+                  </Typography>
+                </Box>
+                <IconButton
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    cycleSnap()
+                  }}
+                  aria-label={snap === 'collapsed' ? '목록 펼치기' : snap === 'full' ? '시트 접기' : '시트 크기 전환'}
+                  size="small"
+                  sx={{
+                    flexShrink: 0,
+                    width: 40,
+                    height: 40,
+                    minWidth: 40,
+                    minHeight: 40,
+                    bgcolor: colors.gray[50],
+                    color: colors.gray[800],
+                    border: `1px solid ${colors.gray[200]}`,
+                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    '& .MuiSvgIcon-root': { opacity: 1, color: 'inherit' },
+                    '&:hover': { bgcolor: colors.gray[100], borderColor: colors.gray[300] },
+                    '&:active': { transform: 'scale(0.96)' },
+                  }}
+                >
+                  {snap === 'collapsed' ? <ChevronUp sx={{ fontSize: 22, color: 'inherit' }} /> : <ChevronDown sx={{ fontSize: 22, color: 'inherit' }} />}
+                </IconButton>
               </Box>
             </Box>
+          )}
+        >
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+            <StationListMobile
+              key={`scope-${appliedMapBounds ? [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng, appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng].join(',') : 'none'}`}
+              stations={groupedItemsInScope}
+              selectedId={mapSelectedStation?.id}
+              loadingBounds={appliedMapBounds == null}
+              loadingHint="지도에 적용할 검색 영역을 준비하는 중입니다."
+              onSelect={(s) => {
+                mapSelectedStationRef.current = s
+                setMapSelectedStation(s)
+                if (isMobile && detailStationRef.current && detailHistoryPushed.current) {
+                  try {
+                    window.history.back()
+                  } catch {
+                    overlayStackRef.current.pop()
+                    closeDetailFromOverlay()
+                  }
+                  return
+                }
+                setDetailStation(null)
+                detailStationRef.current = null
+              }}
+              onOpenDetail={openDetailPreserve}
+              emptyMessage={mobileListEmptyInfo?.title ?? '표시할 충전소가 없습니다'}
+              emptySubMessage={mobileListEmptyInfo?.subtitle}
+              emptyVariant={mobileListEmptyInfo?.variant ?? 'no_in_view'}
+            />
+            <Box sx={{ flexShrink: 0, marginTop: 0.5, paddingTop: 1, borderTop: `1px solid ${colors.gray[200]}`, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+              <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.7rem', lineHeight: 1.35 }}>생활안전지도 API</Typography>
+              <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.7rem', lineHeight: 1.35 }}>
+                표시 {appliedMapBounds == null ? '—' : groupedItemsInScope.length}곳
+                {totalCount != null && totalCount !== items.length && ` · 전체 약 ${totalCount}건`}
+              </Typography>
+              <Typography component="span" sx={{ color: colors.gray[400], fontSize: '0.65rem', lineHeight: 1.35, marginTop: 0.125 }}>© whereEV2</Typography>
+            </Box>
           </Box>
-        </Box>
+        </MobileBottomSheet>
       )
     : (
         <>
@@ -765,11 +1076,16 @@ function App() {
               bottom: spacing.lg,
               width: panelW,
               zIndex: 1000,
-              transition: 'transform 0.3s ease',
+              transition: `transform ${motion.duration.panelSlide}ms ${motion.easing.panel}`,
               transform: panelOpen ? 'translateX(0)' : 'translateX(calc(-100% - 24px))',
             }}
           >
-            <SideOverlayPanel side="left" width="100%" sx={{ left: 0, right: 'auto', top: 0, bottom: 0, width: '100%', maxWidth: '100%', position: 'absolute', gap: 0 }}>
+            <SideOverlayPanel
+              scrollRef={desktopPanelScrollRef}
+              side="left"
+              width="100%"
+              sx={{ left: 0, right: 'auto', top: 0, bottom: 0, width: '100%', maxWidth: '100%', position: 'absolute', gap: 0 }}
+            >
               <IconButton
                 className="ev-panel-toggle"
                 onClick={() => setPanelOpen(false)}
@@ -820,51 +1136,95 @@ function App() {
           overflow: 'hidden',
         }}
       >
-        {/* 모바일 전용: 상단 충전 타입 빠른 필터 (가볍게) */}
+        {/* 모바일: 상단 앱 바 — 검색 · 내 위치 · 필터 (지도 최대화) */}
         {isMobile && (
           <Box
             sx={{
               position: 'absolute',
-              top: 10,
-              left: 10,
-              right: 52,
-              zIndex: 400,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 0.5,
-              overflowX: 'auto',
-              overflowY: 'hidden',
-              py: 0.5,
-              px: 0,
-              '&::-webkit-scrollbar': { height: 4 },
-              '&::-webkit-scrollbar-thumb': { borderRadius: 2, bgcolor: colors.gray[300] },
+              top: 0,
+              left: 0,
+              right: 0,
+              zIndex: 450,
+              pt: 'env(safe-area-inset-top, 0px)',
+              pl: 'max(10px, env(safe-area-inset-left, 0px))',
+              pr: 'max(10px, env(safe-area-inset-right, 0px))',
+              pb: 0.75,
+              bgcolor: 'rgba(255,255,255,0.92)',
+              backdropFilter: 'blur(10px)',
+              WebkitBackdropFilter: 'blur(10px)',
+              borderBottom: `1px solid ${colors.gray[200]}`,
+              boxShadow: '0 1px 0 rgba(0,0,0,0.04)',
             }}
           >
-            {SPEED_FILTER_OPTIONS.map((opt) => {
-              const v = opt.value
-              const selected = filterSpeed === v
-              return (
-                <Chip
-                  key={v || 'all'}
-                  label={opt.label}
-                  size="small"
-                  onClick={() => setFilterSpeed(v)}
-                  sx={{
-                    flexShrink: 0,
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minHeight: 48 }}>
+              <TextField
+                size="small"
+                placeholder="충전소·주소 검색"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                aria-label="충전소 검색"
+                sx={{
+                  flex: 1,
+                  minWidth: 0,
+                  '& .MuiOutlinedInput-root': {
                     fontSize: '0.8125rem',
-                    minHeight: 36,
-                    height: 36,
-                    bgcolor: selected ? colors.blue.primary : '#fff',
-                    color: selected ? colors.white : colors.gray[700],
-                    border: `1px solid ${selected ? colors.blue.primary : colors.gray[300]}`,
-                    '&:hover': {
-                      bgcolor: selected ? colors.blue.deep : colors.gray[50],
-                      borderColor: selected ? colors.blue.deep : colors.gray[400],
-                    },
-                  }}
-                />
-              )
-            })}
+                    bgcolor: colors.gray[50],
+                    borderRadius: `${radius.sm}px`,
+                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    '& fieldset': { borderColor: colors.gray[200] },
+                    '&:hover fieldset': { borderColor: colors.gray[300] },
+                    '&.Mui-focused fieldset': { borderColor: colors.blue.primary, borderWidth: 1 },
+                  },
+                  '& .MuiInputBase-input': { py: 0.875 },
+                }}
+                slotProps={{
+                  input: {
+                    startAdornment: (
+                      <InputAdornment position="start">
+                        <SearchIcon sx={{ fontSize: 20, color: colors.gray[500] }} />
+                      </InputAdornment>
+                    ),
+                  },
+                }}
+              />
+              <IconButton
+                onClick={() => setGeoNonce((n) => n + 1)}
+                aria-label="현재 위치로 이동"
+                sx={{
+                  flexShrink: 0,
+                  width: 44,
+                  height: 44,
+                  bgcolor: colors.gray[50],
+                  border: `1px solid ${colors.gray[200]}`,
+                  borderRadius: `${radius.sm}px`,
+                  color: colors.gray[800],
+                  transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+                  '&:hover': { bgcolor: colors.gray[100], borderColor: colors.gray[300] },
+                  '&:active': { transform: 'scale(0.95)' },
+                }}
+              >
+                <MyLocationIcon sx={{ fontSize: 22 }} />
+              </IconButton>
+              <IconButton
+                onClick={openFilterDrawer}
+                aria-label={detailStation ? '상세를 닫은 뒤 필터를 사용할 수 있습니다' : '필터'}
+                disabled={!!detailStation}
+                sx={{
+                  flexShrink: 0,
+                  width: 44,
+                  height: 44,
+                  bgcolor: colors.gray[50],
+                  border: `1px solid ${colors.gray[200]}`,
+                  borderRadius: `${radius.sm}px`,
+                  color: colors.gray[800],
+                  transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+                  '&:hover': { bgcolor: colors.gray[100], borderColor: colors.gray[300] },
+                  '&:active': { transform: 'scale(0.95)' },
+                }}
+              >
+                <TuneIcon sx={{ fontSize: 22 }} />
+              </IconButton>
+            </Box>
           </Box>
         )}
         {/* Full-screen map */}
@@ -884,21 +1244,31 @@ function App() {
           >
             <MapCenterTracker setMapCenter={setMapCenter} />
             <MapBoundsTracker setMapBounds={setLiveMapBounds} />
-            <MapFocusOnStation selectedStation={selectedStation} />
+            <MapFocusOnStation selectedStation={mapSelectedStation} />
             <MapView
                 stations={displayStationsForMap}
-                onDetailClick={(s) => setSelectedStation(s)}
-                selectedId={selectedStation?.id}
+                onDetailClick={openDetailPreserve}
+                selectedId={mapSelectedStation?.id}
                 isMobile={isMobile}
                 defaultMarkerIcon={DEFAULT_MARKER_ICON}
                 selectedMarkerIcon={SELECTED_MARKER_ICON}
               />
             <ZoomControl position="topright" />
-            <LocationControl
-              setUserLocation={setUserLocation}
-              setLocationError={setLocationError}
-              setLocationLoading={setLocationLoading}
-            />
+            {!isMobile && (
+              <LocationControl
+                setUserLocation={setUserLocation}
+                setLocationError={setLocationError}
+                setLocationLoading={setLocationLoading}
+              />
+            )}
+            {isMobile && (
+              <MapGeolocationSync
+                geoNonce={geoNonce}
+                setUserLocation={setUserLocation}
+                setLocationError={setLocationError}
+                setLocationLoading={setLocationLoading}
+              />
+            )}
             {userLocation && (
               <>
                 <Circle
@@ -929,10 +1299,10 @@ function App() {
             <Box
               sx={{
                 position: 'absolute',
-                top: 52,
-                right: 14,
+                top: isMobile ? 'calc(env(safe-area-inset-top, 0px) + 56px)' : 52,
+                right: isMobile ? 'max(10px, env(safe-area-inset-right, 0px))' : 14,
                 zIndex: 500,
-                maxWidth: 'calc(100% - 24px)',
+                maxWidth: isMobile ? 'calc(100% - 20px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))' : 'calc(100% - 24px)',
               }}
             >
               {locationLoading && (
@@ -995,16 +1365,43 @@ function App() {
           </Box>
         )}
 
-        {/* 모바일 전용: 시트 밖·시트 상단 바로 위 플로팅 액션 (시트와 같은 계층, 시각적으로 붙어 보이게) */}
-        {isMobile && showSearchAreaButton && (
+        {/*
+          레이어: 지도 < 목록시트(1000) < FAB(1001) < 필터 차단(1150) < 필터(1200) < 상세(1400).
+          필터 열림 시 투명 레이어로 지도 제스처를 확실히 삼킴(백드롭 틈 대비).
+          FAB는 오버레이 해제 후 exit + fabReveal ms 뒤 페이드인해 시트 전환과 어긋남 완화.
+        */}
+        {isMobile && filterDrawerOpen && (
+          <Box
+            sx={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1150,
+              pointerEvents: 'auto',
+              bgcolor: 'rgba(15,23,42,0.06)',
+              backdropFilter: 'brightness(0.97)',
+              WebkitBackdropFilter: 'brightness(0.97)',
+            }}
+            aria-hidden
+          />
+        )}
+        {isMobile && showSearchAreaButton && !mobileOverlayBlocking && (
           <Box
             sx={{
               position: 'fixed',
               left: 12,
               right: 12,
-              bottom: mobileSheetOpen ? 'calc(60vh + 8px)' : MOBILE_SHEET_HEADER_PX + 8,
+              paddingLeft: 'env(safe-area-inset-left, 0px)',
+              paddingRight: 'env(safe-area-inset-right, 0px)',
+              bottom: `calc(${mobileSheetHeightPx}px + env(safe-area-inset-bottom, 0px) + 8px)`,
               zIndex: 1001,
-              transition: 'bottom 0.3s ease',
+              opacity: fabReveal ? 1 : 0,
+              transform: fabReveal ? 'translateY(0)' : 'translateY(10px)',
+              pointerEvents: fabReveal ? 'auto' : 'none',
+              transition: [
+                `bottom ${motion.duration.sheet}ms ${motion.easing.standard}`,
+                `opacity ${motion.duration.enter}ms ${motion.easing.standard}`,
+                `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+              ].join(', '),
             }}
           >
             <Button
@@ -1012,14 +1409,16 @@ function App() {
               fullWidth
               onClick={() => setAppliedMapBounds(liveMapBoundsRef.current)}
               sx={{
-                py: 1.1,
-                borderRadius: 1.5,
-                boxShadow: '0 2px 12px rgba(0,0,0,0.12)',
+                py: 1,
+                borderRadius: `${radius.sm}px`,
+                boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
                 bgcolor: colors.blue.primary,
                 fontWeight: 600,
-                fontSize: '0.875rem',
+                fontSize: '0.8125rem',
                 textTransform: 'none',
-                '&:hover': { bgcolor: colors.blue.deep, boxShadow: '0 2px 16px rgba(0,0,0,0.15)' },
+                transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+                '&:hover': { bgcolor: colors.blue.deep, boxShadow: '0 2px 12px rgba(0,0,0,0.12)' },
+                '&:active': { transform: 'scale(0.98)' },
               }}
             >
               이 지역 충전소 검색하기
@@ -1030,7 +1429,28 @@ function App() {
         {/* 패널: 모바일 = 바텀시트, 데스크톱 = 좌측 패널 */}
         {panelEl}
 
-        <StationDetailModal open={!!selectedStation} station={selectedStation} onClose={() => setSelectedStation(null)} />
+        <MobileFilterSheet
+          open={filterDrawerOpen}
+          onClose={closeFilterDrawer}
+          speedOptions={SPEED_FILTER_OPTIONS}
+          filterSpeed={filterSpeed}
+          onFilterSpeedChange={setFilterSpeed}
+          filterBusiNm={filterBusiNm}
+          onFilterBusiNmChange={setFilterBusiNm}
+          busiOptions={filterOptions.busiNms}
+          filterCtprvnCd={filterCtprvnCd}
+          onFilterCtprvnCdChange={setFilterCtprvnCd}
+          ctprvnOptions={filterOptions.ctprvnCds}
+          filterSggCd={filterSggCd}
+          onFilterSggCdChange={setFilterSggCd}
+          sggOptions={filterOptions.sggCdsByCtprvn[filterCtprvnCd] ?? []}
+        />
+
+        {isMobile ? (
+          <StationDetailSheet open={!!detailStation} station={detailStation} onClose={handleCloseDetail} />
+        ) : (
+          <StationDetailModal open={!!detailStation} station={detailStation} onClose={closeDetailFromOverlay} />
+        )}
       </Box>
     </ThemeProvider>
   )

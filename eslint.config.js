@@ -24,6 +24,8 @@ export default defineConfig([
     },
     rules: {
       'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      // 데이터 로딩·미디어쿼리 동기화 등에서 흔한 패턴; 전면 리팩터 없이 유지
+      'react-hooks/set-state-in-effect': 'off',
     },
   },
 ])

@@ -1,6 +1,6 @@
 import { Box, Typography } from '@mui/material'
 import { GlassPanel } from './GlassPanel.jsx'
-import { colors } from '../theme/dashboardTheme.js'
+import { colors, motion } from '../theme/dashboardTheme.js'
 
 /**
  * KPI용 컴팩트 스탯 카드. 제목-숫자 타이트, 작은 요약 카드 스타일.
@@ -18,6 +18,7 @@ export function StatCard({ label, value, sx = {} }) {
         alignItems: 'flex-start',
         justifyContent: 'flex-start',
         gap: 0.5,
+        transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
         ...sx,
       }}
     >

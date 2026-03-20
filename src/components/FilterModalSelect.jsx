@@ -71,14 +71,14 @@ export function FilterModalSelect({
             left: '50%',
             transform: 'translate(-50%, -50%)',
             width: 'min(360px, 92vw)',
-            maxHeight: '70vh',
+            maxHeight: 'min(70dvh, 70vh)',
             bgcolor: 'background.paper',
-            borderRadius: radius.control,
-            boxShadow: 24,
+            borderRadius: `${radius.md}px`,
+            boxShadow: '0 8px 32px rgba(15,23,42,0.12)',
             display: 'flex',
             flexDirection: 'column',
             overflow: 'hidden',
-            padding: 2.5,
+            padding: 2,
             boxSizing: 'border-box',
           }}
         >
