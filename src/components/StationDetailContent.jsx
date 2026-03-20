@@ -249,15 +249,93 @@ const footerSectionTitleSx = { color: colors.gray[700], display: 'block', mb: 1,
 const metaBodySx = { color: colors.gray[600], ...appMobileType.body }
 
 /**
+ * 하단 길찾기·전화 CTA (모바일 시트에서는 스크롤 밖에 두기 위해 분리).
+ * @param {'dialog' | 'sheet'} variant — dialog: 본문 패딩 상쇄용 가로 bleed, sheet: 패딩 없음
+ */
+export function StationDetailFooterActions({ station, variant = 'dialog' }) {
+  if (!station) return null
+  const telno = station.telno?.trim() || ''
+  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`
+  const stackActions = variant === 'sheet'
+  const footerBleed = variant === 'dialog' ? { mx: -2, px: 2 } : {}
+
+  return (
+    <Box
+      sx={{
+        ...footerBleed,
+        pt: 1.5,
+        pb: stackActions ? 'calc(10px + env(safe-area-inset-bottom, 0px))' : 1.5,
+        borderTop: `1px solid ${colors.gray[200]}`,
+        bgcolor: colors.gray[50],
+      }}
+    >
+      <Typography variant="subtitle2" component="h3" sx={footerSectionTitleSx}>
+        이동·문의
+      </Typography>
+      <Box sx={{ display: 'flex', flexDirection: stackActions ? 'column' : 'row', gap: 1 }}>
+        <Button
+          variant="contained"
+          startIcon={<Directions />}
+          href={mapsUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={{
+            flex: 1,
+            minHeight: 48,
+            py: 1.125,
+            borderRadius: `${radius.sm}px`,
+            bgcolor: colors.blue.primary,
+            fontWeight: 600,
+            ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
+            textTransform: 'none',
+            boxShadow: '0 1px 4px rgba(37,99,235,0.25)',
+            transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+            '&:hover': { bgcolor: colors.blue.deep, boxShadow: '0 2px 8px rgba(37,99,235,0.3)' },
+            '&:active': { transform: 'scale(0.98)' },
+          }}
+        >
+          충전소 위치 길찾기
+        </Button>
+        {telno && (
+          <Button
+            variant="outlined"
+            startIcon={<Phone />}
+            href={`tel:${telno}`}
+            sx={{
+              flex: 1,
+              minHeight: 48,
+              py: 1.125,
+              borderRadius: `${radius.sm}px`,
+              borderColor: colors.gray[300],
+              bgcolor: colors.white,
+              color: colors.gray[800],
+              fontWeight: 600,
+              ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
+              textTransform: 'none',
+              transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+              '&:active': { transform: 'scale(0.98)' },
+            }}
+          >
+            전화
+          </Button>
+        )}
+      </Box>
+    </Box>
+  )
+}
+
+/**
  * 충전소 상세 본문(데스크톱 Dialog / 모바일 시트 공용).
  * station: 그룹(rows, totalChargers, …) 또는 단일 row.
  * @param {boolean} [chargerSummaryUpdatedInHeader] — true면 필터 블록 하단의 상태 갱신 문구 숨김(헤더에 표시될 때).
  * @param {'all'|'2'|'3'|'5'} [chargerStatFilter]
  * @param {(v: 'all'|'2'|'3'|'5') => void} [onChargerStatFilterChange]
+ * @param {boolean} [detachedFooter] — true면 이동·문의 CTA는 렌더하지 않음(시트 하단 고정 영역에서 별도 렌더).
  */
 export function StationDetailContent({
   station,
   stackActions = false,
+  detachedFooter = false,
   chargerSummaryUpdatedInHeader = false,
   chargerStatFilter = 'all',
   onChargerStatFilterChange,
@@ -292,20 +370,36 @@ export function StationDetailContent({
   if (!station) return null
 
   const telno = station.telno?.trim() || ''
-  const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`
-
   const addressLines = formatAddressBlockLines(station)
   const addressDisplay = addressLines.length ? addressLines.join('\n') : null
 
-  /** 시트·다이얼로그 본문 px:2와 맞춰 하단 액션 영역만 가로 풀폭 톤 */
-  const footerBleed = { mx: -2, px: 2 }
+  /** 모바일 시트: 필터 레일을 스크롤 상단에 붙임 */
+  const stickyRail = stackActions
 
   return (
     <>
       {chargerRows.length > 0 && (
         <Box sx={{ mb: 1.5 }}>
           {totalChargers > 0 && (
-            <Box>
+            <Box
+              sx={
+                stickyRail
+                  ? {
+                      position: 'sticky',
+                      top: 0,
+                      zIndex: 4,
+                      bgcolor: colors.white,
+                      mx: -2,
+                      px: 2,
+                      pt: 0.25,
+                      pb: 1,
+                      mb: 0.5,
+                      borderBottom: `1px solid ${colors.gray[100]}`,
+                      boxShadow: '0 6px 12px -8px rgba(15,23,42,0.12)',
+                    }
+                  : {}
+              }
+            >
               <Box
                 role="tablist"
                 aria-label="충전기 상태 필터"
@@ -319,8 +413,7 @@ export function StationDetailContent({
                   WebkitOverflowScrolling: 'touch',
                   pb: 0.25,
                   pt: 0.125,
-                  mx: -2,
-                  px: 2,
+                  ...(stickyRail ? {} : { mx: -2, px: 2 }),
                   scrollbarWidth: 'none',
                   '&::-webkit-scrollbar': { display: 'none' },
                 }}
@@ -389,9 +482,13 @@ export function StationDetailContent({
             />
             <Box
               sx={{
-                maxHeight: stackActions ? 280 : 240,
-                overflow: 'auto',
-                WebkitOverflowScrolling: 'touch',
+                ...(stackActions
+                  ? {}
+                  : {
+                      maxHeight: 240,
+                      overflow: 'auto',
+                      WebkitOverflowScrolling: 'touch',
+                    }),
                 pr: 0.25,
                 pt: 0.25,
               }}
@@ -455,68 +552,11 @@ export function StationDetailContent({
         </Box>
       </Box>
 
-      <Box
-        sx={{
-          ...footerBleed,
-          mt: 2,
-          pt: 1.5,
-          pb: stackActions ? 'calc(10px + env(safe-area-inset-bottom, 0px))' : 1.5,
-          borderTop: `1px solid ${colors.gray[200]}`,
-          bgcolor: colors.gray[50],
-        }}
-      >
-        <Typography variant="subtitle2" component="h3" sx={footerSectionTitleSx}>
-          이동·문의
-        </Typography>
-        <Box sx={{ display: 'flex', flexDirection: stackActions ? 'column' : 'row', gap: 1 }}>
-          <Button
-            variant="contained"
-            startIcon={<Directions />}
-            href={mapsUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            sx={{
-              flex: 1,
-              minHeight: 48,
-              py: 1.125,
-              borderRadius: `${radius.sm}px`,
-              bgcolor: colors.blue.primary,
-              fontWeight: 600,
-              ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
-              textTransform: 'none',
-              boxShadow: '0 1px 4px rgba(37,99,235,0.25)',
-              transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-              '&:hover': { bgcolor: colors.blue.deep, boxShadow: '0 2px 8px rgba(37,99,235,0.3)' },
-              '&:active': { transform: 'scale(0.98)' },
-            }}
-          >
-            충전소 위치 길찾기
-          </Button>
-          {telno && (
-            <Button
-              variant="outlined"
-              startIcon={<Phone />}
-              href={`tel:${telno}`}
-              sx={{
-                flex: 1,
-                minHeight: 48,
-                py: 1.125,
-                borderRadius: `${radius.sm}px`,
-                borderColor: colors.gray[300],
-                bgcolor: colors.white,
-                color: colors.gray[800],
-                fontWeight: 600,
-                ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
-                textTransform: 'none',
-                transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-                '&:active': { transform: 'scale(0.98)' },
-              }}
-            >
-              전화
-            </Button>
-          )}
+      {!detachedFooter ? (
+        <Box sx={{ mt: 2 }}>
+          <StationDetailFooterActions station={station} variant="dialog" />
         </Box>
-      </Box>
+      ) : null}
     </>
   )
 }

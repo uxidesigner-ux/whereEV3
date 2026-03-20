@@ -94,6 +94,7 @@ function rowsMatchingDetailStation(prev, flatItems) {
   return flatItems.filter((r) => placeKey(r) === key)
 }
 import { cssEscapeAttr } from './utils/cssEscape.js'
+import { buildRegionFilterOptions } from './utils/regionDisplay.js'
 import {
   appMobileType,
   colors,
@@ -753,6 +754,15 @@ function App() {
     liveMapBoundsRef.current = liveMapBounds
   }, [liveMapBounds])
 
+  /** 「이 지역 검색」: 영역 적용 + 목록 시트를 검색 결과 모드로(포커스·상세 초기화) */
+  const applySearchAreaFromMap = useCallback(() => {
+    setAppliedMapBounds(liveMapBoundsRef.current)
+    mapSelectedStationRef.current = null
+    setMapSelectedStation(null)
+    setDetailStation(null)
+    detailStationRef.current = null
+  }, [])
+
   useEffect(() => {
     const key = (import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
     if (!key) {
@@ -986,7 +996,7 @@ function App() {
     if (listSheetHeaderMode === 'detail' && detailStation) return detailStation.statNm
     if (listSheetHeaderMode === 'stationFocus' && mapSelectedStation) return mapSelectedStation.statNm
     if (appliedMapBounds == null) return '지도 영역 확인 중…'
-    return `검색 결과 ${stationsForMobileList.length}곳`
+    return `이 지역 충전소 ${stationsForMobileList.length}곳`
   }, [listSheetHeaderMode, detailStation, mapSelectedStation, appliedMapBounds, stationsForMobileList.length])
 
   /** 지도 마커용: 데스크탑=filteredItems, 모바일=applied 기준 groupedItemsInScope(1장소 1마커). 선택된 충전소는 범위 밖이어도 포함. */
@@ -1054,20 +1064,11 @@ function App() {
 
   const filterOptions = useMemo(() => {
     const busiNms = [...new Set(items.map((s) => s.busiNm).filter(Boolean))].sort()
-    const ctprvnCds = [...new Set(items.map((s) => s.ctprvnCd).filter(Boolean))].sort()
-    const sggByCtprvn = {}
-    items.forEach((s) => {
-      if (!s.ctprvnCd || !s.sggCd) return
-      if (!sggByCtprvn[s.ctprvnCd]) sggByCtprvn[s.ctprvnCd] = new Set()
-      sggByCtprvn[s.ctprvnCd].add(s.sggCd)
-    })
-    Object.keys(sggByCtprvn).forEach((k) => {
-      sggByCtprvn[k] = [...sggByCtprvn[k]].sort().map((v) => ({ value: v, label: v }))
-    })
+    const region = buildRegionFilterOptions(items)
     return {
       busiNms: busiNms.map((v) => ({ value: v, label: v })),
-      ctprvnCds: ctprvnCds.map((v) => ({ value: v, label: v })),
-      sggCdsByCtprvn: sggByCtprvn,
+      ctprvnCds: region.ctprvnCds,
+      sggCdsByCtprvn: region.sggCdsByCtprvn,
     }
   }, [items])
 
@@ -1148,8 +1149,8 @@ function App() {
           </Box>
         </Box>
         <FilterModalSelect label="운영기관" value={filterBusiNm} onChange={setFilterBusiNm} options={filterOptions.busiNms} placeholder="전체" searchable />
-        <FilterModalSelect label="시도코드" value={filterCtprvnCd} onChange={setFilterCtprvnCd} options={filterOptions.ctprvnCds} placeholder="미선택" />
-        <FilterModalSelect label="시군구코드" value={filterSggCd} onChange={setFilterSggCd} options={filterOptions.sggCdsByCtprvn[filterCtprvnCd] ?? []} placeholder="미선택" disabled={!filterCtprvnCd} disabledMessage="시도 먼저 선택" />
+        <FilterModalSelect label="지역" value={filterCtprvnCd} onChange={setFilterCtprvnCd} options={filterOptions.ctprvnCds} placeholder="미선택" />
+        <FilterModalSelect label="상세 지역" value={filterSggCd} onChange={setFilterSggCd} options={filterOptions.sggCdsByCtprvn[filterCtprvnCd] ?? []} placeholder="미선택" disabled={!filterCtprvnCd} disabledMessage="지역을 먼저 선택해 주세요" />
       </Box>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         <Typography variant="subtitle2" sx={{ color: colors.gray[700], fontWeight: 600 }}>운영기관별 충전기 (Top 10)</Typography>
@@ -1222,12 +1223,10 @@ function App() {
                 flexDirection: 'column',
                 flexShrink: 0,
                 boxSizing: 'border-box',
-                minHeight: 80,
+                minHeight: 88,
                 pt: 1,
                 userSelect: 'none',
                 bgcolor: colors.gray[50],
-                /* 접힘/펼침 동일: 헤더 블록 높이·패딩 고정, 구분선은 헤더 밖이 아닌 이 블록 하단만 */
-                borderBottom: `1px solid ${colors.gray[200]}`,
               }}
             >
               <Box
@@ -1245,7 +1244,7 @@ function App() {
                     height: 4,
                     borderRadius: 2,
                     bgcolor: colors.gray[300],
-                    mb: 1.5,
+                    mb: 1.75,
                   }}
                 />
               </Box>
@@ -1257,8 +1256,9 @@ function App() {
                   alignItems: 'center',
                   columnGap: 1,
                   alignSelf: 'stretch',
-                  px: 2.5,
-                  pb: 2,
+                  px: 2,
+                  /* 제목 블록과 정리선 사이 호흡 */
+                  pb: '18px',
                   minHeight: 44,
                   boxSizing: 'border-box',
                 }}
@@ -1307,6 +1307,16 @@ function App() {
                   {snap === 'collapsed' ? <ChevronUp sx={{ fontSize: 22, color: 'inherit' }} /> : <ChevronDown sx={{ fontSize: 22, color: 'inherit' }} />}
                 </IconButton>
               </Box>
+              <Box
+                component="div"
+                aria-hidden
+                sx={{
+                  height: 1,
+                  flexShrink: 0,
+                  bgcolor: 'rgba(15, 23, 42, 0.07)',
+                  width: '100%',
+                }}
+              />
             </Box>
           )}
           renderToolbar={() => (
@@ -1316,13 +1326,12 @@ function App() {
               sx={{
                 display: 'flex',
                 flexWrap: 'nowrap',
-                gap: 0.5,
+                gap: '10px',
                 overflowX: 'auto',
                 overflowY: 'hidden',
                 WebkitOverflowScrolling: 'touch',
                 scrollbarWidth: 'none',
                 '&::-webkit-scrollbar': { display: 'none' },
-                pb: 0.125,
               }}
             >
               {[
@@ -1349,22 +1358,23 @@ function App() {
                 <Chip
                   key={c.key}
                   label={c.label}
-                  size="small"
                   disabled={c.disabled}
                   onClick={c.disabled ? undefined : c.onClick}
                   sx={{
                     flexShrink: 0,
-                    height: 28,
-                    fontSize: '0.75rem',
-                    fontWeight: c.on ? 700 : 500,
+                    height: 42,
+                    fontSize: '0.875rem',
+                    lineHeight: 1.25,
+                    fontWeight: c.on ? 600 : 500,
+                    borderRadius: 9999,
                     bgcolor: c.disabled ? colors.gray[100] : c.on ? colors.blue.primary : colors.white,
                     color: c.disabled ? colors.gray[400] : c.on ? colors.white : colors.gray[700],
                     border: `1px solid ${
-                      c.disabled ? colors.gray[200] : c.on ? colors.blue.primary : colors.gray[300]
+                      c.disabled ? colors.gray[200] : c.on ? colors.blue.primary : colors.gray[200]
                     }`,
                     opacity: c.disabled ? 0.85 : 1,
                     transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
-                    '& .MuiChip-label': { px: 1.1 },
+                    '& .MuiChip-label': { px: '15px', py: 0 },
                     '&:hover': {
                       bgcolor: c.disabled
                         ? colors.gray[100]
@@ -1375,7 +1385,7 @@ function App() {
                         ? colors.gray[200]
                         : c.on
                           ? colors.blue.deep
-                          : colors.gray[400],
+                          : colors.gray[300],
                     },
                   }}
                 />
@@ -1404,21 +1414,6 @@ function App() {
                 ? 'no_filter'
                 : (mobileListEmptyInfo?.variant ?? 'no_in_view')
             }
-            onSelect={(s) => {
-              mapSelectedStationRef.current = s
-              setMapSelectedStation(s)
-              if (isMobile && detailStationRef.current && detailHistoryPushed.current) {
-                try {
-                  window.history.back()
-                } catch {
-                  overlayStackRef.current.pop()
-                  closeDetailFromOverlay()
-                }
-                return
-              }
-              setDetailStation(null)
-              detailStationRef.current = null
-            }}
             onOpenDetail={openDetailPreserve}
           />
         </MobileBottomSheet>
@@ -1831,7 +1826,7 @@ function App() {
             <Button
               variant="contained"
               startIcon={<SearchIcon sx={{ fontSize: 20 }} />}
-              onClick={() => setAppliedMapBounds(liveMapBoundsRef.current)}
+              onClick={applySearchAreaFromMap}
               sx={{
                 display: 'inline-flex',
                 width: 'auto',

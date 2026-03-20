@@ -245,8 +245,8 @@ export const mobileMapChrome = {
 
 /** 바텀 시트 스냅(뷰포트 대비 비율은 MobileBottomSheet props로 조정) */
 export const sheetLayout = {
-  /** 목록 시트 접힘 높이 — 헤더(핸들+타이틀 행+divider) min 높이와 맞춤 */
-  collapsedPx: 94,
+  /** 목록 시트 접힘 높이 — 헤더(핸들+타이틀 블록+얇은 정리선) min 높이와 맞춤 */
+  collapsedPx: 98,
   halfVhRatio: 0.42,
   /** @deprecated 플로팅 크롬 — 호환용 */
   topChromePx: 56,

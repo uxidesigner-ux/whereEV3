@@ -46,7 +46,10 @@ export function MobileFilterSheet({
   const [busiSearch, setBusiSearch] = useState('')
   const titleRef = useRef(null)
   const ctprvnSelected = !!draft.ctprvnCd
-  const sggOptions = sggCdsByCtprvn[draft.ctprvnCd] ?? []
+  const sggOptions = useMemo(
+    () => sggCdsByCtprvn[draft.ctprvnCd] ?? [],
+    [sggCdsByCtprvn, draft.ctprvnCd]
+  )
 
   useEffect(() => {
     if (!open) return
@@ -75,6 +78,18 @@ export function MobileFilterSheet({
       return t.includes(q)
     })
   }, [busiOptions, busiSearch])
+
+  const selectedCtprvnLabel = useMemo(() => {
+    if (!draft.ctprvnCd) return ''
+    const o = ctprvnOptions.find((x) => String(x.value ?? x) === String(draft.ctprvnCd))
+    return (o?.label ?? o?.value ?? '').toString()
+  }, [ctprvnOptions, draft.ctprvnCd])
+
+  const selectedSggLabel = useMemo(() => {
+    if (!draft.sggCd) return ''
+    const o = sggOptions.find((x) => String(x.value ?? x) === String(draft.sggCd))
+    return (o?.label ?? o?.value ?? '').toString()
+  }, [sggOptions, draft.sggCd])
 
   const resetDraft = () => setDraft(defaultDraft())
 
@@ -309,9 +324,35 @@ export function MobileFilterSheet({
           })}
         </List>
 
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 1, fontSize: '0.8125rem' }}>
-          시도 코드
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 0.5, fontSize: '0.8125rem' }}>
+          지역
         </Typography>
+        <Typography variant="caption" sx={{ display: 'block', color: colors.gray[500], fontSize: '0.75rem', mb: 0.75, lineHeight: 1.45 }}>
+          시·도 단위로 먼저 좁힙니다.
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.75, mb: 1 }}>
+          {draft.ctprvnCd && selectedCtprvnLabel ? (
+            <Chip
+              label={selectedCtprvnLabel}
+              size="small"
+              variant="outlined"
+              sx={{
+                height: 32,
+                borderRadius: 9999,
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+                borderColor: colors.gray[200],
+                bgcolor: colors.white,
+                color: colors.gray[800],
+                '& .MuiChip-label': { px: 1.5 },
+              }}
+            />
+          ) : (
+            <Typography variant="caption" component="span" sx={{ color: colors.gray[500], fontSize: '0.8125rem' }}>
+              선택 안 함
+            </Typography>
+          )}
+        </Box>
         <List dense disablePadding sx={{ mb: 2.5, maxHeight: 132, overflow: 'auto', border: `1px solid ${colors.gray[200]}`, borderRadius: `${radius.md}px` }}>
           <ListItemButton
             selected={!draft.ctprvnCd}
@@ -336,9 +377,54 @@ export function MobileFilterSheet({
           })}
         </List>
 
-        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 1, fontSize: '0.8125rem' }}>
-          시군구 코드
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 0.5, fontSize: '0.8125rem' }}>
+          상세 지역
         </Typography>
+        <Typography
+          variant="caption"
+          sx={{
+            display: 'block',
+            color: colors.gray[500],
+            fontSize: '0.75rem',
+            mb: 0.75,
+            lineHeight: 1.45,
+            opacity: ctprvnSelected ? 1 : 0.7,
+          }}
+        >
+          {ctprvnSelected ? '구·군·시 단위로 더 좁힐 수 있어요.' : '위에서 지역을 먼저 선택해 주세요.'}
+        </Typography>
+        <Box
+          sx={{
+            display: 'flex',
+            flexWrap: 'wrap',
+            alignItems: 'center',
+            gap: 0.75,
+            mb: 1,
+            opacity: ctprvnSelected ? 1 : 0.55,
+          }}
+        >
+          {draft.sggCd && selectedSggLabel ? (
+            <Chip
+              label={selectedSggLabel}
+              size="small"
+              variant="outlined"
+              sx={{
+                height: 32,
+                borderRadius: 9999,
+                fontWeight: 600,
+                fontSize: '0.8125rem',
+                borderColor: colors.gray[200],
+                bgcolor: colors.white,
+                color: colors.gray[800],
+                '& .MuiChip-label': { px: 1.5 },
+              }}
+            />
+          ) : (
+            <Typography variant="caption" component="span" sx={{ color: colors.gray[500], fontSize: '0.8125rem' }}>
+              {ctprvnSelected ? '선택 안 함' : '—'}
+            </Typography>
+          )}
+        </Box>
         <List
           dense
           disablePadding

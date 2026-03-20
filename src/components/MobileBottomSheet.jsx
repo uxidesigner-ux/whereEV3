@@ -194,10 +194,11 @@ export function MobileBottomSheet({
           <Box
             sx={{
               flexShrink: 0,
-              px: 2.5,
-              pt: 0.5,
-              pb: 1,
-              borderBottom: `1px solid ${colors.gray[200]}`,
+              px: 2,
+              /* 정리선과 필터 rail 사이 */
+              pt: '14px',
+              pb: '14px',
+              borderBottom: '1px solid rgba(15, 23, 42, 0.07)',
               bgcolor: colors.gray[50],
               display: snap === 'collapsed' ? 'none' : 'block',
             }}
@@ -218,8 +219,8 @@ export function MobileBottomSheet({
             WebkitOverflowScrolling: 'touch',
             px: 2.5,
             pb: 1,
-            /* 헤더 borderBottom 직후 ~12px — 펼침 시에만 보이며 헤더 레이아웃과 분리 */
-            pt: 1.5,
+            /* 필터 rail 하단 정리선과 목록 사이 */
+            pt: '14px',
           }}
         >
           {children}

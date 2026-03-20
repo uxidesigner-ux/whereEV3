@@ -285,6 +285,9 @@ export function normalizeCharger(item, index) {
      */
     ctprvnCd: get(item, 'ctprvn_cd', 'ctprvnCd'),
     sggCd: get(item, 'sgg_cd', 'sggCd'),
+    /** API에 있으면 필터·표시에 우선 사용 */
+    ctprvnNm: get(item, 'ctprvn_nm', 'ctprvnNm'),
+    sggNm: get(item, 'sgg_nm', 'sggNm'),
     emdCd: get(item, 'emd_cd', 'emdCd'),
     lat: converted.lat,
     lng: converted.lng,

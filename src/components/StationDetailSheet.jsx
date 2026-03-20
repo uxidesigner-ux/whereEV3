@@ -3,7 +3,7 @@ import { Drawer, Box, IconButton, Typography, CircularProgress } from '@mui/mate
 import Close from '@mui/icons-material/Close'
 import Refresh from '@mui/icons-material/Refresh'
 import { appMobileType, colors, radius, motion } from '../theme/dashboardTheme.js'
-import { StationDetailContent } from './StationDetailContent.jsx'
+import { StationDetailContent, StationDetailFooterActions } from './StationDetailContent.jsx'
 
 const SWIPE_CLOSE_PX = 56
 /** px/ms, 아래 방향 양수 */
@@ -198,26 +198,45 @@ export function StationDetailSheet({
             </Box>
           </Box>
           <Box
-            component="div"
-            role="document"
             sx={{
               flex: 1,
               minHeight: 0,
-              overflow: 'auto',
-              px: 2,
-              pt: 1.25,
-              pb: 1,
-              WebkitOverflowScrolling: 'touch',
-              touchAction: 'pan-y',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
             }}
           >
-            <StationDetailContent
-              station={station}
-              stackActions
-              chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
-              chargerStatFilter={chargerStatFilter}
-              onChargerStatFilterChange={setChargerStatFilter}
-            />
+            <Box
+              component="div"
+              role="document"
+              sx={{
+                flex: 1,
+                minHeight: 0,
+                overflow: 'auto',
+                px: 2,
+                pt: 1.25,
+                pb: 1.5,
+                WebkitOverflowScrolling: 'touch',
+                touchAction: 'pan-y',
+              }}
+            >
+              <StationDetailContent
+                station={station}
+                stackActions
+                detachedFooter
+                chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
+                chargerStatFilter={chargerStatFilter}
+                onChargerStatFilterChange={setChargerStatFilter}
+              />
+            </Box>
+            <Box
+              sx={{
+                flexShrink: 0,
+                px: 2,
+              }}
+            >
+              <StationDetailFooterActions station={station} variant="sheet" />
+            </Box>
           </Box>
         </>
       ) : null}
