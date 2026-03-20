@@ -4,6 +4,7 @@ import {
   Box,
   Typography,
   CircularProgress,
+  LinearProgress,
   Alert,
   useMediaQuery,
   IconButton,
@@ -38,7 +39,8 @@ import {
 } from 'recharts'
 import {
   fetchEvChargers,
-  fetchEvChargersProgressive,
+  fetchEvChargersFirstPageBatch,
+  fetchEvChargersProgressiveContinue,
   aggregateStatCounts,
   getLatestStatUpdDt,
   formatStatSummary,
@@ -119,7 +121,6 @@ import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
 import { MobileMapQuickSearchChipsRail } from './components/MobileMapQuickSearchChipsRail.jsx'
 import { EvStationMapLayer } from './components/EvStationMapLayer.jsx'
 import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
-import { MapInitialGeolocation } from './components/MapInitialGeolocation.jsx'
 import { StationDetailModal } from './components/StationDetailModal.jsx'
 import { StationDetailFooterActions } from './components/StationDetailContent.jsx'
 import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
@@ -127,7 +128,54 @@ import { MobileDetailSheetBody } from './components/MobileDetailSheetBody.jsx'
 import { MobileFilterSheet } from './components/MobileFilterSheet.jsx'
 import { ThemeAppearanceControl } from './components/ThemeAppearanceControl.jsx'
 
-const SEOUL_CENTER = [37.5665, 126.978]
+/** 위치 미수신 시 초기 지도 중심(광화문 일대) */
+const GWANGHWAMUN_CENTER = [37.5759, 126.9769]
+
+/**
+ * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
+ */
+function easeBootProgress(setProgress, from, to, durationMs) {
+  return new Promise((resolve) => {
+    const t0 = performance.now()
+    const tick = (now) => {
+      const u = Math.min(1, (now - t0) / Math.max(1, durationMs))
+      const ease = 1 - (1 - u) ** 2
+      setProgress(from + (to - from) * ease)
+      if (u < 1) requestAnimationFrame(tick)
+      else {
+        setProgress(to)
+        resolve()
+      }
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
+function getBootstrapGeolocationPosition() {
+  return new Promise((resolve) => {
+    const fallback = () =>
+      resolve({
+        lat: GWANGHWAMUN_CENTER[0],
+        lng: GWANGHWAMUN_CENTER[1],
+        usedGeo: false,
+      })
+    if (typeof navigator === 'undefined' || !navigator.geolocation) {
+      fallback()
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        resolve({
+          lat: pos.coords.latitude,
+          lng: pos.coords.longitude,
+          usedGeo: true,
+        })
+      },
+      () => fallback(),
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 120000 },
+    )
+  })
+}
 
 /** 지도 클러스터용 뷰포트 반영 지연(패닝 시 연산·마커 갱신 부담 완화) */
 const MAP_CLUSTER_BOUNDS_DEBOUNCE_MS = 320
@@ -401,7 +449,13 @@ function App() {
   const chartPalette = tokens.chartBlue
   const [items, setItems] = useState([])
   const [totalCount, setTotalCount] = useState(null)
-  const [loading, setLoading] = useState(true)
+  const [appReady, setAppReady] = useState(false)
+  const [bootProgress, setBootProgress] = useState(0)
+  const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
+  const [leafletInitial, setLeafletInitial] = useState(() => ({
+    center: GWANGHWAMUN_CENTER,
+    zoom: 11,
+  }))
   const [apiError, setApiError] = useState(null)
   const [lastEvFetchAt, setLastEvFetchAt] = useState(null)
   const [detailRefreshing, setDetailRefreshing] = useState(false)
@@ -766,7 +820,7 @@ function App() {
   const [userLocation, setUserLocation] = useState(null)
   const [locationError, setLocationError] = useState(null)
   const [locationLoading, setLocationLoading] = useState(false)
-  const [mapCenter, setMapCenter] = useState({ lat: SEOUL_CENTER[0], lng: SEOUL_CENTER[1] })
+  const [mapCenter, setMapCenter] = useState({ lat: GWANGHWAMUN_CENTER[0], lng: GWANGHWAMUN_CENTER[1] })
   const [liveMapBounds, setLiveMapBounds] = useState(null)
   /** 디바운스된 뷰포트 — 지도 마커/클러스터 계산에만 사용 */
   const [mapClusterBoundsRaw, setMapClusterBoundsRaw] = useState(null)
@@ -819,57 +873,102 @@ function App() {
   }, [isMobile])
 
   useEffect(() => {
-    const key = (import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
-    if (!key) {
-      setLoading(false)
-      if (import.meta.env.DEV) {
-        const mock = getDevMockEvChargers()
-        setApiError(null)
-        setItems(mock)
-        setTotalCount(mock.length)
-        setLastEvFetchAt(new Date().toISOString())
-        console.info(
-          `[whereEV3] API 키 없음 — 로컬 대체 충전소 데이터 ${mock.length}건(dev-mock). 실제 Safemap 데이터는 .env.local의 VITE_SAFEMAP_SERVICE_KEY 설정 후 재시작하세요. (docs/DATA-SOURCES.md)`
-        )
-        return
-      }
-      setApiError('VITE_SAFEMAP_SERVICE_KEY를 .env 또는 .env.local에 설정해 주세요.')
-      return
-    }
     const ac = new AbortController()
     let cancelled = false
-    let receivedFirstPage = false
-    setLoading(true)
-    setApiError(null)
-    setItems([])
 
     ;(async () => {
+      const key = (import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
+      setBootProgress(0)
+      setBootStageMessage('시작하는 중')
+
+      setBootStageMessage('위치 확인 중')
+      const pLoc = easeBootProgress(setBootProgress, 0, 24, 500)
+      const pos = await getBootstrapGeolocationPosition()
+      await pLoc
+      if (cancelled) return
+
+      setBootProgress(25)
+      const mapW = typeof window !== 'undefined' ? window.innerWidth : 400
+      const spanM = pos.usedGeo ? 1000 : 2000
+      const mapZ = zoomForHorizontalSpanMeters(mapW, spanM, pos.lat)
+      const view = { center: /** @type {[number, number]} */ ([pos.lat, pos.lng]), zoom: mapZ }
+      setLeafletInitial(view)
+      if (pos.usedGeo) setUserLocation({ lat: pos.lat, lng: pos.lng })
+      else setUserLocation(null)
+
+      if (!key) {
+        setBootStageMessage('주변 충전소 불러오는 중')
+        await easeBootProgress(setBootProgress, 25, 65, 450)
+        if (cancelled) return
+        if (import.meta.env.DEV) {
+          const mock = getDevMockEvChargers()
+          setApiError(null)
+          setItems(mock)
+          setTotalCount(mock.length)
+          setLastEvFetchAt(new Date().toISOString())
+          console.info(
+            `[whereEV3] API 키 없음 — 로컬 대체 충전소 데이터 ${mock.length}건(dev-mock). 실제 Safemap 데이터는 .env.local의 VITE_SAFEMAP_SERVICE_KEY 설정 후 재시작하세요. (docs/DATA-SOURCES.md)`
+          )
+        } else {
+          setApiError('VITE_SAFEMAP_SERVICE_KEY를 .env 또는 .env.local에 설정해 주세요.')
+          setItems([])
+          setTotalCount(null)
+        }
+        setBootStageMessage('지도 준비 중')
+        await easeBootProgress(setBootProgress, 70, 94, 420)
+        if (cancelled) return
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+        await new Promise((r) => setTimeout(r, 160))
+        if (cancelled) return
+        setBootProgress(100)
+        setAppReady(true)
+        return
+      }
+
+      setApiError(null)
+      setItems([])
+      setBootStageMessage('주변 충전소 불러오는 중')
+      const pFetch = easeBootProgress(setBootProgress, 25, 68, 2800)
+      let first = /** @type {Awaited<ReturnType<typeof fetchEvChargersFirstPageBatch>> | null} */ (null)
       try {
-        await fetchEvChargersProgressive({
-          signal: ac.signal,
+        first = await fetchEvChargersFirstPageBatch({ numOfRows: 500, signal: ac.signal })
+      } catch (err) {
+        if (!cancelled) setApiError(err.message || '데이터를 불러오지 못했습니다.')
+      }
+      await pFetch
+      if (cancelled) return
+
+      if (first && !first.aborted) {
+        setItems(first.batch)
+        setTotalCount(first.totalCount != null ? first.totalCount : first.batch.length)
+      }
+
+      setBootProgress(70)
+      setBootStageMessage('지도 준비 중')
+      await easeBootProgress(setBootProgress, 70, 94, 480)
+      if (cancelled) return
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      await new Promise((r) => setTimeout(r, 200))
+      if (cancelled) return
+      setBootProgress(100)
+      setAppReady(true)
+
+      if (first && !first.aborted && !first.isLast) {
+        fetchEvChargersProgressiveContinue({
+          startPage: 2,
+          initialGlobalIndex: first.loadedCount,
           numOfRows: 500,
           maxPages: 200,
-          onPage: ({ batch, isFirst, totalCount, isLast }) => {
+          signal: ac.signal,
+          seedTotalCount: first.totalCount,
+          onPage: async ({ batch, isLast }) => {
             if (cancelled) return
-            if (isFirst) {
-              receivedFirstPage = true
-              setItems(batch)
-              setTotalCount(totalCount != null ? totalCount : batch.length)
-              setLoading(false)
-            } else if (batch.length > 0) {
-              setItems((prev) => [...prev, ...batch])
-            }
-            if (isLast && !cancelled) {
-              setLastEvFetchAt(new Date().toISOString())
-            }
+            if (batch.length) setItems((prev) => [...prev, ...batch])
+            if (isLast && !cancelled) setLastEvFetchAt(new Date().toISOString())
           },
-        })
-      } catch (err) {
-        if (!cancelled) {
-          setApiError(err.message || '데이터를 불러오지 못했습니다.')
-        }
-      } finally {
-        if (!cancelled && !receivedFirstPage) setLoading(false)
+        }).catch(() => {})
+      } else if (first && !first.aborted && first.isLast) {
+        setLastEvFetchAt(new Date().toISOString())
       }
     })()
 
@@ -1287,7 +1386,8 @@ function App() {
     [detailStation]
   )
 
-  if (loading) {
+  if (!appReady) {
+    const pct = Math.min(100, Math.max(0, Math.round(bootProgress)))
     return (
       <Box
         sx={{
@@ -1298,12 +1398,35 @@ function App() {
           justifyContent: 'center',
           bgcolor: tokens.bg.app,
           zIndex: 2000,
+          px: 2,
         }}
       >
-        <GlassPanel elevation="panel" sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <CircularProgress size={32} sx={{ color: tokens.blue.main }} />
-          <Typography variant="body2" color="text.secondary">
-            충전소 데이터 불러오는 중
+        <GlassPanel
+          elevation="panel"
+          sx={{
+            width: '100%',
+            maxWidth: 360,
+            p: 2.5,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1.5,
+          }}
+        >
+          <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600 }}>
+            {bootStageMessage}
+          </Typography>
+          <LinearProgress
+            variant="determinate"
+            value={pct}
+            sx={{
+              height: 6,
+              borderRadius: 1,
+              bgcolor: tokens.bg.subtle,
+              '& .MuiLinearProgress-bar': { borderRadius: 1, bgcolor: tokens.blue.main },
+            }}
+          />
+          <Typography variant="caption" color="text.secondary" sx={{ alignSelf: 'flex-end' }}>
+            {pct}%
           </Typography>
         </GlassPanel>
       </Box>
@@ -1415,6 +1538,7 @@ function App() {
           topOffsetPx={sheetLayout.mobileTopBarStackPx}
           halfVhRatio={detailStation ? 0.7 : sheetLayout.halfVhRatio}
           halfMaxAvailableRatio={detailStation ? 1 : 0.68}
+          scrollContentTopDense={!!detailStation}
           snap={mobileSheetSnap}
           onSnapChange={handleMobileSheetSnapChange}
           listScrollRef={sheetListScrollRef}
@@ -1539,7 +1663,7 @@ function App() {
                         gap: 1,
                         px: MOBILE_DETAIL_HEADER_GUTTER,
                         pt: 0.75,
-                        pb: 0.75,
+                        pb: 0.5,
                       }}
                     >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
@@ -2083,15 +2207,14 @@ function App() {
           }}
         >
           <MapContainer
-            center={SEOUL_CENTER}
-            zoom={11}
+            center={leafletInitial.center}
+            zoom={leafletInitial.zoom}
             style={{ height: '100%', width: '100%' }}
             scrollWheelZoom
             zoomControl={false}
           >
             <MapCenterTracker setMapCenter={setMapCenter} />
             <MapBoundsTracker setMapBounds={setLiveMapBounds} />
-            <MapInitialGeolocation setUserLocation={setUserLocation} />
             <MapMobileSearchViewportFitter
               enabled={isMobile}
               fitNonce={searchViewportFitNonce}

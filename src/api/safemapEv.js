@@ -412,3 +412,91 @@ export async function fetchEvChargersProgressive({
 
   return { aborted: false, loadedCount: globalIndex, totalCount: reportedTotal ?? globalIndex }
 }
+
+/**
+ * 앱 부트스트랩: 1페이지만 받은 뒤 지도를 띄우고, 나머지는 백그라운드에서 이어 받는다.
+ */
+export async function fetchEvChargersFirstPageBatch({ numOfRows = 500, signal } = {}) {
+  if (signal?.aborted) {
+    return { aborted: true, batch: [], totalCount: null, isLast: true, loadedCount: 0 }
+  }
+  const data = await fetchEvChargersPage({ pageNo: 1, numOfRows })
+  if (signal?.aborted) {
+    return { aborted: true, batch: [], totalCount: null, isLast: true, loadedCount: 0 }
+  }
+  const list = extractListFromResponse(data)
+  const totalRaw = data.response?.body?.totalCount ?? data.body?.totalCount ?? data.totalCount
+  const reportedTotal = totalRaw != null ? Number(totalRaw) : null
+  const batch = []
+  for (let i = 0; i < list.length; i++) {
+    const n = normalizeCharger(list[i], i)
+    if (n) batch.push(n)
+  }
+  const shortPage = list.length < numOfRows
+  const reachedTotal = reportedTotal != null && batch.length >= reportedTotal
+  const isLast = shortPage || reachedTotal
+  return {
+    aborted: false,
+    batch,
+    totalCount: reportedTotal,
+    isLast,
+    loadedCount: batch.length,
+  }
+}
+
+/**
+ * 2페이지부터 순차 로드 (부트스트랩 1페이지 이후 전용).
+ */
+export async function fetchEvChargersProgressiveContinue({
+  startPage = 2,
+  initialGlobalIndex = 0,
+  numOfRows = 500,
+  maxPages = 200,
+  signal,
+  onPage,
+  seedTotalCount = null,
+} = {}) {
+  let page = startPage
+  let globalIndex = initialGlobalIndex
+  let reportedTotal = seedTotalCount
+
+  while (page <= maxPages) {
+    if (signal?.aborted) {
+      return { aborted: true, loadedCount: globalIndex, totalCount: reportedTotal }
+    }
+    const data = await fetchEvChargersPage({ pageNo: page, numOfRows })
+    if (signal?.aborted) {
+      return { aborted: true, loadedCount: globalIndex, totalCount: reportedTotal }
+    }
+    const list = extractListFromResponse(data)
+    const totalRaw = data.response?.body?.totalCount ?? data.body?.totalCount ?? data.totalCount
+    if (totalRaw != null) reportedTotal = Number(totalRaw)
+
+    const batch = []
+    for (let i = 0; i < list.length; i++) {
+      const n = normalizeCharger(list[i], globalIndex + i)
+      if (n) batch.push(n)
+    }
+
+    const shortPage = list.length < numOfRows
+    const reachedTotal =
+      reportedTotal != null && globalIndex + batch.length >= reportedTotal
+    const isLast = shortPage || reachedTotal || page >= maxPages
+
+    if (onPage) {
+      await onPage({
+        batch,
+        pageIndex: page,
+        isFirst: false,
+        totalCount: reportedTotal,
+        isLast,
+      })
+    }
+
+    globalIndex += batch.length
+    if (isLast) break
+    page += 1
+  }
+
+  return { aborted: false, loadedCount: globalIndex, totalCount: reportedTotal ?? globalIndex }
+}

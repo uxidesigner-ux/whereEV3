@@ -2,12 +2,12 @@ import { useEffect, useRef } from 'react'
 import { useMap } from 'react-leaflet'
 import { zoomForHorizontalSpanMeters } from '../utils/mapZoomMeters.js'
 
-/** 위치 실패 시 초기 뷰 (서울 시청 일대) */
-const FALLBACK_CENTER = [37.5665, 126.978]
+/** 위치 실패 시 초기 뷰 (광화문 일대) */
+const FALLBACK_CENTER = [37.5759, 126.9769]
 
 /**
  * 앱 최초 1회: 위치 성공 시 현재 위치 + 가로폭 ≈ 1000m.
- * 실패·미지원 시 서울 중심 + 가로폭 ≈ 2000m. (로딩 UI 없음)
+ * 실패·미지원 시 광화문 중심 + 가로폭 ≈ 2000m. (로딩 UI 없음)
  */
 export function MapInitialGeolocation({ setUserLocation }) {
   const map = useMap()
