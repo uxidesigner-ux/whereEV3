@@ -4,7 +4,8 @@ import Phone from '@mui/icons-material/Phone'
 import MapOutlined from '@mui/icons-material/MapOutlined'
 import SearchOff from '@mui/icons-material/SearchOff'
 import InboxOutlined from '@mui/icons-material/InboxOutlined'
-import { appMobileType, colors, motion, radius } from '../theme/dashboardTheme.js'
+import { appMobileType, motion, radius } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 import { groupHasMvpAvailableCharger } from '../data/chargerSessionMvp.js'
 import { formatDistanceKm } from '../utils/geo.js'
 
@@ -30,6 +31,7 @@ export function StationListMobile({
   emptySubMessage,
   emptyVariant,
 }) {
+  const { colors } = useEvTheme()
   if (loadingBounds) {
     return (
       <Box sx={{ py: 0.5 }}>

@@ -1,8 +1,9 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useMemo, createContext, useContext } from 'react'
 import { Typography, Box, Button, Chip, Stack, LinearProgress } from '@mui/material'
 import Directions from '@mui/icons-material/Directions'
 import Phone from '@mui/icons-material/Phone'
-import { appMobileType, colors, radius, motion } from '../theme/dashboardTheme.js'
+import { appMobileType, radius, motion } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 import {
   formatAddressBlockLines,
   formatChargerExplicitTime,
@@ -21,54 +22,97 @@ function chargerRowsFromStation(station) {
   return [station]
 }
 
-const chipSx = {
-  avail: { bgcolor: 'rgba(22,163,74,0.14)', color: '#166534', fontWeight: 700, border: '1px solid rgba(22,163,74,0.35)' },
-  use: { bgcolor: 'rgba(245,158,11,0.16)', color: '#b45309', fontWeight: 700, border: '1px solid rgba(217,119,6,0.4)' },
-  maint: { bgcolor: colors.gray[200], color: colors.gray[600], fontWeight: 700, border: `1px solid ${colors.gray[300]}` },
+/** @typedef {ReturnType<typeof buildDetailUi>} StationDetailUiValue */
+
+const StationDetailUiContext = /** @type {import('react').Context<StationDetailUiValue | null>} */ (createContext(null))
+
+function buildDetailUi(colors, tokens) {
+  const chipSx = {
+    avail: {
+      bgcolor: tokens.status.avail.chipBg,
+      color: tokens.status.avail.fg,
+      fontWeight: 700,
+      border: `1px solid ${tokens.status.avail.border}`,
+    },
+    use: {
+      bgcolor: tokens.status.use.chipBg,
+      color: tokens.status.use.fg,
+      fontWeight: 700,
+      border: `1px solid ${tokens.status.use.border}`,
+    },
+    maint: {
+      bgcolor: tokens.status.maint.chipBg,
+      color: tokens.status.maint.fg,
+      fontWeight: 700,
+      border: `1px solid ${tokens.status.maint.border}`,
+    },
+  }
+  const statFilterPalettes = {
+    all: {
+      idle: { border: `1px solid ${colors.gray[300]}`, bgcolor: tokens.bg.paper, color: colors.gray[700] },
+      active: {
+        border: `2px solid ${colors.blue.primary}`,
+        bgcolor: tokens.blue.mutedStrong,
+        color: colors.blue.deep,
+        boxShadow: `0 1px 6px ${tokens.blue.glowSoft}, 0 0 0 1px ${tokens.blue.borderSoft}`,
+      },
+    },
+    avail: {
+      idle: {
+        border: `1px solid ${tokens.status.avail.border}`,
+        bgcolor: tokens.status.avail.rowBg,
+        color: tokens.status.avail.fg,
+      },
+      active: {
+        border: `2px solid ${tokens.status.avail.fg}`,
+        bgcolor: tokens.status.avail.chipBg,
+        color: tokens.status.avail.fg,
+        boxShadow: `0 1px 6px ${tokens.status.avail.border}`,
+      },
+    },
+    use: {
+      idle: {
+        border: `1px solid ${tokens.status.use.border}`,
+        bgcolor: tokens.status.use.rowBg,
+        color: tokens.status.use.fg,
+      },
+      active: {
+        border: `2px solid ${tokens.status.use.fg}`,
+        bgcolor: tokens.status.use.chipBg,
+        color: tokens.status.use.fg,
+        boxShadow: `0 1px 6px ${tokens.status.use.border}`,
+      },
+    },
+    maint: {
+      idle: { border: `1px solid ${colors.gray[300]}`, bgcolor: tokens.bg.muted, color: colors.gray[600] },
+      active: {
+        border: `2px solid ${colors.gray[500]}`,
+        bgcolor: tokens.status.maint.chipBg,
+        color: tokens.text.primary,
+        boxShadow: `0 1px 5px rgba(0,0,0,0.14), 0 0 0 1px ${colors.gray[300]}`,
+      },
+    },
+  }
+  return {
+    colors,
+    tokens,
+    chipSx,
+    statFilterPalettes,
+    sectionBlockTitleSx: { color: colors.gray[900], display: 'block', mb: 1, ...appMobileType.sectionBlock },
+    metaFieldLabelSx: { color: colors.gray[500], display: 'block', mb: 0.2, ...appMobileType.metaFieldLabel },
+    metaBodySx: { color: colors.gray[600], ...appMobileType.body },
+  }
 }
 
-/** 상태 필터 칩: 비선택 톤 + 선택 시 강조 */
-const statFilterPalettes = {
-  all: {
-    idle: { border: `1px solid ${colors.gray[300]}`, bgcolor: colors.white, color: colors.gray[700] },
-    active: {
-      border: `2px solid ${colors.blue.primary}`,
-      bgcolor: 'rgba(37,99,235,0.16)',
-      color: colors.blue.deep,
-      boxShadow: '0 1px 6px rgba(37,99,235,0.28), 0 0 0 1px rgba(37,99,235,0.2)',
-    },
-  },
-  avail: {
-    idle: { border: '1px solid rgba(22,163,74,0.35)', bgcolor: 'rgba(22,163,74,0.08)', color: '#166534' },
-    active: {
-      border: '2px solid #15803d',
-      bgcolor: 'rgba(22,163,74,0.28)',
-      color: '#14532d',
-      boxShadow: '0 1px 6px rgba(22,163,74,0.28), 0 0 0 1px rgba(22,163,74,0.2)',
-    },
-  },
-  use: {
-    idle: { border: '1px solid rgba(217,119,6,0.45)', bgcolor: 'rgba(245,158,11,0.1)', color: '#b45309' },
-    active: {
-      border: '2px solid #c2410c',
-      bgcolor: 'rgba(245,158,11,0.26)',
-      color: '#9a3412',
-      boxShadow: '0 1px 6px rgba(217,119,6,0.3), 0 0 0 1px rgba(217,119,6,0.22)',
-    },
-  },
-  maint: {
-    idle: { border: `1px solid ${colors.gray[300]}`, bgcolor: colors.gray[100], color: colors.gray[600] },
-    active: {
-      border: `2px solid ${colors.gray[500]}`,
-      bgcolor: colors.gray[200],
-      color: colors.gray[800],
-      boxShadow: `0 1px 5px rgba(0,0,0,0.08), 0 0 0 1px ${colors.gray[300]}`,
-    },
-  },
+function useStationDetailUi() {
+  const ctx = useContext(StationDetailUiContext)
+  if (!ctx) throw new Error('useStationDetailUi는 StationDetailContent 내부에서만 사용')
+  return ctx
 }
 
 /** 앱형 가로 레일용 pill 칩 (높이 36~40px, 한 줄 스크롤) */
 function StatFilterChip({ label, selected, disabled, onClick, paletteKey }) {
+  const { statFilterPalettes } = useStationDetailUi()
   const pal = statFilterPalettes[paletteKey]
   const tone = selected ? pal.active : pal.idle
   return (
@@ -109,6 +153,7 @@ function chargerFilterLabel(filter) {
 
 /** 필터 선택과 리스트를 한 문장으로 연결 */
 function ChargerListHeading({ filter, totalChargers, filteredCount }) {
+  const { colors } = useStationDetailUi()
   const label = chargerFilterLabel(filter)
   const count = filter === 'all' ? totalChargers : filteredCount
   return (
@@ -139,6 +184,7 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
 }
 
 function ChargerCard({ row, idx }) {
+  const { colors, chipSx, tokens } = useStationDetailUi()
   const stat = String(row.stat ?? '').trim()
   const title = (row.chgerNm || '').trim() || `충전기 ${(row.chgerId || '').toString().trim() || idx + 1}`
   const outRaw = (row.outputKw || '').toString().trim()
@@ -156,14 +202,34 @@ function ChargerCard({ row, idx }) {
     if (stat === '2') return { label: '사용 가능', sx: chipSx.avail }
     if (stat === '3') return { label: '사용 중', sx: chipSx.use }
     if (stat === '5') return { label: '점검중', sx: chipSx.maint }
-    return { label: getStatLabel(row.stat), sx: { bgcolor: colors.gray[100], color: colors.gray[800], fontWeight: 600, border: `1px solid ${colors.gray[250]}` } }
+    return {
+      label: getStatLabel(row.stat),
+      sx: {
+        bgcolor: tokens.status.unknown.chipBg,
+        color: tokens.status.unknown.fg,
+        fontWeight: 600,
+        border: `1px solid ${tokens.status.unknown.border}`,
+      },
+    }
   }
   const chip = chipForStat()
 
   const cardBorder =
-    stat === '2' ? 'rgba(22,163,74,0.22)' : stat === '3' ? 'rgba(245,158,11,0.28)' : stat === '5' ? colors.gray[250] : colors.gray[200]
+    stat === '2'
+      ? tokens.status.avail.border
+      : stat === '3'
+        ? tokens.status.use.border
+        : stat === '5'
+          ? tokens.status.maint.border
+          : colors.gray[200]
   const cardBg =
-    stat === '2' ? 'rgba(22,163,74,0.03)' : stat === '3' ? 'rgba(245,158,11,0.04)' : stat === '5' ? colors.gray[50] : colors.white
+    stat === '2'
+      ? tokens.status.avail.rowBg
+      : stat === '3'
+        ? tokens.status.use.rowBg
+        : stat === '5'
+          ? tokens.status.maint.rowBg
+          : tokens.bg.paper
 
   const typeLabel = row.displayChgerLabel ?? row.chgerTyLabel ?? '—'
 
@@ -218,7 +284,7 @@ function ChargerCard({ row, idx }) {
             sx={{
               height: 6,
               borderRadius: 3,
-              bgcolor: 'rgba(245,158,11,0.2)',
+              bgcolor: tokens.status.use.rowBg,
               '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: colors.blue.primary },
             }}
           />
@@ -243,16 +309,12 @@ function ChargerCard({ row, idx }) {
   )
 }
 
-const sectionBlockTitleSx = { color: colors.gray[900], display: 'block', mb: 1, ...appMobileType.sectionBlock }
-const metaFieldLabelSx = { color: colors.gray[500], display: 'block', mb: 0.2, ...appMobileType.metaFieldLabel }
-const footerSectionTitleSx = { color: colors.gray[700], display: 'block', mb: 1, ...appMobileType.sectionBlock }
-const metaBodySx = { color: colors.gray[600], ...appMobileType.body }
-
 /**
  * 하단 길찾기·전화 CTA (모바일 시트에서는 스크롤 밖에 두기 위해 분리).
  * @param {'dialog' | 'sheet'} variant — dialog: 본문 패딩 상쇄용 가로 bleed, sheet: 패딩 없음
  */
 export function StationDetailFooterActions({ station, variant = 'dialog' }) {
+  const { colors, tokens } = useEvTheme()
   if (!station) return null
   const telno = station.telno?.trim() || ''
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`
@@ -266,10 +328,14 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         pt: 1.5,
         pb: stackActions ? 'calc(10px + env(safe-area-inset-bottom, 0px))' : 1.5,
         borderTop: `1px solid ${colors.gray[200]}`,
-        bgcolor: colors.gray[50],
+        bgcolor: tokens.bg.subtle,
       }}
     >
-      <Typography variant="subtitle2" component="h3" sx={footerSectionTitleSx}>
+      <Typography
+        variant="subtitle2"
+        component="h3"
+        sx={{ color: colors.gray[700], display: 'block', mb: 1, ...appMobileType.sectionBlock }}
+      >
         이동·문의
       </Typography>
       <Box sx={{ display: 'flex', flexDirection: stackActions ? 'column' : 'row', gap: 1 }}>
@@ -288,9 +354,10 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
             fontWeight: 600,
             ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
             textTransform: 'none',
-            boxShadow: '0 1px 4px rgba(37,99,235,0.25)',
+            color: tokens.text.onPrimary,
+            boxShadow: `0 1px 4px ${tokens.blue.glowSoft}`,
             transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-            '&:hover': { bgcolor: colors.blue.deep, boxShadow: '0 2px 8px rgba(37,99,235,0.3)' },
+            '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 2px 10px ${tokens.blue.glowSoft}` },
             '&:active': { transform: 'scale(0.98)' },
           }}
         >
@@ -307,7 +374,7 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
               py: 1.125,
               borderRadius: `${radius.sm}px`,
               borderColor: colors.gray[300],
-              bgcolor: colors.white,
+              bgcolor: tokens.bg.paper,
               color: colors.gray[800],
               fontWeight: 600,
               ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
@@ -340,6 +407,8 @@ export function StationDetailContent({
   chargerStatFilter = 'all',
   onChargerStatFilterChange,
 }) {
+  const { colors, tokens } = useEvTheme()
+  const ui = useMemo(() => buildDetailUi(colors, tokens), [colors, tokens])
   const chargerRows = useMemo(() => chargerRowsFromStation(station), [station])
   const totalChargers = station?.totalChargers ?? chargerRows.length
   const statCounts =
@@ -377,6 +446,7 @@ export function StationDetailContent({
   const stickyRail = stackActions
 
   return (
+    <StationDetailUiContext.Provider value={ui}>
     <>
       {chargerRows.length > 0 && (
         <Box sx={{ mb: 1.5 }}>
@@ -388,14 +458,14 @@ export function StationDetailContent({
                       position: 'sticky',
                       top: 0,
                       zIndex: 4,
-                      bgcolor: colors.white,
+                      bgcolor: tokens.bg.paper,
                       mx: -2,
                       px: 2,
                       pt: 0.25,
                       pb: 1,
                       mb: 0.5,
                       borderBottom: `1px solid ${colors.gray[100]}`,
-                      boxShadow: '0 6px 12px -8px rgba(15,23,42,0.12)',
+                      boxShadow: tokens.shadow.card,
                     }
                   : {}
               }
@@ -515,17 +585,17 @@ export function StationDetailContent({
           borderTop: `1px dashed ${colors.gray[200]}`,
         }}
       >
-        <Typography variant="subtitle2" component="h3" sx={sectionBlockTitleSx}>
+        <Typography variant="subtitle2" component="h3" sx={ui.sectionBlockTitleSx}>
           장소 정보
         </Typography>
         <Box sx={{ mb: 1.25 }}>
-          <Typography variant="caption" component="p" sx={metaFieldLabelSx}>
+          <Typography variant="caption" component="p" sx={ui.metaFieldLabelSx}>
             주소
           </Typography>
           <Typography
             variant="body2"
             sx={{
-              ...metaBodySx,
+              ...ui.metaBodySx,
               wordBreak: 'break-word',
               whiteSpace: 'pre-line',
             }}
@@ -534,18 +604,18 @@ export function StationDetailContent({
           </Typography>
         </Box>
         <Box sx={{ mb: 1.25 }}>
-          <Typography variant="caption" component="p" sx={metaFieldLabelSx}>
+          <Typography variant="caption" component="p" sx={ui.metaFieldLabelSx}>
             이용시간
           </Typography>
-          <Typography variant="body2" sx={metaBodySx}>{station.useTm || '-'}</Typography>
+          <Typography variant="body2" sx={ui.metaBodySx}>{station.useTm || '-'}</Typography>
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, pb: 0.5 }}>
-          <Typography variant="body2" sx={metaBodySx}>
+          <Typography variant="body2" sx={ui.metaBodySx}>
             <Box component="span" sx={{ color: colors.gray[500], fontWeight: 700, fontSize: 'inherit' }}>운영기관</Box>{' '}
             {station.busiNm}
           </Typography>
           {telno && (
-            <Typography variant="body2" sx={metaBodySx}>
+            <Typography variant="body2" sx={ui.metaBodySx}>
               <Box component="span" sx={{ color: colors.gray[500], fontWeight: 700, fontSize: 'inherit' }}>전화</Box> {telno}
             </Typography>
           )}
@@ -558,5 +628,6 @@ export function StationDetailContent({
         </Box>
       ) : null}
     </>
+    </StationDetailUiContext.Provider>
   )
 }

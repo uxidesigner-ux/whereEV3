@@ -1,21 +1,35 @@
 import { Box } from '@mui/material'
-import { glass, radius } from '../theme/dashboardTheme.js'
+import { radius } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 
 /**
- * Liquid glass 스타일 패널.
- * 반투명 배경, backdrop blur, subtle border/shadow, 둥근 모서리.
+ * Liquid glass 스타일 패널 (라이트/다크 토큰).
  */
-/** Liquid glass: 내부 패딩·radius는 24px 고정 (상위에서 p 적용 시 spacing.glass 사용) */
 export function GlassPanel({ children, sx = {}, elevation = 'panel', ...rest }) {
-  const base = elevation === 'card' ? glass.card : glass.panel
+  const { tokens } = useEvTheme()
+  const base =
+    elevation === 'card'
+      ? {
+          background: tokens.glass.panelBg,
+          backdropFilter: 'blur(16px)',
+          WebkitBackdropFilter: 'blur(16px)',
+          border: `1px solid ${tokens.glass.panelBorder}`,
+          boxShadow: tokens.shadow.card,
+        }
+      : {
+          background: tokens.glass.panelBg,
+          backdropFilter: 'blur(20px)',
+          WebkitBackdropFilter: 'blur(20px)',
+          border: `1px solid ${tokens.glass.panelBorder}`,
+          boxShadow: tokens.glass.panelShadow,
+        }
   const borderRadius = radius.glass
   return (
     <Box
       sx={{
         ...base,
         borderRadius,
-        transition: 'background 0.2s ease, box-shadow 0.2s ease',
-        '&:hover': elevation === 'panel' ? glass.panelHover : undefined,
+        transition: 'background 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease',
         ...sx,
       }}
       {...rest}

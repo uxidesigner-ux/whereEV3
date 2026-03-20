@@ -1,5 +1,6 @@
 import { Box } from '@mui/material'
-import { glass, motion, spacing } from '../theme/dashboardTheme.js'
+import { motion, spacing } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 
 const GLASS_PADDING = 20
 const GLASS_RADIUS = 20
@@ -18,12 +19,18 @@ export function SideOverlayPanel({
   scrollRef,
   ...rest
 }) {
+  const { tokens } = useEvTheme()
+  const g = tokens.glass
   return (
     <Box
       ref={scrollRef}
       className="ev-glass-overlay"
       sx={{
-        ...glass.panel,
+        background: g.panelBg,
+        backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        border: `1px solid ${g.panelBorder}`,
+        boxShadow: g.panelShadow,
         borderRadius: GLASS_RADIUS,
         padding: GLASS_PADDING,
         position: 'absolute',
@@ -38,7 +45,10 @@ export function SideOverlayPanel({
         flexDirection: 'column',
         gap: spacing.lg,
         transition: `background ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
-        '&:hover': glass.panelHover,
+        '&:hover': {
+          background: g.panelHoverBg,
+          boxShadow: g.panelHoverShadow,
+        },
         '@media (max-width: 900px)': {
           left: spacing.lg,
           right: spacing.lg,

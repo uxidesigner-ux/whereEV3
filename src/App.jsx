@@ -3,9 +3,6 @@ import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box,
   Typography,
-  createTheme,
-  ThemeProvider,
-  CssBaseline,
   CircularProgress,
   Alert,
   useMediaQuery,
@@ -13,11 +10,15 @@ import {
   Chip,
   Button,
 } from '@mui/material'
+import { useTheme } from '@mui/material/styles'
 import EvStationIcon from '@mui/icons-material/EvStation'
 import ChevronLeft from '@mui/icons-material/ChevronLeft'
 import ChevronRight from '@mui/icons-material/ChevronRight'
 import SearchIcon from '@mui/icons-material/Search'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
+import TuneIcon from '@mui/icons-material/Tune'
+import ArrowBack from '@mui/icons-material/ArrowBack'
+import Refresh from '@mui/icons-material/Refresh'
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Circle, CircleMarker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import {
@@ -97,15 +98,14 @@ import {
   cloneViewportBoundsLiteral,
 } from './utils/searchRegionBounds.js'
 import {
-  colors,
   spacing,
   radius,
-  chartBlueScale,
-  glass,
   motion,
   sheetLayout,
   mobileMapChrome,
+  appMobileType,
 } from './theme/dashboardTheme.js'
+import { useEvTheme } from './theme/ThemeModeProvider.jsx'
 import { GlassPanel } from './components/GlassPanel.jsx'
 import { StatCard } from './components/StatCard.jsx'
 import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
@@ -115,45 +115,13 @@ import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
 import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
 import { MapExploreHighlightFence } from './components/MapExploreHighlightFence.jsx'
 import { StationDetailModal } from './components/StationDetailModal.jsx'
-import { StationDetailSheet } from './components/StationDetailSheet.jsx'
+import { StationDetailFooterActions } from './components/StationDetailContent.jsx'
 import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
+import { MobileDetailSheetBody } from './components/MobileDetailSheetBody.jsx'
 import { MobileFilterSheet } from './components/MobileFilterSheet.jsx'
+import { ThemeAppearanceControl } from './components/ThemeAppearanceControl.jsx'
 
 const SEOUL_CENTER = [37.5665, 126.978]
-
-const muiTheme = createTheme({
-  palette: {
-    mode: 'light',
-    primary: { main: colors.blue.primary },
-    secondary: { main: colors.blue.deep },
-    background: { default: colors.gray[100], paper: colors.white },
-    text: { primary: colors.gray[800], secondary: colors.gray[500] },
-  },
-  typography: {
-    fontFamily: '"Inter", "Noto Sans KR", system-ui, sans-serif',
-    h6: { fontWeight: 600, color: colors.gray[800] },
-    body2: { color: colors.gray[600] },
-    caption: { color: colors.gray[500] },
-  },
-  shape: { borderRadius: radius.control },
-  transitions: {
-    easing: { easeOut: motion.easing.standard, sharp: motion.easing.emphasized },
-    duration: { enteringScreen: motion.duration.enter, leavingScreen: motion.duration.exit, standard: motion.duration.sheet },
-  },
-  components: {
-    MuiDrawer: {
-      styleOverrides: {
-        paper: {
-          borderTopLeftRadius: radius.sheet,
-          borderTopRightRadius: radius.sheet,
-        },
-      },
-    },
-    MuiDialog: {
-      defaultProps: { scroll: 'paper' },
-    },
-  },
-})
 
 const DEFAULT_MARKER_ICON = L.divIcon({
   className: 'ev-marker ev-marker-default',
@@ -166,6 +134,14 @@ const SELECTED_MARKER_ICON = L.divIcon({
   html: '<span class="ev-marker-dot"></span>',
   iconSize: [38, 38],
   iconAnchor: [19, 19],
+})
+/** 모바일: 팝업 없이 선택 시 pin형 액티브 마커 (아래 뾰족) */
+const MOBILE_PIN_SELECTED_MARKER_ICON = L.divIcon({
+  className: 'ev-marker ev-marker-pin-selected',
+  html:
+    '<div class="ev-marker-pin" aria-hidden="true"><span class="ev-marker-pin-body"></span><span class="ev-marker-pin-tip"></span></div>',
+  iconSize: [48, 56],
+  iconAnchor: [24, 56],
 })
 
 /** 상단/패널 충전 타입 필터: 사용자 용어(급속·완속) 단순화 */
@@ -316,7 +292,9 @@ function MapBoundsTracker({ setMapBounds }) {
   return null
 }
 
-function MapFocusOnStation({ selectedStation }) {
+const MAP_FOCUS_EDGE_PAD_PX = 56
+
+function MapFocusOnStation({ selectedStation, isMobile }) {
   const map = useMap()
   const lastFocusedIdRef = useRef(null)
   useEffect(() => {
@@ -327,8 +305,24 @@ function MapFocusOnStation({ selectedStation }) {
     const id = selectedStation.id
     if (id === lastFocusedIdRef.current) return
     lastFocusedIdRef.current = id
-    map.flyTo([selectedStation.lat, selectedStation.lng], 16)
-  }, [map, selectedStation])
+    const ll = [selectedStation.lat, selectedStation.lng]
+    if (isMobile) {
+      const run = () => {
+        if (!map.getContainer()) return
+        const pt = map.latLngToContainerPoint(ll)
+        const size = map.getSize()
+        const pad = MAP_FOCUS_EDGE_PAD_PX
+        const inside =
+          pt.x >= pad && pt.x <= size.x - pad && pt.y >= pad && pt.y <= size.y - pad
+        if (!inside) {
+          map.panTo(ll, { animate: true, duration: 0.35, easeLinearity: 0.35 })
+        }
+      }
+      requestAnimationFrame(() => requestAnimationFrame(run))
+      return
+    }
+    map.flyTo(ll, 16)
+  }, [map, selectedStation, isMobile])
   return null
 }
 
@@ -393,92 +387,118 @@ function mapPopupMetaLine(s) {
   return speed ? `${busi} · ${speed}` : busi
 }
 
-function MapView({ stations, onDetailClick, selectedId, isMobile, defaultMarkerIcon, selectedMarkerIcon }) {
-  const icon = (id) => (selectedId === id ? selectedMarkerIcon : defaultMarkerIcon)
+function MapView({
+  stations,
+  onDetailClick,
+  selectedId,
+  isMobile,
+  defaultMarkerIcon,
+  selectedMarkerIcon,
+  selectedMarkerIconMobile,
+  uiColors,
+  mapTileUrl,
+  mapTileAttribution,
+}) {
+  const muiThemeLocal = useTheme()
+  const iconFor = (id) => {
+    if (selectedId !== id) return defaultMarkerIcon
+    return isMobile && selectedMarkerIconMobile ? selectedMarkerIconMobile : selectedMarkerIcon
+  }
   return (
     <>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png"
-        subdomains="abcd"
-        maxZoom={20}
-      />
+      <TileLayer attribution={mapTileAttribution} url={mapTileUrl} subdomains="abcd" maxZoom={20} />
       {stations.map((s) => {
         const hint = mapPopupDistOrHint(s)
         const meta = mapPopupMetaLine(s)
         const mapsHref = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}`
         return (
-          <Marker key={s.id} position={[s.lat, s.lng]} icon={icon(s.id)}>
-            <Popup maxWidth={isMobile ? 196 : 260}>
-              <Box
-                component="div"
-                sx={{
-                  fontFamily: muiTheme.typography.fontFamily,
-                  margin: '-4px -6px',
-                  minWidth: isMobile ? 0 : 200,
-                }}
-              >
-                <Typography
+          <Marker
+            key={s.id}
+            position={[s.lat, s.lng]}
+            icon={iconFor(s.id)}
+            zIndexOffset={selectedId === s.id ? 700 : 0}
+            eventHandlers={
+              isMobile && onDetailClick
+                ? {
+                    click: () => {
+                      onDetailClick(s)
+                    },
+                  }
+                : undefined
+            }
+          >
+            {!isMobile ? (
+              <Popup maxWidth={260}>
+                <Box
                   component="div"
                   sx={{
-                    fontWeight: 700,
-                    fontSize: isMobile ? '0.8125rem' : '0.875rem',
-                    color: colors.gray[900],
-                    lineHeight: 1.25,
+                    fontFamily: muiThemeLocal.typography.fontFamily,
+                    margin: '-4px -6px',
+                    minWidth: 200,
                   }}
                 >
-                  {s.statNm}
-                </Typography>
-                {hint ? (
-                  <Typography component="div" sx={{ fontSize: '0.6875rem', color: colors.gray[500], mt: 0.2, lineHeight: 1.35 }}>
-                    {hint}
+                  <Typography
+                    component="div"
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: '0.875rem',
+                      color: uiColors.gray[900],
+                      lineHeight: 1.25,
+                    }}
+                  >
+                    {s.statNm}
                   </Typography>
-                ) : null}
-                <Typography component="div" sx={{ fontSize: '0.6875rem', color: colors.gray[600], mt: 0.15, lineHeight: 1.35 }}>
-                  {meta}
-                </Typography>
-                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.25, mt: 0.5 }}>
-                  {onDetailClick ? (
+                  {hint ? (
+                    <Typography component="div" sx={{ fontSize: '0.6875rem', color: uiColors.gray[500], mt: 0.2, lineHeight: 1.35 }}>
+                      {hint}
+                    </Typography>
+                  ) : null}
+                  <Typography component="div" sx={{ fontSize: '0.6875rem', color: uiColors.gray[600], mt: 0.15, lineHeight: 1.35 }}>
+                    {meta}
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.25, mt: 0.5 }}>
+                    {onDetailClick ? (
+                      <Button
+                        type="button"
+                        variant="text"
+                        size="small"
+                        onClick={() => onDetailClick(s)}
+                        sx={{
+                          minWidth: 0,
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          py: 0.2,
+                          px: 0.5,
+                          color: uiColors.blue.primary,
+                          textTransform: 'none',
+                        }}
+                      >
+                        상세
+                      </Button>
+                    ) : null}
                     <Button
-                      type="button"
+                      component="a"
+                      href={mapsHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
                       variant="text"
                       size="small"
-                      onClick={() => onDetailClick(s)}
                       sx={{
                         minWidth: 0,
                         fontSize: '0.75rem',
-                        fontWeight: 700,
+                        fontWeight: 600,
                         py: 0.2,
                         px: 0.5,
-                        color: colors.blue.primary,
+                        color: uiColors.gray[700],
                         textTransform: 'none',
                       }}
                     >
-                      상세
+                      길찾기
                     </Button>
-                  ) : null}
-                  <Button
-                    component="a"
-                    href={mapsHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    variant="text"
-                    size="small"
-                    sx={{
-                      minWidth: 0,
-                      fontSize: '0.75rem',
-                      fontWeight: 600,
-                      py: 0.2,
-                      px: 0.5,
-                      color: colors.gray[700],
-                      textTransform: 'none',
-                    }}
-                  >
-                    길찾기
-                  </Button>
+                  </Box>
                 </Box>
-              </Box>
-            </Popup>
+              </Popup>
+            ) : null}
           </Marker>
         )
       })}
@@ -487,6 +507,8 @@ function MapView({ stations, onDetailClick, selectedId, isMobile, defaultMarkerI
 }
 
 function App() {
+  const { tokens, colors } = useEvTheme()
+  const chartPalette = tokens.chartBlue
   const [items, setItems] = useState([])
   const [totalCount, setTotalCount] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -525,9 +547,9 @@ function App() {
   const [detailStation, setDetailStation] = useState(null)
   const detailStationRef = useRef(null)
   /** 목록 시트 스냅: 상세 진입/복귀 시에도 부모가 유지 */
-  const [mobileSheetSnap, setMobileSheetSnap] = useState(/** @type {'collapsed' | 'half' | 'full'} */ ('collapsed'))
+  const [mobileSheetSnap, setMobileSheetSnap] = useState(/** @type {'closed' | 'half' | 'full'} */ ('closed'))
   /** 상세 진입 직전 목록 시트 스냅 — 닫을 때 복원 */
-  const sheetSnapBeforeDetailRef = useRef(/** @type {'collapsed' | 'half' | 'full'} */ ('half'))
+  const sheetSnapBeforeDetailRef = useRef(/** @type {'closed' | 'half' | 'full'} */ ('closed'))
   const [mobileListSort, setMobileListSort] = useState(/** @type {'distance' | 'name'} */ ('distance'))
   const [mobileListAvailOnly, setMobileListAvailOnly] = useState(false)
   const sheetListScrollRef = useRef(null)
@@ -543,9 +565,13 @@ function App() {
   /** 연속 탭으로 필터 히스토리가 중복 push 되지 않도록 */
   const filterOpenPulseGuard = useRef(false)
   const filterDrawerOpenRef = useRef(filterDrawerOpen)
-  const [mobileSheetHeightPx, setMobileSheetHeightPx] = useState(sheetLayout.collapsedPx)
+  const [mobileSheetHeightPx, setMobileSheetHeightPx] = useState(0)
   const handleSheetSnapHeightPx = useCallback((px) => {
     setMobileSheetHeightPx(px)
+  }, [])
+
+  const openMobileListSheetToHalf = useCallback(() => {
+    if (isMobileRef.current) setMobileSheetSnap('half')
   }, [])
 
   useEffect(() => {
@@ -579,6 +605,7 @@ function App() {
     setSearchQuery('')
     lastFittedSearchQueryRef.current = ''
     setMapExploreFenceBounds(null)
+    if (isMobileRef.current) setMobileSheetSnap('closed')
   }, [])
 
   const flushSearchFromInput = useCallback(() => {
@@ -586,7 +613,8 @@ function App() {
     lastFittedSearchQueryRef.current = raw.toLowerCase()
     setSearchQuery(searchInput)
     setSearchViewportFitNonce((n) => n + 1)
-  }, [searchInput])
+    if (raw) openMobileListSheetToHalf()
+  }, [searchInput, openMobileListSheetToHalf])
 
   const pickSearchSuggestion = useCallback((text) => {
     const q = text.trim().toLowerCase()
@@ -594,7 +622,8 @@ function App() {
     setSearchInput(text)
     setSearchQuery(text)
     setSearchViewportFitNonce((n) => n + 1)
-  }, [])
+    openMobileListSheetToHalf()
+  }, [openMobileListSheetToHalf])
 
   /**
    * 직접 입력: 키워드가 사전 지역명과 정확히 일치할 때만(디바운스 후 추가 지연) 지도 맞춤.
@@ -609,9 +638,10 @@ function App() {
       if (lastFittedSearchQueryRef.current === q) return
       lastFittedSearchQueryRef.current = q
       setSearchViewportFitNonce((n) => n + 1)
+      openMobileListSheetToHalf()
     }, 340)
     return () => clearTimeout(tid)
-  }, [searchQuery, isMobile])
+  }, [searchQuery, isMobile, openMobileListSheetToHalf])
 
   useEffect(() => {
     if (!isMobile) {
@@ -696,7 +726,7 @@ function App() {
     }
     setDetailStation(s)
     detailStationRef.current = s
-    if (isMobile) setMobileSheetSnap('collapsed')
+    if (isMobile) setMobileSheetSnap('half')
   }, [isMobile, mobileSheetSnap])
 
   const handleCloseDetail = useCallback(() => {
@@ -714,6 +744,18 @@ function App() {
     if (isMobile) setMobileSheetSnap(sheetSnapBeforeDetailRef.current)
     restoreListAfterDetailClose()
   }, [isMobile, restoreListAfterDetailClose, closeDetailFromOverlay])
+
+  /** 상세 열린 상태에서 시트를 closed로 끌어내리면 상세 닫기(히스토리와 동기) */
+  const handleMobileSheetSnapChange = useCallback(
+    (next) => {
+      if (detailStationRef.current && next === 'closed') {
+        handleCloseDetail()
+        return
+      }
+      setMobileSheetSnap(next)
+    },
+    [handleCloseDetail],
+  )
 
   const closeFilterDrawer = useCallback(() => {
     if (isMobile && filterHistoryPushed.current) {
@@ -842,12 +884,13 @@ function App() {
         setMapExploreFenceBounds(vb)
         setMapExploreFenceVersion((v) => v + 1)
       }
+      openMobileListSheetToHalf()
     }
     mapSelectedStationRef.current = null
     setMapSelectedStation(null)
     setDetailStation(null)
     detailStationRef.current = null
-  }, [isMobile])
+  }, [isMobile, openMobileListSheetToHalf])
 
   useEffect(() => {
     const key = (import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
@@ -1209,27 +1252,24 @@ function App() {
 
   if (loading) {
     return (
-      <ThemeProvider theme={muiTheme}>
-        <CssBaseline />
-        <Box
-          sx={{
-            position: 'fixed',
-            inset: 0,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            bgcolor: colors.gray[100],
-            zIndex: 2000,
-          }}
-        >
-          <GlassPanel elevation="panel" sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
-            <CircularProgress size={32} sx={{ color: colors.blue.primary }} />
-            <Typography variant="body2" color="text.secondary">
-              충전소 데이터 불러오는 중
-            </Typography>
-          </GlassPanel>
-        </Box>
-      </ThemeProvider>
+      <Box
+        sx={{
+          position: 'fixed',
+          inset: 0,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          bgcolor: tokens.bg.app,
+          zIndex: 2000,
+        }}
+      >
+        <GlassPanel elevation="panel" sx={{ p: 2.5, display: 'flex', alignItems: 'center', gap: 1.5 }}>
+          <CircularProgress size={32} sx={{ color: tokens.blue.main }} />
+          <Typography variant="body2" color="text.secondary">
+            충전소 데이터 불러오는 중
+          </Typography>
+        </GlassPanel>
+      </Box>
     )
   }
 
@@ -1257,7 +1297,17 @@ function App() {
               return (
                 <Chip key={v || 'all'} label={opt.label} size="small"
                   onClick={() => setFilterSpeed(v)}
-                  sx={{ fontSize: '0.75rem', height: 24, bgcolor: selected ? colors.blue.primary : 'rgba(255,255,255,0.6)', color: selected ? colors.white : colors.gray[700], border: `1px solid ${selected ? colors.blue.primary : colors.gray[300]}`, '&:hover': { bgcolor: selected ? colors.blue.deep : 'rgba(255,255,255,0.9)', borderColor: selected ? colors.blue.deep : colors.gray[400] } }}
+                  sx={{
+                    fontSize: '0.75rem',
+                    height: 24,
+                    bgcolor: selected ? colors.blue.primary : tokens.bg.raised,
+                    color: selected ? tokens.text.onPrimary : colors.gray[700],
+                    border: `1px solid ${selected ? colors.blue.primary : colors.gray[300]}`,
+                    '&:hover': {
+                      bgcolor: selected ? colors.blue.deep : tokens.bg.muted,
+                      borderColor: selected ? colors.blue.deep : colors.gray[400],
+                    },
+                  }}
                 />
               )
             })}
@@ -1279,7 +1329,7 @@ function App() {
                 <Tooltip formatter={(v) => [`${v}대`, '']} contentStyle={{ borderRadius: radius.control, border: `1px solid ${colors.gray[200]}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
                 <Bar dataKey="value" name="충전기" radius={[0, 3, 3, 0]}>
                   {operatorChartData.map((_, i) => (
-                    <Cell key={i} fill={chartBlueScale[i % chartBlueScale.length]} />
+                    <Cell key={i} fill={chartPalette[i % chartPalette.length]} />
                   ))}
                 </Bar>
               </BarChart>
@@ -1297,7 +1347,7 @@ function App() {
               <PieChart margin={{ top: 4, right: 4, bottom: 28, left: 4 }}>
                 <Pie data={kpis.byChgerTy} dataKey="count" nameKey="name" cx="50%" cy="42%" innerRadius={32} outerRadius={56} paddingAngle={1}>
                   {kpis.byChgerTy.map((_, i) => (
-                    <Cell key={i} fill={chartBlueScale[i % chartBlueScale.length]} stroke="rgba(255,255,255,0.6)" strokeWidth={1} />
+                    <Cell key={i} fill={chartPalette[i % chartPalette.length]} stroke={tokens.border.subtle} strokeWidth={1} />
                   ))}
                 </Pie>
                 <Tooltip formatter={(v) => [`${v}대`, '']} contentStyle={{ borderRadius: radius.control, border: `1px solid ${colors.gray[200]}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
@@ -1309,6 +1359,7 @@ function App() {
           )}
         </Box>
       </Box>
+      <ThemeAppearanceControl compact />
       <Box sx={{ flexShrink: 0, marginTop: 2, paddingTop: 1.5, borderTop: `1px solid ${colors.gray[200]}`, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
         <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', lineHeight: 1.4 }}>생활안전지도 API · 마커 클릭 시 상세</Typography>
         <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', lineHeight: 1.4 }}>
@@ -1323,63 +1374,191 @@ function App() {
   const panelEl = isMobile
     ? (
         <MobileBottomSheet
-          key="mobile-bottom-sheet"
+          key={detailStation ? 'mobile-sheet-detail' : 'mobile-sheet-list'}
           topOffsetPx={sheetLayout.mobileTopBarStackPx}
-          collapsedPx={sheetLayout.collapsedPx}
           halfVhRatio={sheetLayout.halfVhRatio}
           snap={mobileSheetSnap}
-          onSnapChange={setMobileSheetSnap}
+          onSnapChange={handleMobileSheetSnapChange}
           listScrollRef={sheetListScrollRef}
           onSnapHeightPxChange={handleSheetSnapHeightPx}
-          renderHeader={({ snap }) => (
-            <Box
-              data-ev-list-header-mode={listSheetHeaderMode}
-              sx={{
-                display: 'flex',
-                flexDirection: 'column',
-                flexShrink: 0,
-                boxSizing: 'border-box',
-                userSelect: 'none',
-                bgcolor: colors.gray[50],
-                pt: 1,
-                pb: snap === 'collapsed' ? 1 : 0,
-              }}
-            >
+          footer={
+            detailStation ? (
+              <StationDetailFooterActions station={detailStation} variant="sheet" />
+            ) : null
+          }
+          renderHeader={({ snap, sheetDragHandlers }) => {
+            if (snap === 'closed') return null
+            const d = detailStation
+            if (d) {
+              if (snap === 'full') {
+                return (
+                  <Box sx={{ bgcolor: colors.gray[50], borderBottom: `1px solid ${colors.gray[200]}` }}>
+                    <Box
+                      sx={{
+                        display: 'flex',
+                        alignItems: 'flex-start',
+                        gap: 0.5,
+                        px: 0.5,
+                        pt: 0.25,
+                        pb: 1,
+                        minHeight: 48,
+                      }}
+                    >
+                      <IconButton
+                        onClick={handleCloseDetail}
+                        aria-label="뒤로"
+                        size="small"
+                        sx={{ color: colors.gray[700], mt: 0.25 }}
+                      >
+                        <ArrowBack />
+                      </IconButton>
+                      <Box sx={{ flex: 1, minWidth: 0, pr: 0.5 }}>
+                        <Typography
+                          id="ev-mobile-detail-title"
+                          variant="h6"
+                          component="h2"
+                          sx={{ color: colors.gray[900], ...appMobileType.detailSheetTitle, lineHeight: 1.25 }}
+                        >
+                          {d.statNm}
+                        </Typography>
+                        {detailHeaderSubtitle ? (
+                          <Typography
+                            variant="caption"
+                            sx={{ display: 'block', mt: 0.35, color: colors.gray[500], ...appMobileType.detailSheetSubtitle }}
+                          >
+                            {detailHeaderSubtitle}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <IconButton
+                        onClick={() => canRefetchEv && refreshEvData()}
+                        disabled={!canRefetchEv || detailRefreshing}
+                        aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
+                        size="small"
+                        sx={{ color: colors.gray[600], mt: 0.25 }}
+                      >
+                        {detailRefreshing ? (
+                          <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} />
+                        ) : (
+                          <Refresh sx={{ fontSize: 22 }} />
+                        )}
+                      </IconButton>
+                    </Box>
+                  </Box>
+                )
+              }
+              return (
+                <Box sx={{ bgcolor: colors.gray[50], borderBottom: `1px solid ${colors.gray[200]}` }} data-ev-list-header-mode="detail">
+                  <Box
+                    {...sheetDragHandlers}
+                    sx={{
+                      touchAction: 'none',
+                      cursor: 'grab',
+                      pt: 1,
+                      pb: 0.75,
+                      '&:active': { cursor: 'grabbing' },
+                    }}
+                  >
+                    <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto' }} aria-hidden />
+                  </Box>
+                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, px: 0.5, pb: 1 }}>
+                    <IconButton onClick={handleCloseDetail} aria-label="뒤로" size="small" sx={{ color: colors.gray[700], mt: -0.25 }}>
+                      <ArrowBack />
+                    </IconButton>
+                    <Box sx={{ flex: 1, minWidth: 0 }}>
+                      <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1.0625rem', lineHeight: 1.3 }}>
+                        {d.statNm}
+                      </Typography>
+                      {detailHeaderSubtitle ? (
+                        <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: colors.gray[500] }}>
+                          {detailHeaderSubtitle}
+                        </Typography>
+                      ) : null}
+                    </Box>
+                    <IconButton
+                      onClick={() => canRefetchEv && refreshEvData()}
+                      disabled={!canRefetchEv || detailRefreshing}
+                      aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
+                      size="small"
+                      sx={{ color: colors.gray[600], mt: -0.25 }}
+                    >
+                      {detailRefreshing ? (
+                        <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} />
+                      ) : (
+                        <Refresh sx={{ fontSize: 22 }} />
+                      )}
+                    </IconButton>
+                  </Box>
+                </Box>
+              )
+            }
+            if (snap === 'full') {
+              return (
+                <Box sx={{ bgcolor: colors.white, borderBottom: `1px solid ${colors.gray[200]}` }} data-ev-list-header-mode={listSheetHeaderMode}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, px: 0.5, py: 0.75, minHeight: 48 }}>
+                    <IconButton
+                      onClick={() => setMobileSheetSnap('half')}
+                      aria-label="목록으로 돌아가기"
+                      size="small"
+                      sx={{ color: colors.gray[700] }}
+                    >
+                      <ArrowBack />
+                    </IconButton>
+                    <Typography
+                      component="div"
+                      aria-live="polite"
+                      sx={{
+                        flex: 1,
+                        minWidth: 0,
+                        fontWeight: 700,
+                        fontSize: '1rem',
+                        letterSpacing: '-0.02em',
+                        color: colors.gray[800],
+                      }}
+                    >
+                      {listSheetMetaLine}
+                    </Typography>
+                  </Box>
+                </Box>
+              )
+            }
+            return (
               <Box
+                data-ev-list-header-mode={listSheetHeaderMode}
                 sx={{
-                  flexShrink: 0,
+                  bgcolor: colors.gray[50],
+                  userSelect: 'none',
                   display: 'flex',
-                  justifyContent: 'center',
-                  width: '100%',
+                  flexDirection: 'column',
+                  flexShrink: 0,
                 }}
-                aria-hidden
               >
                 <Box
+                  {...sheetDragHandlers}
                   sx={{
-                    width: 36,
-                    height: 4,
-                    borderRadius: 2,
-                    bgcolor: colors.gray[300],
-                    mb: 1.25,
+                    touchAction: 'none',
+                    cursor: 'grab',
+                    pt: 1,
+                    '&:active': { cursor: 'grabbing' },
                   }}
-                />
-              </Box>
-              <Typography
-                component="div"
-                aria-live="polite"
-                sx={{
-                  textAlign: 'center',
-                  fontSize: '0.75rem',
-                  fontWeight: 600,
-                  letterSpacing: '-0.01em',
-                  color: colors.gray[600],
-                  px: 2.5,
-                  lineHeight: 1.4,
-                }}
-              >
-                {listSheetMetaLine}
-              </Typography>
-              {snap !== 'collapsed' ? (
+                >
+                  <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto', mb: 1.25 }} aria-hidden />
+                  <Typography
+                    component="div"
+                    aria-live="polite"
+                    sx={{
+                      textAlign: 'center',
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      letterSpacing: '-0.01em',
+                      color: colors.gray[600],
+                      px: 2.5,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {listSheetMetaLine}
+                  </Typography>
+                </Box>
                 <Box
                   role="toolbar"
                   aria-label="필터, 정렬 및 빠른 필터"
@@ -1515,33 +1694,37 @@ function App() {
                     )
                   })}
                 </Box>
-              ) : null}
-            </Box>
-          )}
+              </Box>
+            )
+          }}
         >
-          <StationListMobile
-            key={`scope-${appliedMapBounds ? [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng, appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng].join(',') : 'none'}`}
-            stations={stationsForMobileList}
-            selectedId={mapSelectedStation?.id}
-            loadingBounds={appliedMapBounds == null}
-            loadingHint="지도에 적용할 검색 영역을 준비하는 중입니다."
-            emptyMessage={
-              groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
-                ? '이 조건에 맞는 충전소가 없습니다'
-                : (mobileListEmptyInfo?.title ?? '표시할 충전소가 없습니다')
-            }
-            emptySubMessage={
-              groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
-                ? '빠른 필터를 바꾸거나 전체 필터에서 조건을 조정해 보세요.'
-                : mobileListEmptyInfo?.subtitle
-            }
-            emptyVariant={
-              groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
-                ? 'no_filter'
-                : (mobileListEmptyInfo?.variant ?? 'no_in_view')
-            }
-            onOpenDetail={openDetailPreserve}
-          />
+          {detailStation ? (
+            <MobileDetailSheetBody station={detailStation} chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader} />
+          ) : (
+            <StationListMobile
+              key={`scope-${appliedMapBounds ? [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng, appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng].join(',') : 'none'}`}
+              stations={stationsForMobileList}
+              selectedId={mapSelectedStation?.id}
+              loadingBounds={appliedMapBounds == null}
+              loadingHint="지도에 적용할 검색 영역을 준비하는 중입니다."
+              emptyMessage={
+                groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                  ? '이 조건에 맞는 충전소가 없습니다'
+                  : (mobileListEmptyInfo?.title ?? '표시할 충전소가 없습니다')
+              }
+              emptySubMessage={
+                groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                  ? '빠른 필터를 바꾸거나 전체 필터에서 조건을 조정해 보세요.'
+                  : mobileListEmptyInfo?.subtitle
+              }
+              emptyVariant={
+                groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                  ? 'no_filter'
+                  : (mobileListEmptyInfo?.variant ?? 'no_in_view')
+              }
+              onOpenDetail={openDetailPreserve}
+            />
+          )}
         </MobileBottomSheet>
       )
     : (
@@ -1556,12 +1739,16 @@ function App() {
                 left: spacing.lg,
                 top: spacing.lg,
                 zIndex: 1001,
-                bgcolor: '#fff',
-                color: colors.gray[900],
-                border: `1px solid ${colors.gray[400]}`,
-                boxShadow: '0 2px 10px rgba(0,0,0,0.12)',
+                bgcolor: tokens.control.fabBg,
+                color: tokens.text.primary,
+                border: `1px solid ${tokens.border.strong}`,
+                boxShadow: tokens.shadow.float,
                 '& .MuiSvgIcon-root': { opacity: 1, color: 'inherit' },
-                '&:hover': { bgcolor: colors.gray[50], borderColor: colors.gray[500], boxShadow: '0 2px 12px rgba(0,0,0,0.16)' },
+                '&:hover': {
+                  bgcolor: tokens.bg.muted,
+                  borderColor: tokens.border.default,
+                  boxShadow: tokens.shadow.float,
+                },
               }}
             >
               <ChevronRight sx={{ fontSize: 22, color: 'inherit' }} />
@@ -1597,7 +1784,7 @@ function App() {
                   zIndex: 10,
                 }}
               >
-                <ChevronLeft sx={{ fontSize: 22, color: '#111827' }} />
+                <ChevronLeft sx={{ fontSize: 22, color: tokens.text.primary }} />
               </IconButton>
               {panelBodyContent}
             </SideOverlayPanel>
@@ -1606,8 +1793,7 @@ function App() {
       )
 
   return (
-    <ThemeProvider theme={muiTheme}>
-      <CssBaseline />
+    <>
       {import.meta.env.DEV && (
         <Box
           sx={{
@@ -1676,7 +1862,41 @@ function App() {
                 activeQuickQuery={searchQuery}
                 statusQuery={!searchBarFocused && searchQuery.trim() ? searchQuery : ''}
               />
-              <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0, mt: 0 }}>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  flexShrink: 0,
+                  mt: 0,
+                  gap: `${mobileMapChrome.rowGap}px`,
+                }}
+              >
+                <IconButton
+                  onClick={() => openFilterDrawer()}
+                  aria-label="필터"
+                  disabled={!!detailStation}
+                  sx={{
+                    width: mobileMapChrome.fabSize,
+                    height: mobileMapChrome.fabSize,
+                    minWidth: mobileMapChrome.fabSize,
+                    minHeight: mobileMapChrome.fabSize,
+                    boxSizing: 'border-box',
+                    bgcolor: tokens.control.fabBg,
+                    border: `1px solid ${tokens.control.fabBorder}`,
+                    borderRadius: '50%',
+                    color: tokens.text.primary,
+                    boxShadow: tokens.shadow.float,
+                    transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    '&:hover': {
+                      bgcolor: tokens.bg.raised,
+                      boxShadow: `${tokens.shadow.float}, 0 0 20px ${tokens.blue.glowSoft}`,
+                    },
+                    '&:active': { transform: 'scale(0.96)' },
+                  }}
+                >
+                  <TuneIcon sx={{ fontSize: 22 }} />
+                </IconButton>
                 <IconButton
                   onClick={() => setGeoNonce((n) => n + 1)}
                   aria-label="현재 위치로 이동"
@@ -1686,15 +1906,15 @@ function App() {
                     minWidth: mobileMapChrome.fabSize,
                     minHeight: mobileMapChrome.fabSize,
                     boxSizing: 'border-box',
-                    bgcolor: colors.white,
-                    border: '1px solid rgba(15,23,42,0.06)',
+                    bgcolor: tokens.control.fabBg,
+                    border: `1px solid ${tokens.control.fabBorder}`,
                     borderRadius: '50%',
-                    color: colors.gray[800],
-                    boxShadow: mobileMapChrome.floatShadow,
+                    color: tokens.text.primary,
+                    boxShadow: tokens.shadow.float,
                     transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
                     '&:hover': {
-                      bgcolor: colors.white,
-                      boxShadow: '0 6px 28px rgba(15, 23, 42, 0.14), 0 2px 12px rgba(15, 23, 42, 0.09)',
+                      bgcolor: tokens.bg.raised,
+                      boxShadow: `${tokens.shadow.float}, 0 0 20px ${tokens.blue.glowSoft}`,
                     },
                     '&:active': { transform: 'scale(0.96)' },
                   }}
@@ -1730,9 +1950,9 @@ function App() {
               setAppliedMapBounds={setAppliedMapBounds}
             />
             {isMobile && (
-              <MapExploreHighlightFence boundsLiteral={mapExploreFenceBounds} version={mapExploreFenceVersion} />
+              <MapExploreHighlightFence boundsLiteral={mapExploreFenceBounds} version={mapExploreFenceVersion} mapTokens={tokens.map} />
             )}
-            <MapFocusOnStation selectedStation={mapSelectedStation} />
+            <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <MapView
                 stations={displayStationsForMap}
                 onDetailClick={openDetailPreserve}
@@ -1740,6 +1960,10 @@ function App() {
                 isMobile={isMobile}
                 defaultMarkerIcon={DEFAULT_MARKER_ICON}
                 selectedMarkerIcon={SELECTED_MARKER_ICON}
+                selectedMarkerIconMobile={MOBILE_PIN_SELECTED_MARKER_ICON}
+                uiColors={colors}
+                mapTileUrl={tokens.map.tileUrl}
+                mapTileAttribution={tokens.map.tileAttribution}
               />
             <ZoomControl position={isMobile ? 'bottomright' : 'topright'} />
             {!isMobile && (
@@ -1763,9 +1987,9 @@ function App() {
                   center={[userLocation.lat, userLocation.lng]}
                   radius={80}
                   pathOptions={{
-                    color: colors.blue.primary,
-                    fillColor: colors.blue.primary,
-                    fillOpacity: 0.25,
+                    color: tokens.map.userCircle,
+                    fillColor: tokens.map.userCircle,
+                    fillOpacity: tokens.map.userFillOpacity,
                     weight: 2,
                   }}
                 />
@@ -1773,8 +1997,8 @@ function App() {
                   center={[userLocation.lat, userLocation.lng]}
                   radius={6}
                   pathOptions={{
-                    color: colors.blue.primary,
-                    fillColor: colors.blue.primary,
+                    color: tokens.map.userCircle,
+                    fillColor: tokens.map.userCircle,
                     fillOpacity: 1,
                     weight: 2,
                   }}
@@ -1808,11 +2032,12 @@ function App() {
                     px: 1,
                     py: 0.5,
                     borderRadius: 1,
-                    bgcolor: 'rgba(255,255,255,0.92)',
-                    boxShadow: 1,
+                    bgcolor: tokens.bg.raised,
+                    border: `1px solid ${tokens.border.default}`,
+                    boxShadow: tokens.shadow.card,
                     fontSize: '0.8125rem',
                     fontWeight: 500,
-                    color: colors.gray[700],
+                    color: tokens.text.secondary,
                   }}
                 >
                   <CircularProgress size={14} sx={{ color: colors.blue.primary }} />
@@ -1851,7 +2076,11 @@ function App() {
             <Alert
               severity="error"
               sx={{
-                ...glass.panel,
+                background: tokens.glass.panelBg,
+                backdropFilter: 'blur(20px)',
+                WebkitBackdropFilter: 'blur(20px)',
+                border: `1px solid ${tokens.glass.panelBorder}`,
+                boxShadow: tokens.glass.panelShadow,
                 borderRadius: radius.glass,
               }}
             >
@@ -1938,17 +2167,7 @@ function App() {
           sggCdsByCtprvn={filterOptions.sggCdsByCtprvn}
         />
 
-        {isMobile ? (
-          <StationDetailSheet
-            open={!!detailStation}
-            station={detailStation}
-            onClose={handleCloseDetail}
-            onRefresh={canRefetchEv ? refreshEvData : undefined}
-            refreshLoading={detailRefreshing}
-            headerSubtitle={detailHeaderSubtitle}
-            chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
-          />
-        ) : (
+        {!isMobile ? (
           <StationDetailModal
             open={!!detailStation}
             station={detailStation}
@@ -1958,9 +2177,9 @@ function App() {
             headerSubtitle={detailHeaderSubtitle}
             chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
           />
-        )}
+        ) : null}
       </Box>
-    </ThemeProvider>
+    </>
   )
 }
 

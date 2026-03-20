@@ -2,11 +2,12 @@ import { useEffect, useState } from 'react'
 import { Dialog, DialogContent, IconButton, Typography, Box, CircularProgress } from '@mui/material'
 import Close from '@mui/icons-material/Close'
 import Refresh from '@mui/icons-material/Refresh'
-import { appMobileType, colors, motion, radius } from '../theme/dashboardTheme.js'
+import { appMobileType, motion, radius } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 import { StationDetailContent } from './StationDetailContent.jsx'
 
 /**
- * 데스크톱 전용: 충전소 상세 중앙 Dialog. 모바일은 StationDetailSheet 사용.
+ * 데스크톱 전용: 충전소 상세 중앙 Dialog. 모바일은 App의 MobileBottomSheet(목록과 동일 detent)에 상세 본문을 넣는다.
  */
 export function StationDetailModal({
   open,
@@ -17,6 +18,7 @@ export function StationDetailModal({
   headerSubtitle = '',
   chargerSummaryUpdatedInHeader = false,
 }) {
+  const { colors, tokens } = useEvTheme()
   const [chargerStatFilter, setChargerStatFilter] = useState(/** @type {'all' | '2' | '3' | '5'} */ ('all'))
   useEffect(() => {
     if (open && station) setChargerStatFilter('all')
@@ -40,7 +42,7 @@ export function StationDetailModal({
       fullWidth
       maxWidth="sm"
       slotProps={{
-        backdrop: { sx: { bgcolor: 'rgba(15,23,42,0.35)' } },
+        backdrop: { sx: { bgcolor: tokens.overlay.scrim } },
         transition: {
           timeout: { enter: motion.duration.enter, exit: motion.duration.exit },
         },
@@ -56,7 +58,7 @@ export function StationDetailModal({
           pt: 1.5,
           pb: 1.25,
           borderBottom: `1px solid ${colors.gray[200]}`,
-          bgcolor: colors.gray[50],
+          bgcolor: tokens.bg.subtle,
         }}
       >
         <Box sx={{ minWidth: 0, flex: 1 }}>

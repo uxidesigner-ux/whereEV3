@@ -1,11 +1,13 @@
 import { Box, Typography } from '@mui/material'
 import { GlassPanel } from './GlassPanel.jsx'
-import { colors, motion } from '../theme/dashboardTheme.js'
+import { motion } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 
 /**
  * KPI용 컴팩트 스탯 카드. 제목-숫자 타이트, 작은 요약 카드 스타일.
  */
 export function StatCard({ label, value, sx = {} }) {
+  const { colors } = useEvTheme()
   return (
     <GlassPanel
       elevation="card"

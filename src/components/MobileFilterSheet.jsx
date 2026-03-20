@@ -11,7 +11,9 @@ import {
   Typography,
 } from '@mui/material'
 import Close from '@mui/icons-material/Close'
-import { appMobileType, colors, radius, motion } from '../theme/dashboardTheme.js'
+import { appMobileType, radius, motion } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
+import { ThemeAppearanceControl } from './ThemeAppearanceControl.jsx'
 
 const defaultDraft = () => ({
   sort: /** @type {'distance' | 'name'} */ ('distance'),
@@ -42,6 +44,7 @@ export function MobileFilterSheet({
   /** 시도별 시군구 — draft.ctprvnCd 기준으로 목록 표시(적용 전 미리보기) */
   sggCdsByCtprvn = {},
 }) {
+  const { colors, tokens } = useEvTheme()
   const [draft, setDraft] = useState(defaultDraft)
   const [busiSearch, setBusiSearch] = useState('')
   const titleRef = useRef(null)
@@ -111,7 +114,7 @@ export function MobileFilterSheet({
       slotProps={{
         backdrop: {
           sx: {
-            bgcolor: 'rgba(15,23,42,0.38)',
+            bgcolor: tokens.overlay.scrim,
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
           },
@@ -127,11 +130,11 @@ export function MobileFilterSheet({
           maxHeight: 'min(88dvh, 100%)',
           borderTopLeftRadius: radius.sheetApp,
           borderTopRightRadius: radius.sheetApp,
-          bgcolor: colors.white,
+          bgcolor: tokens.bg.paper,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          boxShadow: '0 -8px 40px rgba(15,23,42,0.14)',
+          boxShadow: tokens.shadow.sheet,
         },
       }}
     >
@@ -220,7 +223,7 @@ export function MobileFilterSheet({
                 sx={{
                   ...chipBase(selected),
                   bgcolor: selected ? colors.blue.primary : colors.gray[50],
-                  color: selected ? colors.white : colors.gray[700],
+                  color: selected ? tokens.text.onPrimary : colors.gray[700],
                   border: `1px solid ${selected ? colors.blue.primary : colors.gray[200]}`,
                 }}
               />
@@ -243,7 +246,7 @@ export function MobileFilterSheet({
                 sx={{
                   ...chipBase(selected),
                   bgcolor: selected ? colors.blue.primary : colors.gray[50],
-                  color: selected ? colors.white : colors.gray[700],
+                  color: selected ? tokens.text.onPrimary : colors.gray[700],
                   border: `1px solid ${selected ? colors.blue.primary : colors.gray[200]}`,
                 }}
               />
@@ -262,7 +265,7 @@ export function MobileFilterSheet({
             sx={{
               ...chipBase(!draft.availOnly),
               bgcolor: !draft.availOnly ? colors.blue.primary : colors.gray[50],
-              color: !draft.availOnly ? colors.white : colors.gray[700],
+              color: !draft.availOnly ? tokens.text.onPrimary : colors.gray[700],
               border: `1px solid ${!draft.availOnly ? colors.blue.primary : colors.gray[200]}`,
             }}
           />
@@ -273,7 +276,7 @@ export function MobileFilterSheet({
             sx={{
               ...chipBase(draft.availOnly),
               bgcolor: draft.availOnly ? colors.blue.primary : colors.gray[50],
-              color: draft.availOnly ? colors.white : colors.gray[700],
+              color: draft.availOnly ? tokens.text.onPrimary : colors.gray[700],
               border: `1px solid ${draft.availOnly ? colors.blue.primary : colors.gray[200]}`,
               ...( !hasAvailInGroupedScope ? { opacity: 0.55 } : {}),
             }}
@@ -342,7 +345,7 @@ export function MobileFilterSheet({
                 fontWeight: 600,
                 fontSize: '0.8125rem',
                 borderColor: colors.gray[200],
-                bgcolor: colors.white,
+                bgcolor: tokens.bg.paper,
                 color: colors.gray[800],
                 '& .MuiChip-label': { px: 1.5 },
               }}
@@ -414,7 +417,7 @@ export function MobileFilterSheet({
                 fontWeight: 600,
                 fontSize: '0.8125rem',
                 borderColor: colors.gray[200],
-                bgcolor: colors.white,
+                bgcolor: tokens.bg.paper,
                 color: colors.gray[800],
                 '& .MuiChip-label': { px: 1.5 },
               }}
@@ -471,22 +474,25 @@ export function MobileFilterSheet({
           pt: 1.5,
           pb: 'calc(20px + env(safe-area-inset-bottom, 0px))',
           borderTop: `1px solid ${colors.gray[200]}`,
-          bgcolor: colors.white,
+          bgcolor: tokens.bg.paper,
         }}
       >
+        <ThemeAppearanceControl compact />
         <Button
           fullWidth
           variant="contained"
           onClick={() => onApply({ ...draft })}
           sx={{
             py: 1.35,
+            mt: 1,
             borderRadius: `${radius.md}px`,
             bgcolor: colors.blue.primary,
             fontWeight: 700,
             fontSize: '0.9375rem',
             textTransform: 'none',
-            boxShadow: '0 2px 12px rgba(37,99,235,0.28)',
-            '&:hover': { bgcolor: colors.blue.deep, boxShadow: '0 3px 14px rgba(37,99,235,0.32)' },
+            color: tokens.text.onPrimary,
+            boxShadow: `0 2px 12px ${tokens.blue.glowSoft}`,
+            '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 3px 16px ${tokens.blue.glowSoft}` },
           }}
         >
           적용하기

@@ -1,52 +1,57 @@
 /**
  * EV 대시보드 디자인 시스템
  * Gray + White 기반, Single Blue 포인트 컬러
+ *
+ * @deprecated UI 색상은 useEvTheme().tokens (semanticTokens) 사용.
+ * 아래 colors 는 레거시·문서용으로 라이트 팔레트와 동일 스케일만 유지.
  */
+import { lightTokens } from './semanticTokens.js'
+
+const L = lightTokens
+
 export const colors = {
-  // Blue scale (primary accent)
   blue: {
-    primary: '#2563eb',
-    light: '#3b82f6',
-    lighter: '#60a5fa',
-    pale: '#93c5fd',
-    deep: '#1d4ed8',
-    muted: 'rgba(37, 99, 235, 0.12)',
+    primary: L.blue.main,
+    light: L.blue.light,
+    lighter: L.blue.lighter,
+    pale: L.blue.pale,
+    deep: L.blue.deep,
+    muted: L.blue.muted,
   },
-  // Gray scale
   gray: {
-    50: '#f9fafb',
-    100: '#f3f4f6',
-    200: '#e5e7eb',
-    300: '#d1d5db',
+    50: L.bg.subtle,
+    100: L.bg.muted,
+    200: L.border.default,
+    300: L.border.strong,
     400: '#9ca3af',
-    500: '#6b7280',
-    600: '#4b5563',
+    500: L.text.tertiary,
+    600: L.text.secondary,
     700: '#374151',
-    800: '#1f2937',
+    800: L.text.primary,
     900: '#111827',
   },
-  white: '#ffffff',
+  white: L.bg.paper,
   black: '#0a0a0a',
 }
 
-/** liquid glass: 배경 투명도 20% */
+/** @deprecated GlassPanel이 useEvTheme().tokens.glass 사용 */
 export const glass = {
   panel: {
-    background: 'rgba(255, 255, 255, 0.2)',
+    background: L.glass.panelBg,
     backdropFilter: 'blur(20px)',
     WebkitBackdropFilter: 'blur(20px)',
-    border: '1px solid rgba(255, 255, 255, 0.25)',
-    boxShadow: '0 4px 24px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04)',
+    border: `1px solid ${L.glass.panelBorder}`,
+    boxShadow: L.glass.panelShadow,
   },
   panelHover: {
     background: 'rgba(255, 255, 255, 0.28)',
     boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08), 0 1px 2px rgba(0, 0, 0, 0.04)',
   },
   card: {
-    background: 'rgba(255, 255, 255, 0.2)',
+    background: L.glass.panelBg,
     backdropFilter: 'blur(16px)',
     WebkitBackdropFilter: 'blur(16px)',
-    border: '1px solid rgba(255, 255, 255, 0.25)',
+    border: `1px solid ${L.glass.panelBorder}`,
     boxShadow: '0 2px 12px rgba(0, 0, 0, 0.04)',
   },
 }
@@ -246,8 +251,8 @@ export const mobileMapChrome = {
   padY: 10,
   /** 좁힐수록 플로팅 검색 pill이 넓어짐 (safe-area min과 함께 사용) */
   padX: 8,
-  /** 그림자 톤 — 검색 pill·원형 FAB 공통 */
-  floatShadow: '0 4px 24px rgba(15, 23, 42, 0.12), 0 2px 10px rgba(15, 23, 42, 0.08)',
+  /** @deprecated tokens.shadow.float */
+  floatShadow: L.shadow.float,
 }
 
 /** 바텀 시트 스냅(뷰포트 대비 비율은 MobileBottomSheet props로 조정) */
@@ -261,19 +266,16 @@ export const sheetLayout = {
   mobileTopBarControlPx: mobileMapChrome.searchPillH,
   /**
    * Leaflet/목록 시트·토스트 top 보정용(픽셀): safe-area는 CSS에서 별도 합산.
-   * = safeAreaInnerTopPad + max(pill, FAB열) + 하단 padY (FAB열 = 내 위치 단일 버튼 높이)
+   * = safeAreaInnerTopPad + max(pill, FAB열) + 하단 padY (FAB열 = 필터+내 위치 스택)
    */
   mobileTopBarStackPx:
     mobileMapChrome.safeAreaInnerTopPad +
-    Math.max(mobileMapChrome.searchPillH, mobileMapChrome.fabSize) +
+    Math.max(
+      mobileMapChrome.searchPillH,
+      mobileMapChrome.fabSize * 2 + mobileMapChrome.rowGap,
+    ) +
     mobileMapChrome.padY,
 }
 
-export const chartBlueScale = [
-  colors.blue.primary,
-  colors.blue.light,
-  colors.blue.lighter,
-  colors.blue.pale,
-  colors.blue.deep,
-  '#1e40af',
-]
+/** @deprecated useEvTheme().tokens.chartBlue */
+export const chartBlueScale = [...L.chartBlue]

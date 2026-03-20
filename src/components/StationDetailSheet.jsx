@@ -2,7 +2,8 @@ import { useEffect, useRef, useMemo, useState } from 'react'
 import { Drawer, Box, IconButton, Typography, CircularProgress } from '@mui/material'
 import Close from '@mui/icons-material/Close'
 import Refresh from '@mui/icons-material/Refresh'
-import { appMobileType, colors, radius, motion } from '../theme/dashboardTheme.js'
+import { appMobileType, radius, motion } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 import { StationDetailContent, StationDetailFooterActions } from './StationDetailContent.jsx'
 
 const SWIPE_CLOSE_PX = 56
@@ -24,6 +25,7 @@ export function StationDetailSheet({
   headerSubtitle = '',
   chargerSummaryUpdatedInHeader = false,
 }) {
+  const { colors, tokens } = useEvTheme()
   const dragStartY = useRef(0)
   const dragging = useRef(false)
   const closeBtnRef = useRef(null)
@@ -135,8 +137,8 @@ export function StationDetailSheet({
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
-          bgcolor: colors.white,
-          boxShadow: '0 -4px 24px rgba(0,0,0,0.12)',
+          bgcolor: tokens.bg.paper,
+          boxShadow: tokens.shadow.sheet,
           transition: `transform ${motion.duration.detailEnter}ms ${motion.easing.emphasized}`,
         },
       }}
@@ -154,7 +156,7 @@ export function StationDetailSheet({
               px: 2,
               pb: 1.75,
               borderBottom: `1px solid ${colors.gray[200]}`,
-              bgcolor: colors.gray[50],
+              bgcolor: tokens.bg.subtle,
               touchAction: 'none',
               cursor: 'grab',
               '&:active': { cursor: 'grabbing' },

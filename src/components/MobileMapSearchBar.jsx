@@ -1,8 +1,9 @@
 import { useRef } from 'react'
 import { Box, Chip, IconButton, InputAdornment, TextField } from '@mui/material'
-import SearchIcon from '@mui/icons-material/Search'
 import Close from '@mui/icons-material/Close'
-import { colors, motion, radius, mobileMapChrome } from '../theme/dashboardTheme.js'
+import { EvBrandSearchLogo } from './EvBrandSearchLogo.jsx'
+import { motion, radius, mobileMapChrome } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 
 /** iOS Safari: input computed font-size < 16px 이면 포커스 시 페이지 자동 확대 */
 const SEARCH_INPUT_FONT_PX = 16
@@ -32,6 +33,7 @@ export function MobileMapSearchBar({
   /** 적용 검색어와 동일한 칩에 선택 강조 */
   activeQuickQuery = '',
 }) {
+  const { colors, tokens } = useEvTheme()
   const blurTimer = useRef(0)
 
   const handleBlur = () => {
@@ -53,6 +55,9 @@ export function MobileMapSearchBar({
     onChange(text)
     onSubmit?.()
   }
+
+  const searchFocusShadow = tokens.shadow.searchFocused
+  const searchIdleShadow = tokens.shadow.float
 
   return (
     <Box sx={{ position: 'relative', flex: 1, minWidth: 0, alignSelf: 'flex-start' }}>
@@ -80,16 +85,14 @@ export function MobileMapSearchBar({
             maxHeight: mobileMapChrome.searchPillH,
             boxSizing: 'border-box',
             fontSize: `${SEARCH_INPUT_FONT_PX}px`,
-            bgcolor: colors.white,
+            bgcolor: tokens.control.searchBg,
             borderRadius: radius.full,
-            boxShadow: focused
-              ? '0 6px 28px rgba(15, 23, 42, 0.16), 0 0 0 2px rgba(37, 99, 235, 0.22)'
-              : mobileMapChrome.floatShadow,
+            boxShadow: focused ? searchFocusShadow : searchIdleShadow,
             pl: '16px',
             pr: '10px',
             transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
-            '& fieldset': { borderColor: 'rgba(15,23,42,0.06)' },
-            '&:hover fieldset': { borderColor: 'rgba(15,23,42,0.1)' },
+            '& fieldset': { borderColor: tokens.control.searchBorder },
+            '&:hover fieldset': { borderColor: tokens.border.strong },
             '&.Mui-focused fieldset': { borderColor: colors.blue.primary, borderWidth: 1 },
             alignItems: 'center',
             /* 포커스 시 높이·패딩 변화 없음(MUI small 기본 보정) */
@@ -112,8 +115,29 @@ export function MobileMapSearchBar({
         slotProps={{
           input: {
             startAdornment: (
-              <InputAdornment position="start" sx={{ mr: 0.5, ml: -0.25 }}>
-                <SearchIcon sx={{ fontSize: 22, color: focused ? colors.blue.primary : colors.gray[500] }} />
+              <InputAdornment
+                position="start"
+                sx={{
+                  mr: '11px',
+                  ml: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  alignSelf: 'center',
+                  maxHeight: 'none',
+                }}
+              >
+                <Box
+                  component="span"
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    lineHeight: 0,
+                  }}
+                  aria-hidden
+                >
+                  <EvBrandSearchLogo size={22} />
+                </Box>
               </InputAdornment>
             ),
             endAdornment: value.trim() ? (
@@ -156,9 +180,9 @@ export function MobileMapSearchBar({
               fontWeight: 700,
               fontSize: '0.75rem',
               borderRadius: 9999,
-              bgcolor: 'rgba(37, 99, 235, 0.1)',
+              bgcolor: tokens.blue.muted,
               color: colors.blue.deep,
-              border: `1px solid rgba(37, 99, 235, 0.28)`,
+              border: `1px solid ${tokens.blue.borderSoft}`,
               '& .MuiChip-label': { px: 1.25, overflow: 'hidden', textOverflow: 'ellipsis' },
             }}
           />
@@ -182,8 +206,8 @@ export function MobileMapSearchBar({
             minWidth: 0,
             p: 1.25,
             borderRadius: `${radius.md}px`,
-            bgcolor: 'rgba(255,255,255,0.98)',
-            boxShadow: mobileMapChrome.floatShadow,
+            bgcolor: tokens.bg.paper,
+            boxShadow: tokens.shadow.float,
             border: `1px solid ${colors.gray[200]}`,
             pointerEvents: 'auto',
           }}
@@ -201,17 +225,17 @@ export function MobileMapSearchBar({
                   borderRadius: 9999,
                   fontSize: `${QUICK_CHIP_FONT_PX}px`,
                   fontWeight: 600,
-                  bgcolor: active ? 'rgba(37, 99, 235, 0.14)' : colors.gray[100],
+                  bgcolor: active ? tokens.blue.mutedStrong : colors.gray[100],
                   color: active ? colors.blue.deep : colors.gray[800],
                   border: active ? `2px solid ${colors.blue.primary}` : `1px solid ${colors.gray[200]}`,
-                  boxShadow: active ? '0 2px 10px rgba(37, 99, 235, 0.18)' : 'none',
+                  boxShadow: active ? `0 2px 10px ${tokens.blue.glowSoft}` : 'none',
                   transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
                   '& .MuiChip-label': {
                     px: `${QUICK_CHIP_PAD_X}px`,
                     py: 0,
                   },
                   '&:hover': {
-                    bgcolor: active ? 'rgba(37, 99, 235, 0.2)' : colors.gray[200],
+                    bgcolor: active ? tokens.blue.muted : colors.gray[200],
                     borderColor: active ? colors.blue.deep : colors.gray[300],
                   },
                   '&:active': {

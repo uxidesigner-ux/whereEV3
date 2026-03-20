@@ -37,8 +37,8 @@
 
 | # | 시나리오 | 기대 동작 |
 |---|----------|-----------|
-| B1 | 바텀 시트 collapsed ↔ half ↔ full (핸들·메타 영역 드래그) | 스냅 자연스럽; half/full에서만 필터 rail 노출, chip 탭은 드래그와 충돌 없음 |
-| B2 | 상세/필터 열림 ↔ 닫힘 | Drawer 전환 시간이 과하지 않음(`motion` 토큰) |
+| B1 | 바텀 시트 closed ↔ half ↔ full (half에서만 핸들·메타 드래그로 리사이즈) | full은 전체 화면·상단 뒤로가기; full에서 본문 맨 위일 때 아래로 당기면 half 복귀; 필터 rail은 목록 half 전용 |
+| B2 | 모바일 상세(목록과 동일 시트) / 필터 열림 ↔ 닫힘 | 시트·필터 전환이 과하게 길지 않음(`motion` 토큰) |
 | B3 | 상세·필터 닫은 뒤 FAB | 짧은 지연 후 다시 나타남(깜빡임·겹침 최소) |
 | B4 | 필터 열린 뒤 지도 탭 | 지도 제스처 차단(레이어·Drawer) |
 
@@ -81,6 +81,6 @@
 
 - `src/App.jsx` — 히스토리, 스택, 스크롤 저장/복원, FAB 지연  
 - `src/theme/dashboardTheme.js` — `motion` duration/easing  
-- `src/components/MobileBottomSheet.jsx`, `MobileFilterSheet.jsx`, `StationDetailSheet.jsx`  
+- `src/components/MobileBottomSheet.jsx`, `MobileDetailSheetBody.jsx`, `MobileFilterSheet.jsx` (레거시 `StationDetailSheet.jsx`는 미사용 가능)  
 - `src/components/SideOverlayPanel.jsx` — 패널 스크롤 ref  
 - `src/components/StationDetailModal.jsx` — 다이얼로그 전환  

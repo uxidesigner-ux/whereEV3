@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { Box, Button, Modal, TextField, List, ListItemButton, Typography } from '@mui/material'
-import { colors, radius } from '../theme/dashboardTheme.js'
+import { radius } from '../theme/dashboardTheme.js'
+import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 
 /**
  * 제목 + 요약 + "선택" 버튼. 클릭 시 모달에서 목록 선택.
@@ -16,6 +17,7 @@ export function FilterModalSelect({
   disabledMessage,
   searchable = false,
 }) {
+  const { colors } = useEvTheme()
   const [open, setOpen] = useState(false)
   const [search, setSearch] = useState('')
 
