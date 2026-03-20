@@ -103,6 +103,7 @@ import {
   squareBoundsLiteralAroundCenter,
 } from './utils/mobileRadiusSearch.js'
 import { zoomForHorizontalSpanMeters } from './utils/mapZoomMeters.js'
+import { computeBootLeafletView, GWANGHWAMUN_FALLBACK, mapBootstrapWidthPx } from './utils/mapInitialView.js'
 import {
   spacing,
   radius,
@@ -129,9 +130,6 @@ import { MobileDetailSheetBody } from './components/MobileDetailSheetBody.jsx'
 import { MobileFilterSheet } from './components/MobileFilterSheet.jsx'
 import { ThemeAppearanceControl } from './components/ThemeAppearanceControl.jsx'
 
-/** 위치 미수신 시 초기 지도 중심(광화문 일대) */
-const GWANGHWAMUN_CENTER = [37.5759, 126.9769]
-
 /**
  * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
  */
@@ -156,8 +154,8 @@ function getBootstrapGeolocationPosition() {
   return new Promise((resolve) => {
     const fallback = () =>
       resolve({
-        lat: GWANGHWAMUN_CENTER[0],
-        lng: GWANGHWAMUN_CENTER[1],
+        lat: GWANGHWAMUN_FALLBACK.lat,
+        lng: GWANGHWAMUN_FALLBACK.lng,
         usedGeo: false,
       })
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -476,10 +474,9 @@ function App() {
     setBootProgress(100)
     setBootOverlayOpen(false)
   }, [])
-  const [leafletInitial, setLeafletInitial] = useState(() => ({
-    center: GWANGHWAMUN_CENTER,
-    zoom: 11,
-  }))
+  const [leafletInitial, setLeafletInitial] = useState(() =>
+    computeBootLeafletView(GWANGHWAMUN_FALLBACK.lat, GWANGHWAMUN_FALLBACK.lng),
+  )
   const [apiError, setApiError] = useState(null)
   const [lastEvFetchAt, setLastEvFetchAt] = useState(null)
   const [detailRefreshing, setDetailRefreshing] = useState(false)
@@ -848,7 +845,10 @@ function App() {
   const [userLocation, setUserLocation] = useState(null)
   const [locationError, setLocationError] = useState(null)
   const [locationLoading, setLocationLoading] = useState(false)
-  const [mapCenter, setMapCenter] = useState({ lat: GWANGHWAMUN_CENTER[0], lng: GWANGHWAMUN_CENTER[1] })
+  const [mapCenter, setMapCenter] = useState({
+    lat: GWANGHWAMUN_FALLBACK.lat,
+    lng: GWANGHWAMUN_FALLBACK.lng,
+  })
   const [liveMapBounds, setLiveMapBounds] = useState(null)
   /** 디바운스된 뷰포트 — 지도 마커/클러스터 계산에만 사용 */
   const [mapClusterBoundsRaw, setMapClusterBoundsRaw] = useState(null)
@@ -921,11 +921,7 @@ function App() {
           ? '내 위치를 확인했어요. 주변 충전소 정보를 불러오고 있어요'
           : '위치를 사용할 수 없어 기본 위치로 시작해요. 주변 충전소 정보를 불러오고 있어요',
       )
-      const mapW = typeof window !== 'undefined' ? window.innerWidth : 400
-      /** 성공/실패 모두 화면 가로폭 ≈ 1000m에 맞춤 */
-      const INITIAL_MAP_SPAN_M = 1000
-      const mapZ = zoomForHorizontalSpanMeters(mapW, INITIAL_MAP_SPAN_M, pos.lat)
-      const view = { center: /** @type {[number, number]} */ ([pos.lat, pos.lng]), zoom: mapZ }
+      const view = computeBootLeafletView(pos.lat, pos.lng, mapBootstrapWidthPx())
       setLeafletInitial(view)
       if (pos.usedGeo) setUserLocation({ lat: pos.lat, lng: pos.lng })
       else setUserLocation(null)
@@ -2380,9 +2376,10 @@ function App() {
             <MapBoundsTracker setMapBounds={setLiveMapBounds} />
             <MapBootMarkerReady
               active={awaitingInitialMapPaint}
+              center={leafletInitial.center}
+              zoom={leafletInitial.zoom}
               itemsLength={items.length}
               markerCount={groupedAllStationsForMap.length}
-              boundsReady={mapClusterBoundsRaw != null}
               onReady={onBootMapPaintReady}
             />
             <MapMobileSearchViewportFitter

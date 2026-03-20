@@ -1,12 +1,9 @@
 import { useEffect, useRef } from 'react'
 import { useMap } from 'react-leaflet'
-import { zoomForHorizontalSpanMeters } from '../utils/mapZoomMeters.js'
-
-/** 위치 실패 시 초기 뷰 (광화문 일대) */
-const FALLBACK_CENTER = [37.5759, 126.9769]
+import { computeBootLeafletView, GWANGHWAMUN_FALLBACK } from '../utils/mapInitialView.js'
 
 /**
- * 앱 최초 1회: 위치 성공/실패 모두 가로폭 ≈ 1000m (부트스트랩과 동일 스케일).
+ * (레거시/미사용 가능) 위치 성공/실패 모두 가로폭 ≈ 1000m — 부트스트랩과 동일 유틸.
  */
 export function MapInitialGeolocation({ setUserLocation }) {
   const map = useMap()
@@ -25,17 +22,17 @@ export function MapInitialGeolocation({ setUserLocation }) {
 
     const applySuccess = (lat, lng) => {
       const w = mapWidthPx()
-      const z = zoomForHorizontalSpanMeters(w, 1000, lat)
-      map.setView([lat, lng], z, { animate: false })
+      const { center, zoom } = computeBootLeafletView(lat, lng, w)
+      map.setView(center, zoom, { animate: false })
       setUserLocation({ lat, lng })
     }
 
     const applyFallback = () => {
-      const lat = FALLBACK_CENTER[0]
-      const lng = FALLBACK_CENTER[1]
+      const lat = GWANGHWAMUN_FALLBACK.lat
+      const lng = GWANGHWAMUN_FALLBACK.lng
       const w = mapWidthPx()
-      const z = zoomForHorizontalSpanMeters(w, 1000, lat)
-      map.setView([lat, lng], z, { animate: false })
+      const { center, zoom } = computeBootLeafletView(lat, lng, w)
+      map.setView(center, zoom, { animate: false })
     }
 
     if (!navigator.geolocation) {
