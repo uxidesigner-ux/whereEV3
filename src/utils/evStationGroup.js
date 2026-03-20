@@ -45,3 +45,33 @@ export function groupChargerRowsByPlace(items) {
     }
   })
 }
+
+/**
+ * 지도 마커·클러스터 전용 경량 그룹핑(목록/상세와 동일 스키마 중 필수 필드만).
+ * 주소·요약 문자열·갱신시각 등 무거운 필드는 생략해 초기 마커 레이어 준비를 앞당긴다.
+ */
+export function groupChargerRowsByPlaceMapLite(items) {
+  const byKey = new Map()
+  for (const row of items || []) {
+    const key = placeKey(row)
+    if (!byKey.has(key)) byKey.set(key, [])
+    byKey.get(key).push(row)
+  }
+  return Array.from(byKey.entries()).map(([id, rows]) => {
+    const first = rows[0]
+    const statCounts = aggregateStatCounts(rows)
+    return {
+      id,
+      statNm: first.statNm,
+      lat: first.lat,
+      lng: first.lng,
+      distanceKm: 0,
+      totalChargers: rows.length,
+      statCounts,
+      busiNm: formatListSummary(rows.map((r) => r.busiNm), 2),
+      speedBadge: summarizeSpeedCategories(rows),
+      locationHint: pickShortLocationHint(rows, first),
+      rows,
+    }
+  })
+}

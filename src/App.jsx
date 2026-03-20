@@ -54,7 +54,7 @@ import {
   pickShortLocationHint,
   expandLiteralBounds,
 } from './utils/geo.js'
-import { groupChargerRowsByPlace } from './utils/evStationGroup.js'
+import { groupChargerRowsByPlaceMapLite } from './utils/evStationGroup.js'
 
 /** 상세/마커 동기화용: 동일 장소(placeKey) 행으로 그룹 객체 재구성 */
 function buildPlaceGroupFromRows(rows, distanceKmPreserve) {
@@ -344,8 +344,6 @@ function MapCenterTracker({ setMapCenter }) {
   return null
 }
 
-const BOUNDS_DEBOUNCE_MS = 200
-
 function MapBoundsTracker({ setMapBounds }) {
   const map = useMap()
   useEffect(() => {
@@ -356,18 +354,13 @@ function MapBoundsTracker({ setMapBounds }) {
         northEast: { lat: b.getNorthEast().lat, lng: b.getNorthEast().lng },
       })
     }
-    let timeoutId
-    const debounced = () => {
-      clearTimeout(timeoutId)
-      timeoutId = setTimeout(update, BOUNDS_DEBOUNCE_MS)
-    }
     update()
-    map.on('moveend', debounced)
-    map.on('zoomend', debounced)
+    /** 패닝 중에도 카메라 반영과 마커 뷰포트가 바로 맞도록 즉시 갱신(클러스터용 bounds는 별도 디바운스) */
+    map.on('moveend', update)
+    map.on('zoomend', update)
     return () => {
-      map.off('moveend', debounced)
-      map.off('zoomend', debounced)
-      clearTimeout(timeoutId)
+      map.off('moveend', update)
+      map.off('zoomend', update)
     }
   }, [map, setMapBounds])
   return null
@@ -473,6 +466,12 @@ function App() {
     setAwaitingInitialMapPaint(false)
     setBootProgress(100)
     setBootOverlayOpen(false)
+  }, [])
+
+  /** 부트 setView 직후 한 번: 클러스터용 bounds를 320ms 디바운스 없이 즉시 맞춤 */
+  const primeClusterBoundsImmediateRef = useRef(false)
+  const primeClusterBoundsForBoot = useCallback(() => {
+    primeClusterBoundsImmediateRef.current = true
   }, [])
   const [leafletInitial, setLeafletInitial] = useState(() =>
     computeBootLeafletView(GWANGHWAMUN_FALLBACK.lat, GWANGHWAMUN_FALLBACK.lng),
@@ -861,6 +860,11 @@ function App() {
 
   useEffect(() => {
     if (!liveMapBounds) return undefined
+    if (primeClusterBoundsImmediateRef.current) {
+      primeClusterBoundsImmediateRef.current = false
+      setMapClusterBoundsRaw(liveMapBounds)
+      return undefined
+    }
     if (!mapClusterDebouncePrimedRef.current) {
       mapClusterDebouncePrimedRef.current = true
       setMapClusterBoundsRaw(liveMapBounds)
@@ -1376,7 +1380,7 @@ function App() {
       )
       validItems = validItems.filter((r) => b.contains([r.lat, r.lng]))
     }
-    const grouped = groupChargerRowsByPlace(validItems)
+    const grouped = groupChargerRowsByPlaceMapLite(validItems)
     const sel = mapSelectedStation
     if (!sel) return grouped
     if (grouped.some((s) => s.id === sel.id)) return grouped
@@ -2380,6 +2384,7 @@ function App() {
               zoom={leafletInitial.zoom}
               itemsLength={items.length}
               markerCount={groupedAllStationsForMap.length}
+              primeClusterBoundsNow={primeClusterBoundsForBoot}
               onReady={onBootMapPaintReady}
             />
             <MapMobileSearchViewportFitter
