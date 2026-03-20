@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Marker, Popup, TileLayer, useMap } from 'react-leaflet'
+import { LayerGroup, Marker, Popup, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { Box, Button, Typography } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
@@ -21,6 +21,7 @@ function mapPopupMetaLine(s) {
 /**
  * 전체(또는 전달된) 충전소 분포: 타일 + 마커 클러스터.
  * 시트/필터와 별도 데이터(stations)를 받아 지도만 담당.
+ * @param {'lite' | 'full'} variant lite=비클러스터 즉시 페인트, full=MarkerClusterGroup
  */
 export function EvStationMapLayer({
   stations,
@@ -38,6 +39,7 @@ export function EvStationMapLayer({
   markerClusterChunked = true,
   /** true면 화면 밖 마커를 클러스터에서 제거(대량 시 유리). 초기 페인트에서 마커가 비는 경우가 있어 기본은 false */
   removeOutsideVisibleBounds = false,
+  variant = 'full',
 }) {
   const map = useMap()
   const muiThemeLocal = useTheme()
@@ -68,159 +70,164 @@ export function EvStationMapLayer({
     return isMobile && selectedMarkerIconMobile ? selectedMarkerIconMobile : selectedMarkerIcon
   }
 
+  const markerNodes = stations.map((s) => {
+    const hint = mapPopupDistOrHint(s)
+    const meta = mapPopupMetaLine(s)
+    const mapsHref = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}`
+    return (
+      <Marker
+        key={s.id}
+        position={[s.lat, s.lng]}
+        evStation={s}
+        icon={iconFor(s.id)}
+        zIndexOffset={selectedId === s.id ? 700 : 0}
+        eventHandlers={
+          isMobile && onDetailClick
+            ? {
+                click: () => {
+                  onDetailClick(s)
+                },
+              }
+            : undefined
+        }
+      >
+        {!isMobile ? (
+          <Popup maxWidth={260}>
+            <Box
+              component="div"
+              sx={{
+                fontFamily: muiThemeLocal.typography.fontFamily,
+                margin: '-4px -6px',
+                minWidth: 200,
+              }}
+            >
+              <Typography
+                component="div"
+                sx={{
+                  fontWeight: 700,
+                  fontSize: '0.875rem',
+                  color: uiColors.gray[900],
+                  lineHeight: 1.25,
+                }}
+              >
+                {s.statNm}
+              </Typography>
+              {hint ? (
+                <Typography
+                  component="div"
+                  sx={{ fontSize: '0.6875rem', color: uiColors.gray[500], mt: 0.2, lineHeight: 1.35 }}
+                >
+                  {hint}
+                </Typography>
+              ) : null}
+              <Typography
+                component="div"
+                sx={{ fontSize: '0.6875rem', color: uiColors.gray[600], mt: 0.15, lineHeight: 1.35 }}
+              >
+                {meta}
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.25, mt: 0.5 }}>
+                {onDetailClick ? (
+                  <Button
+                    type="button"
+                    variant="text"
+                    size="small"
+                    onClick={() => onDetailClick(s)}
+                    sx={{
+                      minWidth: 0,
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      py: 0.2,
+                      px: 0.5,
+                      color: uiColors.blue.primary,
+                      textTransform: 'none',
+                    }}
+                  >
+                    상세
+                  </Button>
+                ) : null}
+                <Button
+                  component="a"
+                  href={mapsHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  variant="text"
+                  size="small"
+                  sx={{
+                    minWidth: 0,
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    py: 0.2,
+                    px: 0.5,
+                    color: uiColors.gray[700],
+                    textTransform: 'none',
+                  }}
+                >
+                  길찾기
+                </Button>
+              </Box>
+            </Box>
+          </Popup>
+        ) : null}
+      </Marker>
+    )
+  })
+
   return (
     <>
       <TileLayer attribution={mapTileAttribution} url={mapTileUrl} subdomains="abcd" maxZoom={20} />
-      <MarkerClusterGroup
-        chunkedLoading={markerClusterChunked}
-        chunkInterval={markerClusterChunked ? 90 : 0}
-        chunkDelay={markerClusterChunked ? 24 : 0}
-        maxClusterRadius={72}
-        spiderfyOnMaxZoom
-        showCoverageOnHover={false}
-        zoomToBoundsOnClick={false}
-        disableClusteringAtZoom={17}
-        removeOutsideVisibleBounds={removeOutsideVisibleBounds}
-        iconCreateFunction={iconCreateFunction}
-        // react-leaflet-cluster: onClick → Leaflet "clusterclick" (onClusterClick는 clusterclusterclick로 잘못 매핑됨)
-        onClick={(e) => {
-          const layer = e.layer
-          if (!layer) return
-          const bounds = typeof layer.getBounds === 'function' ? layer.getBounds() : null
-          const raw = typeof layer.getAllChildMarkers === 'function' ? layer.getAllChildMarkers() : []
-          const picked = []
-          const seen = new Set()
-          for (const m of raw) {
-            const st = m.options?.evStation
-            if (st?.id != null && st.id !== '') {
-              if (!seen.has(st.id)) {
-                seen.add(st.id)
-                picked.push(st)
+      {variant === 'lite' ? (
+        <LayerGroup>{markerNodes}</LayerGroup>
+      ) : (
+        <MarkerClusterGroup
+          chunkedLoading={markerClusterChunked}
+          chunkInterval={markerClusterChunked ? 90 : 0}
+          chunkDelay={markerClusterChunked ? 24 : 0}
+          maxClusterRadius={72}
+          spiderfyOnMaxZoom
+          showCoverageOnHover={false}
+          zoomToBoundsOnClick={false}
+          disableClusteringAtZoom={17}
+          removeOutsideVisibleBounds={removeOutsideVisibleBounds}
+          iconCreateFunction={iconCreateFunction}
+          onClick={(e) => {
+            const layer = e.layer
+            if (!layer) return
+            const bounds = typeof layer.getBounds === 'function' ? layer.getBounds() : null
+            const raw = typeof layer.getAllChildMarkers === 'function' ? layer.getAllChildMarkers() : []
+            const picked = []
+            const seen = new Set()
+            for (const m of raw) {
+              const st = m.options?.evStation
+              if (st?.id != null && st.id !== '') {
+                if (!seen.has(st.id)) {
+                  seen.add(st.id)
+                  picked.push(st)
+                }
               }
             }
-          }
-          if (picked.length === 0 && stations?.length && bounds?.isValid?.()) {
-            for (const s of stations) {
-              if (s?.id != null && bounds.contains([s.lat, s.lng]) && !seen.has(s.id)) {
-                seen.add(s.id)
-                picked.push(s)
+            if (picked.length === 0 && stations?.length && bounds?.isValid?.()) {
+              for (const s of stations) {
+                if (s?.id != null && bounds.contains([s.lat, s.lng]) && !seen.has(s.id)) {
+                  seen.add(s.id)
+                  picked.push(s)
+                }
               }
             }
-          }
-          if (picked.length > 0 && typeof onClusterTap === 'function') {
-            onClusterTap({ stations: picked, bounds })
-          }
-          if (map && bounds?.isValid?.() && picked.length > 0) {
-            const center = bounds.getCenter()
-            if (!map.getBounds().contains(center)) {
-              map.panTo(center, { animate: true, duration: 0.2 })
+            if (picked.length > 0 && typeof onClusterTap === 'function') {
+              onClusterTap({ stations: picked, bounds })
             }
-          }
-        }}
-      >
-        {stations.map((s) => {
-          const hint = mapPopupDistOrHint(s)
-          const meta = mapPopupMetaLine(s)
-          const mapsHref = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}`
-          return (
-            <Marker
-              key={s.id}
-              position={[s.lat, s.lng]}
-              evStation={s}
-              icon={iconFor(s.id)}
-              zIndexOffset={selectedId === s.id ? 700 : 0}
-              eventHandlers={
-                isMobile && onDetailClick
-                  ? {
-                      click: () => {
-                        onDetailClick(s)
-                      },
-                    }
-                  : undefined
+            if (map && bounds?.isValid?.() && picked.length > 0) {
+              const center = bounds.getCenter()
+              if (!map.getBounds().contains(center)) {
+                map.panTo(center, { animate: true, duration: 0.2 })
               }
-            >
-              {!isMobile ? (
-                <Popup maxWidth={260}>
-                  <Box
-                    component="div"
-                    sx={{
-                      fontFamily: muiThemeLocal.typography.fontFamily,
-                      margin: '-4px -6px',
-                      minWidth: 200,
-                    }}
-                  >
-                    <Typography
-                      component="div"
-                      sx={{
-                        fontWeight: 700,
-                        fontSize: '0.875rem',
-                        color: uiColors.gray[900],
-                        lineHeight: 1.25,
-                      }}
-                    >
-                      {s.statNm}
-                    </Typography>
-                    {hint ? (
-                      <Typography
-                        component="div"
-                        sx={{ fontSize: '0.6875rem', color: uiColors.gray[500], mt: 0.2, lineHeight: 1.35 }}
-                      >
-                        {hint}
-                      </Typography>
-                    ) : null}
-                    <Typography
-                      component="div"
-                      sx={{ fontSize: '0.6875rem', color: uiColors.gray[600], mt: 0.15, lineHeight: 1.35 }}
-                    >
-                      {meta}
-                    </Typography>
-                    <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.25, mt: 0.5 }}>
-                      {onDetailClick ? (
-                        <Button
-                          type="button"
-                          variant="text"
-                          size="small"
-                          onClick={() => onDetailClick(s)}
-                          sx={{
-                            minWidth: 0,
-                            fontSize: '0.75rem',
-                            fontWeight: 700,
-                            py: 0.2,
-                            px: 0.5,
-                            color: uiColors.blue.primary,
-                            textTransform: 'none',
-                          }}
-                        >
-                          상세
-                        </Button>
-                      ) : null}
-                      <Button
-                        component="a"
-                        href={mapsHref}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        variant="text"
-                        size="small"
-                        sx={{
-                          minWidth: 0,
-                          fontSize: '0.75rem',
-                          fontWeight: 600,
-                          py: 0.2,
-                          px: 0.5,
-                          color: uiColors.gray[700],
-                          textTransform: 'none',
-                        }}
-                      >
-                        길찾기
-                      </Button>
-                    </Box>
-                  </Box>
-                </Popup>
-              ) : null}
-            </Marker>
-          )
-        })}
-      </MarkerClusterGroup>
+            }
+          }}
+        >
+          {markerNodes}
+        </MarkerClusterGroup>
+      )}
     </>
   )
 }

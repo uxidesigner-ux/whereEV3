@@ -215,6 +215,13 @@ function clusterGroupedMatchesBusiNm(s, needle) {
 
 /** 지도 클러스터용 뷰포트 반영 지연(패닝 시 연산·마커 갱신 부담 완화) */
 const MAP_CLUSTER_BOUNDS_DEBOUNCE_MS = 320
+/** 단계 A: 클러스터 없이 먼저 그릴 최대 장소 수(지도 중심 근접 순). 시트/검색과 무관 */
+const INITIAL_MAP_MARKERS_LITE_CAP = 96
+/**
+ * MarkerClusterGroup chunkedLoading 시 90ms 간격으로 잘라 추가되어 수천 개에서 수 초~10초 지연이 난다.
+ * 이 이상일 때만 청크 로딩 사용.
+ */
+const MAP_CLUSTER_CHUNKED_MIN_STATIONS = 5000
 
 /** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
 const MOBILE_DETAIL_HEADER_GUTTER = 2.5
@@ -480,6 +487,9 @@ function App() {
   const [totalCount, setTotalCount] = useState(null)
   const [bootOverlayOpen, setBootOverlayOpen] = useState(true)
   const [awaitingInitialMapPaint, setAwaitingInitialMapPaint] = useState(false)
+  /** lite: LayerGroup 근접 N개 즉시 → idle 후 full 클러스터(초기 청크 지연 방지) */
+  const [mapMarkersRenderPhase, setMapMarkersRenderPhase] = useState(/** @type {'lite' | 'full'} */ ('lite'))
+  const mapClusterUpgradeScheduledRef = useRef(false)
   const [bootProgress, setBootProgress] = useState(0)
   const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
   const bootMapPaintedRef = useRef(false)
@@ -1435,6 +1445,54 @@ function App() {
     return viewportGrouped
   }, [awaitingInitialMapPaint, groupedAllStationsForMap, groupedBootMarkers])
 
+  /** 지도 초기 페인트 전용: `mapStations` 중 지도 중심에 가까운 상한만(무거운 시트 파생과 분리) */
+  const mapMarkersInitial = useMemo(() => {
+    const cap = INITIAL_MAP_MARKERS_LITE_CAP
+    const src = mapStations
+    if (src.length <= cap) return src
+    const refLat = mapCenter.lat
+    const refLng = mapCenter.lng
+    return [...src]
+      .map((s) => ({ s, d: haversineDistanceKm(s.lat, s.lng, refLat, refLng) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, cap)
+      .map(({ s }) => s)
+  }, [mapStations, mapCenter.lat, mapCenter.lng])
+
+  const mapLayerStations = useMemo(() => {
+    if (mapMarkersRenderPhase !== 'lite') return mapStations
+    if (mapStations.length <= INITIAL_MAP_MARKERS_LITE_CAP) return mapStations
+    return mapMarkersInitial
+  }, [mapMarkersRenderPhase, mapStations, mapMarkersInitial])
+
+  useEffect(() => {
+    if (mapStations.length === 0) {
+      mapClusterUpgradeScheduledRef.current = false
+      setMapMarkersRenderPhase('lite')
+      return undefined
+    }
+    if (mapClusterUpgradeScheduledRef.current) return undefined
+    mapClusterUpgradeScheduledRef.current = true
+
+    let cancelled = false
+    const goFull = () => {
+      if (cancelled) return
+      setMapMarkersRenderPhase('full')
+    }
+    if (typeof window.requestIdleCallback === 'function') {
+      const id = window.requestIdleCallback(goFull, { timeout: 1200 })
+      return () => {
+        cancelled = true
+        if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(id)
+      }
+    }
+    const t = window.setTimeout(goFull, 400)
+    return () => {
+      cancelled = true
+      window.clearTimeout(t)
+    }
+  }, [mapStations.length])
+
   const mapBootDiagPrevAwaitingRef = useRef(false)
   useEffect(() => {
     if (!import.meta.env.DEV) {
@@ -1447,6 +1505,8 @@ function App() {
         filteredItems: filteredItems.length,
         itemsInScope: itemsInScope.length,
         mapStations: mapStations.length,
+        mapLayerStations: mapLayerStations.length,
+        mapMarkersPhase: mapMarkersRenderPhase,
         groupedBootMarkers: groupedBootMarkers.length,
         groupedAllStationsForMap: groupedAllStationsForMap.length,
         mapClusterBoundsPadded: !!mapClusterBoundsPadded,
@@ -1459,6 +1519,8 @@ function App() {
     filteredItems.length,
     itemsInScope.length,
     mapStations.length,
+    mapLayerStations.length,
+    mapMarkersRenderPhase,
     groupedBootMarkers.length,
     groupedAllStationsForMap.length,
     mapClusterBoundsPadded,
@@ -2460,7 +2522,7 @@ function App() {
               center={leafletInitial.center}
               zoom={leafletInitial.zoom}
               itemsLength={items.length}
-              markerCount={mapStations.length}
+              markerCount={mapLayerStations.length}
               primeClusterBoundsNow={primeClusterBoundsForBoot}
               onReady={onBootMapPaintReady}
             />
@@ -2474,7 +2536,8 @@ function App() {
             />
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer
-              stations={mapStations}
+              stations={mapLayerStations}
+              variant={mapMarkersRenderPhase === 'lite' ? 'lite' : 'full'}
               onDetailClick={openDetailPreserve}
               onClusterTap={handleClusterStationsTap}
               selectedId={mapSelectedStation?.id}
@@ -2485,8 +2548,14 @@ function App() {
               uiColors={colors}
               mapTileUrl={tokens.map.tileUrl}
               mapTileAttribution={tokens.map.tileAttribution}
-              markerClusterChunked={!awaitingInitialMapPaint && mapStations.length > 1200}
-              removeOutsideVisibleBounds={mapStations.length > 2000}
+              markerClusterChunked={
+                mapMarkersRenderPhase === 'full' &&
+                !awaitingInitialMapPaint &&
+                mapStations.length > MAP_CLUSTER_CHUNKED_MIN_STATIONS
+              }
+              removeOutsideVisibleBounds={
+                mapMarkersRenderPhase === 'full' && mapStations.length > 2000
+              }
             />
             {!isMobile && <ZoomControl position="topright" />}
             {!isMobile && (
