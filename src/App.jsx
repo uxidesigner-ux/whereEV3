@@ -108,6 +108,27 @@ function groupChargersForBootMapView(items, centerLat, centerLng, radiiKm) {
   return []
 }
 
+/**
+ * API 정렬이 비지리적이어서 뷰포트·부트 반경 안에 충전소가 없을 때 — 지도에 실제로 보이는 중심 기준 가까운 행만 잘라 그룹.
+ */
+function groupedNearestPlacesForMap(items, centerLat, centerLng, maxRows) {
+  if (!items.length || !Number.isFinite(centerLat) || !Number.isFinite(centerLng)) return []
+  const rows = items
+    .filter((r) => {
+      const la = Number(r.lat)
+      const ln = Number(r.lng)
+      return Number.isFinite(la) && Number.isFinite(ln)
+    })
+    .map((r) => ({
+      r,
+      d: haversineDistanceKm(Number(r.lat), Number(r.lng), centerLat, centerLng),
+    }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, Math.max(0, maxRows))
+    .map(({ r }) => r)
+  return groupChargerRowsByPlaceMapLite(rows)
+}
+
 function rowsMatchingDetailStation(prev, flatItems) {
   if (!prev || !flatItems?.length) return []
   const key = Array.isArray(prev.rows) && prev.rows.length ? prev.id : placeKey(prev)
@@ -217,11 +238,8 @@ function clusterGroupedMatchesBusiNm(s, needle) {
 const MAP_CLUSTER_BOUNDS_DEBOUNCE_MS = 320
 /** 단계 A: 클러스터 없이 먼저 그릴 최대 장소 수(지도 중심 근접 순). 시트/검색과 무관 */
 const INITIAL_MAP_MARKERS_LITE_CAP = 96
-/**
- * MarkerClusterGroup chunkedLoading 시 90ms 간격으로 잘라 추가되어 수천 개에서 수 초~10초 지연이 난다.
- * 이 이상일 때만 청크 로딩 사용.
- */
-const MAP_CLUSTER_CHUNKED_MIN_STATIONS = 5000
+/** `groupedNearestPlacesForMap`에 넣을 최대 행 수(장소 수는 그룹 후 더 적음) */
+const NEAREST_FALLBACK_MAX_ROWS = 480
 
 /** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
 const MOBILE_DETAIL_HEADER_GUTTER = 2.5
@@ -1396,6 +1414,18 @@ function App() {
     stationsForMobileListEffective.length,
   ])
 
+  /** 지도 마커 거리·근접 정렬용: 초기 `mapCenter`는 광화문이라 잘못된 편향이 난다 → 실제 뷰 또는 부트 뷰 중심 사용 */
+  const mapViewCenterForMarkers = useMemo(() => {
+    if (liveMapBounds) {
+      return {
+        lat: (liveMapBounds.southWest.lat + liveMapBounds.northEast.lat) / 2,
+        lng: (liveMapBounds.southWest.lng + liveMapBounds.northEast.lng) / 2,
+      }
+    }
+    const [la, ln] = leafletInitial.center
+    return { lat: la, lng: ln }
+  }, [liveMapBounds, leafletInitial.center])
+
   /** 초기 로딩 중: `leafletInitial` 중심과 1000m 뷰에 맞는 반경부터 마커 후보(디바운스 bounds 비의존) */
   const groupedBootMarkers = useMemo(() => {
     const [lat0, lng0] = leafletInitial.center
@@ -1428,36 +1458,49 @@ function App() {
   }, [items, mapSelectedStation, mapClusterBoundsPadded])
 
   /**
+   * 뷰포트·부트 반경 모두 비었을 때만 계산(비용 제한). 첫 배치가 사용자 주변에 없어도 지도에 바로 마커가 생기게 함.
+   */
+  const groupedMapNearestFallback = useMemo(() => {
+    if (groupedAllStationsForMap.length > 0 || groupedBootMarkers.length > 0) return []
+    const { lat, lng } = mapViewCenterForMarkers
+    return groupedNearestPlacesForMap(items, lat, lng, NEAREST_FALLBACK_MAX_ROWS)
+  }, [items, mapViewCenterForMarkers, groupedAllStationsForMap, groupedBootMarkers])
+
+  /**
    * 지도 마커 전용 소스 (`items` → 라이트 그룹). 시트/검색의 filteredItems·itemsInScope·groupedItemsInScope와 무관.
    * - 뷰포트 클러스터용 `groupedAllStationsForMap` 우선
    * - 부트 직후 bounds 불일치·디바운스로 뷰포트가 비면 `groupedBootMarkers`(중심 반경 summary)로 폴백
+   * - API가 비지리적이면 `groupedMapNearestFallback`(실제 지도 중심 근접)
    */
   const mapStations = useMemo(() => {
     const viewportGrouped = groupedAllStationsForMap
     const boot = groupedBootMarkers
+    const nearest = groupedMapNearestFallback
     if (awaitingInitialMapPaint) {
       if (boot.length > 0) return boot
       if (viewportGrouped.length > 0) return viewportGrouped
-      return boot
+      if (nearest.length > 0) return nearest
+      return viewportGrouped
     }
     if (viewportGrouped.length > 0) return viewportGrouped
     if (boot.length > 0) return boot
+    if (nearest.length > 0) return nearest
     return viewportGrouped
-  }, [awaitingInitialMapPaint, groupedAllStationsForMap, groupedBootMarkers])
+  }, [awaitingInitialMapPaint, groupedAllStationsForMap, groupedBootMarkers, groupedMapNearestFallback])
 
   /** 지도 초기 페인트 전용: `mapStations` 중 지도 중심에 가까운 상한만(무거운 시트 파생과 분리) */
   const mapMarkersInitial = useMemo(() => {
     const cap = INITIAL_MAP_MARKERS_LITE_CAP
     const src = mapStations
     if (src.length <= cap) return src
-    const refLat = mapCenter.lat
-    const refLng = mapCenter.lng
+    const refLat = mapViewCenterForMarkers.lat
+    const refLng = mapViewCenterForMarkers.lng
     return [...src]
       .map((s) => ({ s, d: haversineDistanceKm(s.lat, s.lng, refLat, refLng) }))
       .sort((a, b) => a.d - b.d)
       .slice(0, cap)
       .map(({ s }) => s)
-  }, [mapStations, mapCenter.lat, mapCenter.lng])
+  }, [mapStations, mapViewCenterForMarkers])
 
   const mapLayerStations = useMemo(() => {
     if (mapMarkersRenderPhase !== 'lite') return mapStations
@@ -2548,11 +2591,7 @@ function App() {
               uiColors={colors}
               mapTileUrl={tokens.map.tileUrl}
               mapTileAttribution={tokens.map.tileAttribution}
-              markerClusterChunked={
-                mapMarkersRenderPhase === 'full' &&
-                !awaitingInitialMapPaint &&
-                mapStations.length > MAP_CLUSTER_CHUNKED_MIN_STATIONS
-              }
+              markerClusterChunked={false}
               removeOutsideVisibleBounds={
                 mapMarkersRenderPhase === 'full' && mapStations.length > 2000
               }
