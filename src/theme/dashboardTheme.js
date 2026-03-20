@@ -236,7 +236,12 @@ export const mobileMapChrome = {
   fabSize: 48,
   fabGap: 8,
   rowGap: 10,
-  /** 상·하 패딩(검색 행 주변, safe-area 제외) */
+  /**
+   * safe-area-inset-top 아래 추가 여백(px).
+   * 상단 래퍼: padding-top = calc(env(safe-area-inset-top) + safeAreaInnerTopPad)
+   */
+  safeAreaInnerTopPad: 8,
+  /** 행 아래쪽만(위는 safeAreaInnerTopPad) */
   padY: 10,
   padX: 14,
   /** 그림자 톤 — 검색 pill·원형 FAB 공통 */
@@ -253,11 +258,11 @@ export const sheetLayout = {
   mobileTopBarInsetPx: mobileMapChrome.padY,
   mobileTopBarControlPx: mobileMapChrome.searchPillH,
   /**
-   * Leaflet/목록 시트 topOffset: safe-area + 상단패딩 + max(검색pill, FAB열) + 하단패딩
-   * FAB열 = fabSize*2 + fabGap
+   * Leaflet/목록 시트·토스트 top 보정용(픽셀): safe-area는 CSS에서 별도 합산.
+   * = safeAreaInnerTopPad + max(pill, FAB열) + 하단 padY (FAB열 = fabSize*2 + fabGap)
    */
   mobileTopBarStackPx:
-    mobileMapChrome.padY +
+    mobileMapChrome.safeAreaInnerTopPad +
     Math.max(mobileMapChrome.searchPillH, mobileMapChrome.fabSize * 2 + mobileMapChrome.fabGap) +
     mobileMapChrome.padY,
 }

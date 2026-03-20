@@ -1509,17 +1509,17 @@ function App() {
           overflow: 'hidden',
         }}
       >
-        {/* 모바일: 상단 앱 바 — 검색 · 내 위치 · 필터 (지도 최대화) */}
+        {/* 모바일: 상단 플로팅 크롬 — fixed + wrapper가 safe-area 흡수 (노치/다이내믹 아일랜드) */}
         {isMobile && (
           <Box
             sx={{
-              position: 'absolute',
+              position: 'fixed',
               top: 0,
               left: 0,
               right: 0,
               zIndex: 450,
               boxSizing: 'border-box',
-              pt: `calc(env(safe-area-inset-top, 0px) + ${mobileMapChrome.padY}px)`,
+              pt: `calc(env(safe-area-inset-top, 0px) + ${mobileMapChrome.safeAreaInnerTopPad}px)`,
               pl: `max(${mobileMapChrome.padX}px, env(safe-area-inset-left, 0px))`,
               pr: `max(${mobileMapChrome.padX}px, env(safe-area-inset-right, 0px))`,
               pb: `${mobileMapChrome.padY}px`,
