@@ -4,8 +4,7 @@ import { computeBootLeafletView, mapBootstrapWidthPx } from '../utils/mapInitial
 
 /**
  * 1) 부트 시 map.setView (MapContainer는 props 갱신을 따르지 않음)
- * 2) primeClusterBoundsNow → 클러스터용 bounds 디바운스 1회 우회
- * 3) moveend 후 마커 데이터가 뷰에 반영될 때까지 대기한 뒤 onReady
+ * 2) moveend 후 마커 데이터가 뷰에 반영될 때까지 대기한 뒤 onReady
  */
 export function MapBootMarkerReady({
   active,
@@ -13,8 +12,11 @@ export function MapBootMarkerReady({
   zoom,
   itemsLength,
   markerCount,
+  /** 지도에 그려야 할 마커 수와 동일할 때까지 DOM의 `.leaflet-marker-icon` 개수를 센다 (LayerGroup 부트) */
+  expectedMarkerIcons = 0,
+  /** 아이콘 개수가 채워질 때까지 최대 대기(ms). 넘기면 그때까지 찍힌 상태로 진행 */
+  markerIconsMaxWaitMs = 90000,
   onReady,
-  primeClusterBoundsNow,
 }) {
   const map = useMap()
   const onReadyRef = useRef(onReady)
@@ -63,7 +65,6 @@ export function MapBootMarkerReady({
     const apply = () => {
       if (cancelled || gen !== viewApplyGenRef.current) return
       try {
-        primeClusterBoundsNow?.()
         map.invalidateSize()
         const el = map.getContainer()
         const wPx = el && el.clientWidth > 0 ? el.clientWidth : mapBootstrapWidthPx()
@@ -91,7 +92,7 @@ export function MapBootMarkerReady({
       cancelAnimationFrame(raf)
       map.off('moveend', onMoveEnd)
     }
-  }, [active, map, center, zoom, primeClusterBoundsNow])
+  }, [active, map, center, zoom])
 
   useEffect(() => {
     if (!active || bootMoveGeneration === 0) return undefined
@@ -120,7 +121,22 @@ export function MapBootMarkerReady({
       }
     }
 
-    if (markerCount > 0) {
+    const targetIcons = Math.max(0, expectedMarkerIcons || markerCount)
+    const maxWait = Math.max(5000, markerIconsMaxWaitMs)
+
+    const countMarkerIcons = () => {
+      try {
+        const pane = map.getPane?.('markerPane')
+        if (!pane) return 0
+        return pane.querySelectorAll('.leaflet-marker-icon').length
+      } catch {
+        return 0
+      }
+    }
+
+    const allMarkerIconsPainted = () => targetIcons > 0 && countMarkerIcons() >= targetIcons
+
+    if (markerCount > 0 && targetIcons > 0) {
       let pollTimer = null
       let maxTimer = null
       const clearTimers = () => {
@@ -133,14 +149,6 @@ export function MapBootMarkerReady({
           maxTimer = null
         }
       }
-      const markerDomReady = () => {
-        try {
-          const pane = map.getPane?.('markerPane')
-          return !!(pane && pane.querySelector('.leaflet-marker-icon'))
-        } catch {
-          return false
-        }
-      }
       const scheduleFinish = () => {
         clearTimers()
         finishAfterPaint()
@@ -148,17 +156,17 @@ export function MapBootMarkerReady({
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (cancelled) return
-          if (markerDomReady()) {
+          if (allMarkerIconsPainted()) {
             scheduleFinish()
             return
           }
           pollTimer = window.setInterval(() => {
             if (cancelled) return
-            if (markerDomReady()) scheduleFinish()
-          }, 40)
+            if (allMarkerIconsPainted()) scheduleFinish()
+          }, 48)
           maxTimer = window.setTimeout(() => {
             if (!cancelled) scheduleFinish()
-          }, 3200)
+          }, maxWait)
         })
       })
       return () => {
@@ -167,12 +175,21 @@ export function MapBootMarkerReady({
       }
     }
 
-    const safety = window.setTimeout(() => finish(), 15000)
+    /** 데이터는 있는데 지도 소스가 아직 0건 — 늦게 붙는 경우 대비해 길게 대기 */
+    if (itemsLength > 0 && markerCount === 0) {
+      const t = window.setTimeout(() => finishAfterPaint(), maxWait)
+      return () => {
+        cancelled = true
+        window.clearTimeout(t)
+      }
+    }
+
+    const safety = window.setTimeout(() => finish(), maxWait)
     return () => {
       cancelled = true
       window.clearTimeout(safety)
     }
-  }, [active, bootMoveGeneration, itemsLength, markerCount, map])
+  }, [active, bootMoveGeneration, itemsLength, markerCount, expectedMarkerIcons, markerIconsMaxWaitMs, map])
 
   return null
 }

@@ -6,14 +6,10 @@ import {
   CircularProgress,
   LinearProgress,
   Alert,
-  useMediaQuery,
   IconButton,
   Chip,
   Button,
 } from '@mui/material'
-import EvStationIcon from '@mui/icons-material/EvStation'
-import ChevronLeft from '@mui/icons-material/ChevronLeft'
-import ChevronRight from '@mui/icons-material/ChevronRight'
 import SearchIcon from '@mui/icons-material/Search'
 import MapOutlined from '@mui/icons-material/MapOutlined'
 import ViewList from '@mui/icons-material/ViewList'
@@ -22,21 +18,8 @@ import LightModeOutlined from '@mui/icons-material/LightModeOutlined'
 import DarkModeOutlined from '@mui/icons-material/DarkModeOutlined'
 import ArrowBack from '@mui/icons-material/ArrowBack'
 import Refresh from '@mui/icons-material/Refresh'
-import { MapContainer, ZoomControl, Circle, CircleMarker, useMap } from 'react-leaflet'
+import { MapContainer, Circle, CircleMarker, useMap } from 'react-leaflet'
 import L from 'leaflet'
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie,
-  Legend,
-} from 'recharts'
 import {
   fetchEvChargers,
   fetchEvChargersFirstPageBatch,
@@ -135,21 +118,16 @@ import {
 } from './theme/dashboardTheme.js'
 import { useEvTheme } from './theme/ThemeModeProvider.jsx'
 import { GlassPanel } from './components/GlassPanel.jsx'
-import { StatCard } from './components/StatCard.jsx'
-import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
-import { FilterModalSelect } from './components/FilterModalSelect.jsx'
 import { StationListMobile } from './components/StationListMobile.jsx'
 import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
 import { MobileMapQuickSearchChipsRail } from './components/MobileMapQuickSearchChipsRail.jsx'
 import { EvStationMapLayer } from './components/EvStationMapLayer.jsx'
 import { MapBootMarkerReady } from './components/MapBootMarkerReady.jsx'
 import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
-import { StationDetailModal } from './components/StationDetailModal.jsx'
 import { StationDetailFooterActions } from './components/StationDetailContent.jsx'
 import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
 import { MobileDetailSheetBody } from './components/MobileDetailSheetBody.jsx'
 import { MobileFilterSheet } from './components/MobileFilterSheet.jsx'
-import { ThemeAppearanceControl } from './components/ThemeAppearanceControl.jsx'
 
 /**
  * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
@@ -211,16 +189,22 @@ function clusterGroupedMatchesBusiNm(s, needle) {
   return rows.some((r) => (r.busiNm || '').trim() === needle)
 }
 
-/** 지도 클러스터용 뷰포트 반영 지연(패닝 시 연산·마커 갱신 부담 완화) */
-const MAP_CLUSTER_BOUNDS_DEBOUNCE_MS = 320
-/** 단계 A: 클러스터 없이 먼저 그릴 최대 장소 수(지도 중심 근접 순). 시트/검색과 무관 */
-const INITIAL_MAP_MARKERS_LITE_CAP = 96
-/** `groupedNearestPlacesForMap`에 넣을 최대 행 수(장소 수는 그룹 후 더 적음) */
-const NEAREST_FALLBACK_MAX_ROWS = 480
 /** 부트 앵커(내 위치 또는 광화문) 주변 우선 표시용 — 반경 제한 없이 가까운 행부터 */
 const MAP_ANCHOR_NEAREST_MAX_ROWS = 640
 /** 모바일: LayerGroup만 쓸 때 한 번에 올릴 마커 상한(성능) */
 const MOBILE_MAP_MARKER_CAP = 260
+
+/** 부트 중 지도·마커 대기 시 로딩 문구 순환 */
+const BOOT_MAP_WAIT_MESSAGES = [
+  '지도 위에 충전소 마커를 그리는 중이에요',
+  '가까운 충전소를 찾아 표시하고 있어요',
+  '지도와 마커 위치를 맞추는 중이에요',
+  '충전소 아이콘을 하나씩 올리고 있어요',
+  '잠시만요, 곧 지도에서 확인하실 수 있어요',
+  '내 주변(또는 시작 위치) 기준으로 불러오는 중이에요',
+  '네트워크와 화면이 준비될 때까지 기다려 주세요',
+  '거의 다 됐어요, 마커를 확인하는 중이에요',
+]
 
 /** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
 const MOBILE_DETAIL_HEADER_GUTTER = 2.5
@@ -256,70 +240,6 @@ const SPEED_FILTER_OPTIONS = [
   { value: '급속', label: '급속' },
   { value: '완속', label: '완속' },
 ]
-
-function LocationControl({ setUserLocation, setLocationError, setLocationLoading }) {
-  const map = useMap()
-  const setUserRef = useRef(setUserLocation)
-  const setErrorRef = useRef(setLocationError)
-  const setLoadingRef = useRef(setLocationLoading)
-  useEffect(() => {
-    setUserRef.current = setUserLocation
-    setErrorRef.current = setLocationError
-    setLoadingRef.current = setLocationLoading
-  }, [setUserLocation, setLocationError, setLocationLoading])
-
-  useEffect(() => {
-    const LocControl = L.Control.extend({
-      onAdd() {
-        const div = L.DomUtil.create('div', 'leaflet-control leaflet-bar leaflet-control-location')
-        const btn = L.DomUtil.create('button', '', div)
-        btn.type = 'button'
-        btn.setAttribute('aria-label', '현재 위치')
-        btn.innerHTML = '<span style="font-size:18px;line-height:1">⌖</span>'
-        btn.style.cssText = 'width:30px;height:30px;border:none;border-radius:4px;background:#fff;cursor:pointer;box-shadow:0 1px 5px rgba(0,0,0,0.2);display:flex;align-items:center;justify-content:center;padding:0'
-        L.DomEvent.disableClickPropagation(btn)
-        L.DomEvent.on(btn, 'click', () => {
-          setLoadingRef.current(true)
-          setErrorRef.current(null)
-          if (!navigator.geolocation) {
-            setErrorRef.current('이 브라우저는 위치 기능을 지원하지 않습니다.')
-            setLoadingRef.current(false)
-            return
-          }
-          navigator.geolocation.getCurrentPosition(
-            (pos) => {
-              const { latitude, longitude } = pos.coords
-              setUserRef.current({ lat: latitude, lng: longitude })
-              const w = map.getContainer()?.clientWidth || window.innerWidth
-              const z = zoomForHorizontalSpanMeters(w, 100, latitude)
-              map.setView([latitude, longitude], z)
-              setErrorRef.current(null)
-              setLoadingRef.current(false)
-            },
-            (err) => {
-              const msg =
-                err.code === 1
-                  ? '위치 권한이 거부되었습니다.'
-                  : err.code === 2
-                    ? '위치를 찾을 수 없습니다.'
-                    : '위치를 가져오는 중 오류가 발생했습니다.'
-              setErrorRef.current(msg)
-              setLoadingRef.current(false)
-            },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-          )
-        })
-        return div
-      },
-    })
-    const ctrl = new LocControl({ position: 'topright' })
-    map.addControl(ctrl)
-    return () => {
-      map.removeControl(ctrl)
-    }
-  }, [map])
-  return null
-}
 
 /** 모바일 상단「내 위치」와 동일 동작. geoNonce가 바뀔 때마다 한 번 실행. */
 function MapGeolocationSync({ geoNonce, setUserLocation, setLocationError, setLocationLoading }) {
@@ -384,7 +304,7 @@ function MapBoundsTracker({ setMapBounds }) {
       })
     }
     update()
-    /** 패닝 중에도 카메라 반영과 마커 뷰포트가 바로 맞도록 즉시 갱신(클러스터용 bounds는 별도 디바운스) */
+    /** 패닝·줌 시 즉시 갱신 — 마커는 `appliedMapBounds` 기준이라 여기 값만으로는 갱신되지 않음 */
     map.on('moveend', update)
     map.on('zoomend', update)
     return () => {
@@ -481,35 +401,13 @@ function LocationRipple({ userLocation }) {
 
 function App() {
   const { tokens, colors, resolvedMode, togglePreference } = useEvTheme()
-  const chartPalette = tokens.chartBlue
   const [items, setItems] = useState([])
-  const [totalCount, setTotalCount] = useState(null)
+  const [, setTotalCount] = useState(null)
   const [bootOverlayOpen, setBootOverlayOpen] = useState(true)
   const [awaitingInitialMapPaint, setAwaitingInitialMapPaint] = useState(false)
-  /** lite: LayerGroup 근접 N개 즉시 → idle 후 full 클러스터(초기 청크 지연 방지) */
-  const [mapMarkersRenderPhase, setMapMarkersRenderPhase] = useState(/** @type {'lite' | 'full'} */ ('lite'))
-  const mapClusterUpgradeScheduledRef = useRef(false)
   const [bootProgress, setBootProgress] = useState(0)
   const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
   const bootMapPaintedRef = useRef(false)
-  const onBootMapPaintReady = useCallback(() => {
-    if (bootMapPaintedRef.current) return
-    bootMapPaintedRef.current = true
-    setBootProgress(100)
-    setBootStageMessage('준비했어요')
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setAwaitingInitialMapPaint(false)
-        setBootOverlayOpen(false)
-      })
-    })
-  }, [])
-
-  /** 부트 setView 직후 한 번: 클러스터용 bounds를 320ms 디바운스 없이 즉시 맞춤 */
-  const primeClusterBoundsImmediateRef = useRef(false)
-  const primeClusterBoundsForBoot = useCallback(() => {
-    primeClusterBoundsImmediateRef.current = true
-  }, [])
   const [leafletInitial, setLeafletInitial] = useState(() =>
     computeBootLeafletView(GWANGHWAMUN_FALLBACK.lat, GWANGHWAMUN_FALLBACK.lng),
   )
@@ -530,9 +428,8 @@ function App() {
   const searchQuerySyncRef = useRef(searchQuery)
   const [geoNonce, setGeoNonce] = useState(0)
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
-  const isMobile = useMediaQuery('(max-width: 900px)')
-  const [panelOpen, setPanelOpen] = useState(true)
-  const panelW = isMobile ? 280 : 340
+  /** 제품은 모바일 전용 */
+  const isMobile = true
 
   /**
    * 모바일 상태 전이(데이터 파이프라인은 유지)
@@ -562,8 +459,6 @@ function App() {
   const [confirmedMobileSearchQuery, setConfirmedMobileSearchQuery] = useState('')
   const commitMobileSearchRef = useRef(() => {})
   const sheetListScrollRef = useRef(null)
-  /** 데스크톱 좌측 패널(SideOverlayPanel 루트) 스크롤 — 상세 닫기 후 복원 */
-  const desktopPanelScrollRef = useRef(null)
   const savedListScrollTopRef = useRef(0)
   const mapSelectedStationRef = useRef(null)
   const isMobileRef = useRef(isMobile)
@@ -580,7 +475,7 @@ function App() {
   }, [])
 
   const openMobileListSheetToHalf = useCallback(() => {
-    if (isMobileRef.current) setMobileSheetSnap('half')
+    setMobileSheetSnap('half')
   }, [])
 
   useEffect(() => {
@@ -623,21 +518,14 @@ function App() {
     const raw = searchInput.trim()
     lastFittedSearchQueryRef.current = raw.toLowerCase()
     setSearchQuery(searchInput)
-    if (isMobile) {
-      if (raw) {
-        commitMobileSearchRef.current(raw)
-        openMobileListSheetToHalf()
-      } else {
-        setConfirmedMobileSearchQuery('')
-        setMobileSearchGeo(null)
-      }
+    if (raw) {
+      commitMobileSearchRef.current(raw)
+      openMobileListSheetToHalf()
     } else {
       setConfirmedMobileSearchQuery('')
       setMobileSearchGeo(null)
-      if (raw) setSearchViewportFitNonce((n) => n + 1)
     }
-    if (raw && !isMobile) openMobileListSheetToHalf()
-  }, [searchInput, isMobile, openMobileListSheetToHalf])
+  }, [searchInput, openMobileListSheetToHalf])
 
   const pickSearchSuggestion = useCallback(
     (text) => {
@@ -645,49 +533,35 @@ function App() {
       lastFittedSearchQueryRef.current = q
       setSearchInput(text)
       setSearchQuery(text)
-      if (isMobile && text.trim()) {
+      if (text.trim()) {
         commitMobileSearchRef.current(text.trim())
+        openMobileListSheetToHalf()
       } else {
         setConfirmedMobileSearchQuery('')
         setMobileSearchGeo(null)
-        if (text.trim()) setSearchViewportFitNonce((n) => n + 1)
       }
-      if (text.trim()) openMobileListSheetToHalf()
     },
-    [isMobile, openMobileListSheetToHalf],
+    [openMobileListSheetToHalf],
   )
 
   /** 검색어가 있으면 포커스/제목이 충전소명에 묶이지 않도록 선택·상세 해제 */
   useEffect(() => {
-    if (!isMobile) return
     if (!searchQuery.trim()) return
     setMapSelectedStation(null)
     mapSelectedStationRef.current = null
     setDetailStation(null)
     detailStationRef.current = null
-  }, [searchQuery, isMobile])
+  }, [searchQuery])
 
   /** 검색 활성 시 클러스터 전용 목록 해제(검색 결과와 상태 혼동 방지) */
   useEffect(() => {
-    if (!isMobile) return
     if (searchQuery.trim()) setClusterBrowseGrouped(null)
-  }, [searchQuery, isMobile])
-
-  /**
-   * 데스크톱 전환 시 스택·플래그만 정리(히스토리 엔트리는 브라우저에 남을 수 있음).
-   * 잔여 pushState는 전역 popstate(아래 effect)에서 열린 오버레이가 있으면 동기화한다.
-   */
-  useEffect(() => {
-    if (isMobile) return
-    overlayStackRef.current = []
-    detailHistoryPushed.current = false
-    filterHistoryPushed.current = false
-  }, [isMobile])
+  }, [searchQuery])
 
   const restoreListAfterDetailClose = useCallback(() => {
     const anchorId = mapSelectedStationRef.current?.id
     const run = () => {
-      const scrollEl = isMobileRef.current ? sheetListScrollRef.current : desktopPanelScrollRef.current
+      const scrollEl = sheetListScrollRef.current
       if (!scrollEl) return
       scrollEl.scrollTop = savedListScrollTopRef.current
       if (anchorId != null && anchorId !== '') {
@@ -713,38 +587,36 @@ function App() {
 
   const openDetailPreserve = useCallback((s) => {
     setClusterBrowseGrouped(null)
-    const scrollSaveEl = isMobile ? sheetListScrollRef.current : desktopPanelScrollRef.current
+    const scrollSaveEl = sheetListScrollRef.current
     if (scrollSaveEl) savedListScrollTopRef.current = scrollSaveEl.scrollTop
     mapSelectedStationRef.current = s
     setMapSelectedStation(s)
     const cur = detailStationRef.current
     const wasOpen = !!cur
     const same = cur?.id === s.id
-    if (isMobile) {
-      if (!wasOpen) {
-        sheetSnapBeforeDetailRef.current = mobileSheetSnap
-        try {
-          window.history.pushState({ evOverlay: 'detail' }, '')
-          overlayStackRef.current.push('detail')
-          detailHistoryPushed.current = true
-        } catch {
-          detailHistoryPushed.current = false
-        }
-      } else if (!same) {
-        try {
-          window.history.replaceState({ evOverlay: 'detail' }, '')
-        } catch {
-          /* noop */
-        }
+    if (!wasOpen) {
+      sheetSnapBeforeDetailRef.current = mobileSheetSnap
+      try {
+        window.history.pushState({ evOverlay: 'detail' }, '')
+        overlayStackRef.current.push('detail')
+        detailHistoryPushed.current = true
+      } catch {
+        detailHistoryPushed.current = false
+      }
+    } else if (!same) {
+      try {
+        window.history.replaceState({ evOverlay: 'detail' }, '')
+      } catch {
+        /* noop */
       }
     }
     setDetailStation(s)
     detailStationRef.current = s
-    if (isMobile) setMobileSheetSnap('half')
-  }, [isMobile, mobileSheetSnap])
+    setMobileSheetSnap('half')
+  }, [mobileSheetSnap])
 
   const handleCloseDetail = useCallback(() => {
-    if (isMobile && detailHistoryPushed.current) {
+    if (detailHistoryPushed.current) {
       try {
         window.history.back()
       } catch {
@@ -755,9 +627,9 @@ function App() {
     }
     setDetailStation(null)
     detailStationRef.current = null
-    if (isMobile) setMobileSheetSnap(sheetSnapBeforeDetailRef.current)
+    setMobileSheetSnap(sheetSnapBeforeDetailRef.current)
     restoreListAfterDetailClose()
-  }, [isMobile, restoreListAfterDetailClose, closeDetailFromOverlay])
+  }, [restoreListAfterDetailClose, closeDetailFromOverlay])
 
   /** 상세 열린 상태에서 시트를 closed로 끌어내리면 상세 닫기(히스토리와 동기) */
   const handleMobileSheetSnapChange = useCallback(
@@ -772,7 +644,7 @@ function App() {
   )
 
   const closeFilterDrawer = useCallback(() => {
-    if (isMobile && filterHistoryPushed.current) {
+    if (filterHistoryPushed.current) {
       try {
         window.history.back()
       } catch {
@@ -782,7 +654,7 @@ function App() {
       return
     }
     setFilterDrawerOpen(false)
-  }, [isMobile, closeFilterFromOverlay])
+  }, [closeFilterFromOverlay])
 
   /** 필터 시트「적용하기」: draft 반영 후 히스토리 스택과 동기화하며 닫기 */
   const applyMobileFilters = useCallback(
@@ -810,45 +682,32 @@ function App() {
   const openFilterDrawer = useCallback(() => {
     if (filterDrawerOpen || filterOpenPulseGuard.current) return
     /** 상세가 열린 상태에서 필터를 push하면 스택이 [detail,filter]가 되어, 이후 back이 필터를 먼저 닫아 상세 X와 어긋난다. */
-    if (isMobile && detailStationRef.current) return
+    if (detailStationRef.current) return
     filterOpenPulseGuard.current = true
-    if (isMobile) {
-      try {
-        window.history.pushState({ evOverlay: 'filter' }, '')
-        overlayStackRef.current.push('filter')
-        filterHistoryPushed.current = true
-      } catch {
-        filterHistoryPushed.current = false
-      }
+    try {
+      window.history.pushState({ evOverlay: 'filter' }, '')
+      overlayStackRef.current.push('filter')
+      filterHistoryPushed.current = true
+    } catch {
+      filterHistoryPushed.current = false
     }
     setFilterDrawerOpen(true)
     requestAnimationFrame(() => {
       filterOpenPulseGuard.current = false
     })
-  }, [isMobile, filterDrawerOpen])
+  }, [filterDrawerOpen])
 
   /**
-   * popstate: 히스토리 1스텝 = 오버레이 1단계.
-   * - 모바일: overlayStackRef 와 push 순서를 맞춘다.
-   * - 데스크톱: 모바일에서 쌓인 잔여 엔트리로 popstate만 오는 경우가 있어, 스택 없이도 UI 동기화.
-   * 복구 시 시각적 쌓임(z-index)과 동일하게 상세(1400) > 필터(1200) → detail 먼저 닫기.
+   * popstate: 히스토리 1스텝 = 오버레이 1단계 (overlayStackRef 와 push 순서 일치).
    */
   useEffect(() => {
     const onPop = () => {
-      if (isMobileRef.current) {
-        const top = overlayStackRef.current.pop()
-        if (top === 'detail') {
-          closeDetailFromOverlay()
-        } else if (top === 'filter') {
-          closeFilterFromOverlay()
-        } else if (detailStationRef.current) {
-          closeDetailFromOverlay()
-        } else if (filterDrawerOpenRef.current) {
-          closeFilterFromOverlay()
-        }
-        return
-      }
-      if (detailStationRef.current) {
+      const top = overlayStackRef.current.pop()
+      if (top === 'detail') {
+        closeDetailFromOverlay()
+      } else if (top === 'filter') {
+        closeFilterFromOverlay()
+      } else if (detailStationRef.current) {
         closeDetailFromOverlay()
       } else if (filterDrawerOpenRef.current) {
         closeFilterFromOverlay()
@@ -886,60 +745,55 @@ function App() {
     lng: GWANGHWAMUN_FALLBACK.lng,
   })
   const [liveMapBounds, setLiveMapBounds] = useState(null)
-  /** 디바운스된 뷰포트 — 지도 마커/클러스터 계산에만 사용 */
-  const [mapClusterBoundsRaw, setMapClusterBoundsRaw] = useState(null)
-  const mapClusterDebouncePrimedRef = useRef(false)
   const [appliedMapBounds, setAppliedMapBounds] = useState(null)
   const liveMapBoundsRef = useRef(null)
   useEffect(() => {
     liveMapBoundsRef.current = liveMapBounds
   }, [liveMapBounds])
 
-  useEffect(() => {
-    if (!liveMapBounds) return undefined
-    if (primeClusterBoundsImmediateRef.current) {
-      primeClusterBoundsImmediateRef.current = false
-      setMapClusterBoundsRaw(liveMapBounds)
-      return undefined
-    }
-    if (!mapClusterDebouncePrimedRef.current) {
-      mapClusterDebouncePrimedRef.current = true
-      setMapClusterBoundsRaw(liveMapBounds)
-      return undefined
-    }
-    const id = window.setTimeout(() => setMapClusterBoundsRaw(liveMapBounds), MAP_CLUSTER_BOUNDS_DEBOUNCE_MS)
-    return () => window.clearTimeout(id)
-  }, [liveMapBounds])
-
-  const mapClusterBoundsPadded = useMemo(
-    () => expandLiteralBounds(mapClusterBoundsRaw, 0.42),
-    [mapClusterBoundsRaw]
+  /** 목록·지도 마커 공통: 적용된 화면 영역(「이 지역 검색」 또는 부트 완료 시 스냅) */
+  const appliedMapBoundsPadded = useMemo(
+    () => (appliedMapBounds ? expandLiteralBounds(appliedMapBounds, 0.42) : null),
+    [appliedMapBounds],
   )
 
-  /** 「이 지역 검색」: 영역 적용 + 목록 시트를 검색 결과 모드로(포커스·상세 초기화) */
+  const onBootMapPaintReady = useCallback(() => {
+    if (bootMapPaintedRef.current) return
+    bootMapPaintedRef.current = true
+    const b = liveMapBoundsRef.current
+    if (b) setAppliedMapBounds(b)
+    setBootProgress(100)
+    setBootStageMessage('준비했어요')
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        setAwaitingInitialMapPaint(false)
+        setBootOverlayOpen(false)
+      })
+    })
+  }, [])
+
+  /** 「이 지역 검색」: 현재 보고 있는 지도 영역으로만 마커·목록 갱신 */
   const applySearchAreaFromMap = useCallback(() => {
     setAppliedMapBounds(liveMapBoundsRef.current)
     setClusterBrowseGrouped(null)
     setConfirmedMobileSearchQuery('')
     setMobileSearchGeo(null)
-    if (isMobile) {
-      openMobileListSheetToHalf()
-    }
+    openMobileListSheetToHalf()
     mapSelectedStationRef.current = null
     setMapSelectedStation(null)
     setDetailStation(null)
     detailStationRef.current = null
-  }, [isMobile, openMobileListSheetToHalf])
+  }, [openMobileListSheetToHalf])
 
   const handleClusterStationsTap = useCallback(({ stations }) => {
-    if (!isMobile || !Array.isArray(stations) || stations.length === 0) return
+    if (!Array.isArray(stations) || stations.length === 0) return
     setDetailStation(null)
     detailStationRef.current = null
     mapSelectedStationRef.current = null
     setMapSelectedStation(null)
     setClusterBrowseGrouped(stations)
     setMobileSheetSnap('half')
-  }, [isMobile])
+  }, [])
 
   useEffect(() => {
     const ac = new AbortController()
@@ -1140,11 +994,6 @@ function App() {
       setSearchViewportFitNonce((n) => n + 1)
     }
   }
-
-  /** 초기: live 수신 시 applied가 없으면 적용. 이후는 버튼 탭 시에만 applied 갱신. */
-  useEffect(() => {
-    if (liveMapBounds && appliedMapBounds == null) setAppliedMapBounds(liveMapBounds)
-  }, [liveMapBounds, appliedMapBounds])
 
   /** 현재 적용된 검색 영역(applied bounds) 내 충전소만. 헤더 N·지도·목록 공통 기준. */
   const itemsInScope = useMemo(() => {
@@ -1400,8 +1249,14 @@ function App() {
     stationsForMobileListEffective.length,
   ])
 
-  /** 지도 마커 거리·근접 정렬용: 초기 `mapCenter`는 광화문이라 잘못된 편향이 난다 → 실제 뷰 또는 부트 뷰 중심 사용 */
+  /** 마커 상한 초과 시 정렬 기준: 적용 영역 중심 우선(팬만 하고 버튼 안 누른 경우 live와 어긋나지 않게) */
   const mapViewCenterForMarkers = useMemo(() => {
+    if (appliedMapBounds) {
+      return {
+        lat: (appliedMapBounds.southWest.lat + appliedMapBounds.northEast.lat) / 2,
+        lng: (appliedMapBounds.southWest.lng + appliedMapBounds.northEast.lng) / 2,
+      }
+    }
     if (liveMapBounds) {
       return {
         lat: (liveMapBounds.southWest.lat + liveMapBounds.northEast.lat) / 2,
@@ -1410,7 +1265,7 @@ function App() {
     }
     const [la, ln] = leafletInitial.center
     return { lat: la, lng: ln }
-  }, [liveMapBounds, leafletInitial.center])
+  }, [appliedMapBounds, liveMapBounds, leafletInitial.center])
 
   /**
    * 지도 앵커: 위치 성공 시 `leafletInitial`=내 좌표, 실패 시 광화문. 항상 이 점에 가까운 충전소를 먼저 그린다.
@@ -1422,119 +1277,51 @@ function App() {
   }, [items, leafletInitial.center])
 
   /**
-   * 지도 전용: 현재 로드된 `items` 중 디바운스+패딩 뷰포트 안만 클러스터(성능).
-   * 시트·필터 파이프라인은 그대로 `items` 기준. 선택 마커는 뷰 밖이어도 포함.
+   * 지도 마커: 적용된 화면 영역(`appliedMapBounds` — 부트 시 스냅 또는「이 지역 검색」) 안만.
+   * 지도를 움직여도 마커는 버튼 탭 전까지 갱신되지 않음.
    */
   const groupedAllStationsForMap = useMemo(() => {
+    if (!appliedMapBoundsPadded) return []
     let validItems = items.filter((r) => {
       const la = Number(r.lat)
       const ln = Number(r.lng)
       return Number.isFinite(la) && Number.isFinite(ln)
     })
-    if (mapClusterBoundsPadded) {
-      const b = L.latLngBounds(
-        [mapClusterBoundsPadded.southWest.lat, mapClusterBoundsPadded.southWest.lng],
-        [mapClusterBoundsPadded.northEast.lat, mapClusterBoundsPadded.northEast.lng]
-      )
-      validItems = validItems.filter((r) => b.contains([r.lat, r.lng]))
-    }
+    const b = L.latLngBounds(
+      [appliedMapBoundsPadded.southWest.lat, appliedMapBoundsPadded.southWest.lng],
+      [appliedMapBoundsPadded.northEast.lat, appliedMapBoundsPadded.northEast.lng],
+    )
+    validItems = validItems.filter((r) => b.contains([r.lat, r.lng]))
     const grouped = groupChargerRowsByPlaceMapLite(validItems)
     const sel = mapSelectedStation
     if (!sel) return grouped
     if (grouped.some((s) => s.id === sel.id)) return grouped
     return [sel, ...grouped]
-  }, [items, mapSelectedStation, mapClusterBoundsPadded])
+  }, [items, mapSelectedStation, appliedMapBoundsPadded])
 
   /**
-   * 뷰포트·부트 반경 모두 비었을 때만 계산(비용 제한). 첫 배치가 사용자 주변에 없어도 지도에 바로 마커가 생기게 함.
-   */
-  const groupedMapNearestFallback = useMemo(() => {
-    if (groupedAllStationsForMap.length > 0 || mapAnchorStations.length > 0) return []
-    const { lat, lng } = mapViewCenterForMarkers
-    return groupedNearestPlacesForMap(items, lat, lng, NEAREST_FALLBACK_MAX_ROWS)
-  }, [items, mapViewCenterForMarkers, groupedAllStationsForMap, mapAnchorStations])
-
-  /**
-   * 지도 마커 전용 소스. 시트/검색 파생과 무관.
-   * - 부트·초기: 앵커(내 위치 또는 광화문)에 가까운 데이터 우선 → 위치 불가여도 광화문 주변 표시
-   * - 이후: 뷰포트에 데이터가 있으면 뷰포트, 없으면 앵커·폴백
+   * 지도 마커 소스: 평소는 적용 영역만. 부트 중 applied 아직 없으면 앵커 근처만 임시 표시.
    */
   const mapStations = useMemo(() => {
     const viewportGrouped = groupedAllStationsForMap
-    const anchor = mapAnchorStations
-    const nearest = groupedMapNearestFallback
     if (awaitingInitialMapPaint) {
-      if (anchor.length > 0) return anchor
       if (viewportGrouped.length > 0) return viewportGrouped
-      return nearest
+      return mapAnchorStations
     }
-    if (viewportGrouped.length > 0) return viewportGrouped
-    if (anchor.length > 0) return anchor
-    return nearest.length > 0 ? nearest : viewportGrouped
-  }, [awaitingInitialMapPaint, groupedAllStationsForMap, mapAnchorStations, groupedMapNearestFallback])
+    return viewportGrouped
+  }, [awaitingInitialMapPaint, groupedAllStationsForMap, mapAnchorStations])
 
-  /** 지도 초기 페인트 전용: `mapStations` 중 지도 중심에 가까운 상한만(무거운 시트 파생과 분리) */
-  const mapMarkersInitial = useMemo(() => {
-    const cap = INITIAL_MAP_MARKERS_LITE_CAP
+  const mapLayerStations = useMemo(() => {
+    const cap = MOBILE_MAP_MARKER_CAP
     const src = mapStations
     if (src.length <= cap) return src
-    const refLat = mapViewCenterForMarkers.lat
-    const refLng = mapViewCenterForMarkers.lng
-    return [...src]
-      .map((s) => ({ s, d: haversineDistanceKm(s.lat, s.lng, refLat, refLng) }))
-      .sort((a, b) => a.d - b.d)
-      .slice(0, cap)
-      .map(({ s }) => s)
-  }, [mapStations, mapViewCenterForMarkers])
-
-  /** 모바일: MarkerCluster 비사용 → 한 번에 그릴 개수만 제한(지도 중심 근접 순) */
-  const mapStationsMobileCapped = useMemo(() => {
-    if (!isMobile) return mapStations
-    const cap = MOBILE_MAP_MARKER_CAP
-    if (mapStations.length <= cap) return mapStations
     const { lat, lng } = mapViewCenterForMarkers
-    return [...mapStations]
+    return [...src]
       .map((s) => ({ s, d: haversineDistanceKm(s.lat, s.lng, lat, lng) }))
       .sort((a, b) => a.d - b.d)
       .slice(0, cap)
       .map(({ s }) => s)
-  }, [isMobile, mapStations, mapViewCenterForMarkers])
-
-  const mapLayerStations = useMemo(() => {
-    if (isMobile) return mapStationsMobileCapped
-    if (mapMarkersRenderPhase !== 'lite') return mapStations
-    if (mapStations.length <= INITIAL_MAP_MARKERS_LITE_CAP) return mapStations
-    return mapMarkersInitial
-  }, [isMobile, mapStationsMobileCapped, mapMarkersRenderPhase, mapStations, mapMarkersInitial])
-
-  useEffect(() => {
-    if (mapStations.length === 0) {
-      mapClusterUpgradeScheduledRef.current = false
-      setMapMarkersRenderPhase('lite')
-      return undefined
-    }
-    if (isMobile) return undefined
-    if (mapClusterUpgradeScheduledRef.current) return undefined
-    mapClusterUpgradeScheduledRef.current = true
-
-    let cancelled = false
-    const goFull = () => {
-      if (cancelled) return
-      setMapMarkersRenderPhase('full')
-    }
-    if (typeof window.requestIdleCallback === 'function') {
-      const id = window.requestIdleCallback(goFull, { timeout: 1200 })
-      return () => {
-        cancelled = true
-        if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(id)
-      }
-    }
-    const t = window.setTimeout(goFull, 400)
-    return () => {
-      cancelled = true
-      window.clearTimeout(t)
-    }
-  }, [mapStations.length, isMobile])
+  }, [mapStations, mapViewCenterForMarkers])
 
   const mapBootDiagPrevAwaitingRef = useRef(false)
   useEffect(() => {
@@ -1549,10 +1336,9 @@ function App() {
         itemsInScope: itemsInScope.length,
         mapStations: mapStations.length,
         mapLayerStations: mapLayerStations.length,
-        mapMarkersPhase: mapMarkersRenderPhase,
         mapAnchorStations: mapAnchorStations.length,
         groupedAllStationsForMap: groupedAllStationsForMap.length,
-        mapClusterBoundsPadded: !!mapClusterBoundsPadded,
+        appliedMapBounds: !!appliedMapBounds,
       })
     }
     mapBootDiagPrevAwaitingRef.current = awaitingInitialMapPaint
@@ -1563,53 +1349,35 @@ function App() {
     itemsInScope.length,
     mapStations.length,
     mapLayerStations.length,
-    mapMarkersRenderPhase,
     mapAnchorStations.length,
     groupedAllStationsForMap.length,
-    mapClusterBoundsPadded,
+    appliedMapBounds,
   ])
 
-  /** live와 applied가 충분히 다를 때만 "이 지역 충전소 검색하기" 노출 (중심 거리 > 0.15km) */
+  /** 지도·마커 부트 대기 중 로딩 문구 순환 */
+  useEffect(() => {
+    if (!bootOverlayOpen || !awaitingInitialMapPaint) return undefined
+    let idx = 0
+    const id = window.setInterval(() => {
+      idx = (idx + 1) % BOOT_MAP_WAIT_MESSAGES.length
+      setBootStageMessage(BOOT_MAP_WAIT_MESSAGES[idx])
+    }, 2400)
+    return () => window.clearInterval(id)
+  }, [bootOverlayOpen, awaitingInitialMapPaint])
+
+  /** 현재 화면 bounds가 적용 영역과 다를 때만「이 지역 검색」노출 (이동·줌 반영) */
   const showSearchAreaButton = useMemo(() => {
-    if (!isMobile || !liveMapBounds || !appliedMapBounds) return false
-    const liveCenter = {
-      lat: (liveMapBounds.southWest.lat + liveMapBounds.northEast.lat) / 2,
-      lng: (liveMapBounds.southWest.lng + liveMapBounds.northEast.lng) / 2,
-    }
-    const appliedCenter = {
-      lat: (appliedMapBounds.southWest.lat + appliedMapBounds.northEast.lat) / 2,
-      lng: (appliedMapBounds.southWest.lng + appliedMapBounds.northEast.lng) / 2,
-    }
-    return haversineDistanceKm(liveCenter.lat, liveCenter.lng, appliedCenter.lat, appliedCenter.lng) > 0.15
-  }, [isMobile, liveMapBounds, appliedMapBounds])
-
-  const kpis = useMemo(() => {
-    const operators = new Set(filteredItems.map((s) => s.busiNm).filter(Boolean))
-    const stations = new Set(filteredItems.map((s) => s.statId).filter(Boolean))
-    const byType = {}
-    filteredItems.forEach((s) => {
-      const label = s.chgerTyLabel
-      byType[label] = (byType[label] || 0) + 1
-    })
-    return {
-      totalChargers: filteredItems.length,
-      operatorCount: operators.size,
-      stationCount: stations.size,
-      byChgerTy: Object.entries(byType).map(([name, count]) => ({ name, count })),
-    }
-  }, [filteredItems])
-
-  const operatorChartData = useMemo(() => {
-    const count = {}
-    filteredItems.forEach((s) => {
-      const n = s.busiNm || '(미지정)'
-      count[n] = (count[n] || 0) + 1
-    })
-    return Object.entries(count)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 10)
-  }, [filteredItems])
+    if (!liveMapBounds || !appliedMapBounds) return false
+    const thr = 0.00008
+    const a = appliedMapBounds
+    const l = liveMapBounds
+    return (
+      Math.abs(a.southWest.lat - l.southWest.lat) > thr ||
+      Math.abs(a.southWest.lng - l.southWest.lng) > thr ||
+      Math.abs(a.northEast.lat - l.northEast.lat) > thr ||
+      Math.abs(a.northEast.lng - l.northEast.lng) > thr
+    )
+  }, [liveMapBounds, appliedMapBounds])
 
   useEffect(() => {
     setFilterSggCd('')
@@ -1651,106 +1419,7 @@ function App() {
     [detailStation]
   )
 
-  const panelBodyContent = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-          <EvStationIcon sx={{ fontSize: 20, color: colors.blue.primary, flexShrink: 0 }} />
-          <Typography variant="h6" sx={{ fontSize: '0.9375rem', fontWeight: 600, color: colors.gray[800] }}>EV 충전소 인프라 현황</Typography>
-        </Box>
-      </Box>
-      <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 0.75 }}>
-        <StatCard label="전체 충전기" value={kpis.totalChargers} />
-        <StatCard label="운영기관 수" value={kpis.operatorCount} />
-        <StatCard label="충전소 수" value={kpis.stationCount} />
-        <StatCard label="충전기 타입" value={kpis.byChgerTy.length} />
-      </Box>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-        <Box>
-          <Typography variant="caption" sx={{ color: colors.gray[700], fontWeight: 600, display: 'block', mb: 0.5 }}>충전기 타입</Typography>
-          <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-            {SPEED_FILTER_OPTIONS.map((opt) => {
-              const v = opt.value
-              const selected = filterSpeed === v
-              return (
-                <Chip key={v || 'all'} label={opt.label} size="small"
-                  onClick={() => setFilterSpeed(v)}
-                  sx={{
-                    fontSize: '0.75rem',
-                    height: 24,
-                    bgcolor: selected ? colors.blue.primary : tokens.bg.raised,
-                    color: selected ? tokens.text.onPrimary : colors.gray[700],
-                    border: `1px solid ${selected ? colors.blue.primary : colors.gray[300]}`,
-                    '&:hover': {
-                      bgcolor: selected ? colors.blue.deep : tokens.bg.muted,
-                      borderColor: selected ? colors.blue.deep : colors.gray[400],
-                    },
-                  }}
-                />
-              )
-            })}
-          </Box>
-        </Box>
-        <FilterModalSelect label="운영기관" value={filterBusiNm} onChange={setFilterBusiNm} options={filterOptions.busiNms} placeholder="전체" searchable />
-        <FilterModalSelect label="지역" value={filterCtprvnCd} onChange={setFilterCtprvnCd} options={filterOptions.ctprvnCds} placeholder="미선택" />
-        <FilterModalSelect label="상세 지역" value={filterSggCd} onChange={setFilterSggCd} options={filterOptions.sggCdsByCtprvn[filterCtprvnCd] ?? []} placeholder="미선택" disabled={!filterCtprvnCd} disabledMessage="지역을 먼저 선택해 주세요" />
-      </Box>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        <Typography variant="subtitle2" sx={{ color: colors.gray[700], fontWeight: 600 }}>운영기관별 충전기 (Top 10)</Typography>
-        <Box sx={{ width: '100%', height: 248, minHeight: 200 }}>
-          {operatorChartData.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={operatorChartData} layout="vertical" margin={{ top: 4, right: 8, left: 48, bottom: 4 }}>
-                <CartesianGrid strokeDasharray="2 2" stroke={colors.gray[200]} horizontal={false} />
-                <XAxis type="number" allowDecimals={false} stroke={colors.gray[400]} tick={{ fontSize: 10 }} />
-                <YAxis type="category" dataKey="name" width={44} tick={{ fontSize: 10 }} stroke={colors.gray[500]} />
-                <Tooltip formatter={(v) => [`${v}대`, '']} contentStyle={{ borderRadius: radius.control, border: `1px solid ${colors.gray[200]}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
-                <Bar dataKey="value" name="충전기" radius={[0, 3, 3, 0]}>
-                  {operatorChartData.map((_, i) => (
-                    <Cell key={i} fill={chartPalette[i % chartPalette.length]} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <Typography variant="caption" sx={{ color: colors.gray[500], py: 2, display: 'block', textAlign: 'center' }}>필터 결과 없음</Typography>
-          )}
-        </Box>
-      </Box>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        <Typography variant="subtitle2" sx={{ color: colors.gray[700], fontWeight: 600 }}>충전기 타입 분포</Typography>
-        <Box sx={{ width: '100%', height: 200, minHeight: 168 }}>
-          {kpis.byChgerTy.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart margin={{ top: 4, right: 4, bottom: 28, left: 4 }}>
-                <Pie data={kpis.byChgerTy} dataKey="count" nameKey="name" cx="50%" cy="42%" innerRadius={32} outerRadius={56} paddingAngle={1}>
-                  {kpis.byChgerTy.map((_, i) => (
-                    <Cell key={i} fill={chartPalette[i % chartPalette.length]} stroke={tokens.border.subtle} strokeWidth={1} />
-                  ))}
-                </Pie>
-                <Tooltip formatter={(v) => [`${v}대`, '']} contentStyle={{ borderRadius: radius.control, border: `1px solid ${colors.gray[200]}`, boxShadow: '0 2px 8px rgba(0,0,0,0.06)' }} />
-                <Legend verticalAlign="bottom" layout="horizontal" wrapperStyle={{ fontSize: 10, paddingTop: 4 }} iconSize={8} />
-              </PieChart>
-            </ResponsiveContainer>
-          ) : (
-            <Typography variant="caption" sx={{ color: colors.gray[500], py: 2, display: 'block', textAlign: 'center' }}>데이터 없음</Typography>
-          )}
-        </Box>
-      </Box>
-      <ThemeAppearanceControl compact />
-      <Box sx={{ flexShrink: 0, marginTop: 2, paddingTop: 1.5, borderTop: `1px solid ${colors.gray[200]}`, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', lineHeight: 1.4 }}>생활안전지도 API · 마커 클릭 시 상세</Typography>
-        <Typography variant="caption" sx={{ color: colors.gray[500], fontSize: '0.75rem', lineHeight: 1.4 }}>
-          표시 {filteredItems.length}건
-          {totalCount != null && totalCount !== items.length && ` · 전체 약 ${totalCount}건`}
-        </Typography>
-        <Typography component="span" sx={{ color: colors.gray[400], fontSize: '0.7rem', lineHeight: 1.4, marginTop: 0.25 }}>© whereEV2 · Created by James</Typography>
-      </Box>
-    </Box>
-  )
-
-  const panelEl = isMobile
-    ? (
+  const panelEl = (
         <MobileBottomSheet
           key={detailStation ? 'mobile-sheet-detail' : 'mobile-sheet-list'}
           topOffsetPx={sheetLayout.mobileTopBarStackPx}
@@ -2246,71 +1915,7 @@ function App() {
             />
           )}
         </MobileBottomSheet>
-      )
-    : (
-        <>
-          {!panelOpen && (
-            <IconButton
-              onClick={() => setPanelOpen(true)}
-              aria-label="패널 열기"
-              size="small"
-              sx={{
-                position: 'absolute',
-                left: spacing.lg,
-                top: spacing.lg,
-                zIndex: 1001,
-                bgcolor: tokens.control.fabBg,
-                color: tokens.text.primary,
-                border: `1px solid ${tokens.border.strong}`,
-                boxShadow: tokens.shadow.float,
-                '& .MuiSvgIcon-root': { opacity: 1, color: 'inherit' },
-                '&:hover': {
-                  bgcolor: tokens.bg.muted,
-                  borderColor: tokens.border.default,
-                  boxShadow: tokens.shadow.float,
-                },
-              }}
-            >
-              <ChevronRight sx={{ fontSize: 22, color: 'inherit' }} />
-            </IconButton>
-          )}
-          <Box
-            sx={{
-              position: 'absolute',
-              left: spacing.lg,
-              top: spacing.lg,
-              bottom: spacing.lg,
-              width: panelW,
-              zIndex: 1000,
-              transition: `transform ${motion.duration.panelSlide}ms ${motion.easing.panel}`,
-              transform: panelOpen ? 'translateX(0)' : 'translateX(calc(-100% - 24px))',
-            }}
-          >
-            <SideOverlayPanel
-              scrollRef={desktopPanelScrollRef}
-              side="left"
-              width="100%"
-              sx={{ left: 0, right: 'auto', top: 0, bottom: 0, width: '100%', maxWidth: '100%', position: 'absolute', gap: 0 }}
-            >
-              <IconButton
-                className="ev-panel-toggle"
-                onClick={() => setPanelOpen(false)}
-                aria-label="패널 접기"
-                size="small"
-                sx={{
-                  position: 'absolute',
-                  top: 10,
-                  right: 10,
-                  zIndex: 10,
-                }}
-              >
-                <ChevronLeft sx={{ fontSize: 22, color: tokens.text.primary }} />
-              </IconButton>
-              {panelBodyContent}
-            </SideOverlayPanel>
-          </Box>
-        </>
-      )
+  )
 
   const bootPct = Math.min(100, Math.max(0, Math.round(bootProgress)))
 
@@ -2394,17 +1999,12 @@ function App() {
             height: '100dvh',
           },
           overflow: 'hidden',
-          ...(isMobile
-            ? {
-                overscrollBehavior: 'none',
-                overscrollBehaviorY: 'none',
-              }
-            : {}),
+          overscrollBehavior: 'none',
+          overscrollBehaviorY: 'none',
         }}
       >
-        {/* 모바일: 상단 플로팅 크롬 — fixed + wrapper가 safe-area 흡수 (노치/다이내믹 아일랜드) */}
-        {isMobile && (
-          <Box
+        {/* 상단 플로팅 크롬 — fixed + wrapper가 safe-area 흡수 (노치/다이내믹 아일랜드) */}
+        <Box
             sx={{
               position: 'fixed',
               top: 0,
@@ -2542,7 +2142,6 @@ function App() {
               ) : null}
             </Box>
           </Box>
-        )}
         {/* Full-screen map */}
         <Box
           sx={{
@@ -2566,21 +2165,22 @@ function App() {
               zoom={leafletInitial.zoom}
               itemsLength={items.length}
               markerCount={mapLayerStations.length}
-              primeClusterBoundsNow={primeClusterBoundsForBoot}
+              expectedMarkerIcons={mapLayerStations.length}
+              markerIconsMaxWaitMs={90000}
               onReady={onBootMapPaintReady}
             />
             <MapMobileSearchViewportFitter
-              enabled={isMobile}
+              enabled
               fitNonce={searchViewportFitNonce}
               searchQuery={searchQuery}
               filteredItems={filteredItemsForScope}
               setAppliedMapBounds={setAppliedMapBounds}
-              ignoreRegionKeywordBounds={isMobile}
+              ignoreRegionKeywordBounds
             />
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer
               stations={mapLayerStations}
-              variant={isMobile || mapMarkersRenderPhase === 'lite' ? 'lite' : 'full'}
+              variant="lite"
               onDetailClick={openDetailPreserve}
               onClusterTap={handleClusterStationsTap}
               selectedId={mapSelectedStation?.id}
@@ -2592,26 +2192,14 @@ function App() {
               mapTileUrl={tokens.map.tileUrl}
               mapTileAttribution={tokens.map.tileAttribution}
               markerClusterChunked={false}
-              removeOutsideVisibleBounds={
-                mapMarkersRenderPhase === 'full' && mapStations.length > 2000
-              }
+              removeOutsideVisibleBounds={false}
             />
-            {!isMobile && <ZoomControl position="topright" />}
-            {!isMobile && (
-              <LocationControl
-                setUserLocation={setUserLocation}
-                setLocationError={setLocationError}
-                setLocationLoading={setLocationLoading}
-              />
-            )}
-            {isMobile && (
-              <MapGeolocationSync
-                geoNonce={geoNonce}
-                setUserLocation={setUserLocation}
-                setLocationError={setLocationError}
-                setLocationLoading={setLocationLoading}
-              />
-            )}
+            <MapGeolocationSync
+              geoNonce={geoNonce}
+              setUserLocation={setUserLocation}
+              setLocationError={setLocationError}
+              setLocationLoading={setLocationLoading}
+            />
             {userLocation && (
               <>
                 <Circle
@@ -2642,16 +2230,10 @@ function App() {
             <Box
               sx={{
                 position: 'absolute',
-                top: isMobile
-                  ? `calc(env(safe-area-inset-top, 0px) + ${sheetLayout.mobileTopBarStackPx}px)`
-                  : 52,
-                right: isMobile
-                  ? `max(${sheetLayout.mobileTopBarInsetPx}px, env(safe-area-inset-right, 0px))`
-                  : 14,
+                top: `calc(env(safe-area-inset-top, 0px) + ${sheetLayout.mobileTopBarStackPx}px)`,
+                right: `max(${sheetLayout.mobileTopBarInsetPx}px, env(safe-area-inset-right, 0px))`,
                 zIndex: 500,
-                maxWidth: isMobile
-                  ? `calc(100% - ${2 * sheetLayout.mobileTopBarInsetPx}px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))`
-                  : 'calc(100% - 24px)',
+                maxWidth: `calc(100% - ${2 * sheetLayout.mobileTopBarInsetPx}px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))`,
               }}
             >
               {locationLoading && (
@@ -2725,7 +2307,7 @@ function App() {
           필터 열림 시 투명 레이어로 지도 제스처를 확실히 삼킴(백드롭 틈 대비).
           FAB는 오버레이 해제 후 exit + fabReveal ms 뒤 페이드인해 시트 전환과 어긋남 완화.
         */}
-        {isMobile && mobileSearchResultsMode && mobileSheetSnap === 'full' && !mobileOverlayBlocking ? (
+        {mobileSearchResultsMode && mobileSheetSnap === 'full' && !mobileOverlayBlocking ? (
           <Box
             sx={{
               position: 'fixed',
@@ -2771,8 +2353,7 @@ function App() {
           </Box>
         ) : null}
 
-        {isMobile &&
-        (showSearchAreaButton || (mobileSearchResultsMode && mobileSheetSnap === 'peek')) &&
+        {(showSearchAreaButton || (mobileSearchResultsMode && mobileSheetSnap === 'peek')) &&
         !mobileOverlayBlocking ? (
           <Box
             sx={{
@@ -2857,7 +2438,6 @@ function App() {
           </Box>
         ) : null}
 
-        {/* 패널: 모바일 = 바텀시트, 데스크톱 = 좌측 패널 */}
         {panelEl}
 
         <MobileFilterSheet
@@ -2876,18 +2456,6 @@ function App() {
           filterSggCd={filterSggCd}
           sggCdsByCtprvn={filterOptions.sggCdsByCtprvn}
         />
-
-        {!isMobile ? (
-          <StationDetailModal
-            open={!!detailStation}
-            station={detailStation}
-            onClose={closeDetailFromOverlay}
-            onRefresh={canRefetchEv ? refreshEvData : undefined}
-            refreshLoading={detailRefreshing}
-            headerSubtitle={detailHeaderSubtitle}
-            chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader}
-          />
-        ) : null}
       </Box>
     </>
   )
