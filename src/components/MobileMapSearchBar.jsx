@@ -50,6 +50,8 @@ export function MobileMapSearchBar({
   activeQuickQuery = '',
   /** 검색 포커스(키보드) 또는 상세 full 등에서 퀵칩 숨김 */
   suppressQuickChips = false,
+  /** false면 퀵칩을 부모(전체 폭 레일 등)에서만 렌더 */
+  embedQuickChips = true,
   /** 검색 결과 모드: leading 로고 대신 뒤로(검색 종료) */
   searchResultsMode = false,
   onSearchBack,
@@ -237,7 +239,7 @@ export function MobileMapSearchBar({
         </Box>
       ) : null}
 
-      {!suppressQuickChips ? (
+      {!suppressQuickChips && embedQuickChips ? (
         <Box
           component="nav"
           aria-label="빠른 검색 제안"
@@ -269,49 +271,49 @@ export function MobileMapSearchBar({
               boxSizing: 'border-box',
             }}
           >
-          {QUICK_SUGGESTIONS.map(({ label, Icon }) => {
-            const active = activeQuickQuery.trim() === label.trim()
-            return (
-              <Chip
-                key={label}
-                icon={createElement(Icon, {
-                  sx: { ...ICON_SX, color: active ? colors.blue.deep : colors.gray[600] },
-                  'aria-hidden': true,
-                })}
-                label={label}
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => applySuggestion(label)}
-                sx={{
-                  flexShrink: 0,
-                  height: QUICK_CHIP_H,
-                  borderRadius: 9999,
-                  fontSize: `${QUICK_CHIP_FONT_PX}px`,
-                  fontWeight: 600,
-                  bgcolor: active ? tokens.blue.mutedStrong : colors.gray[100],
-                  color: active ? colors.blue.deep : colors.gray[800],
-                  border: active ? `1px solid ${colors.blue.primary}` : `1px solid ${colors.gray[200]}`,
-                  boxShadow: 'none',
-                  transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
-                  '& .MuiChip-icon': {
-                    marginLeft: '10px',
-                    marginRight: `${QUICK_ICON_TEXT_GAP_PX}px`,
-                  },
-                  '& .MuiChip-label': {
-                    px: `${QUICK_CHIP_PAD_X}px`,
-                    py: 0,
-                    pl: 0,
-                  },
-                  '&:hover': {
-                    bgcolor: active ? tokens.blue.muted : colors.gray[200],
-                    borderColor: active ? colors.blue.deep : colors.gray[300],
-                  },
-                  '&:active': {
-                    transform: 'scale(0.98)',
-                  },
-                }}
-              />
-            )
-          })}
+            {QUICK_SUGGESTIONS.map(({ label, Icon }) => {
+              const active = activeQuickQuery.trim() === label.trim()
+              return (
+                <Chip
+                  key={label}
+                  icon={createElement(Icon, {
+                    sx: { ...ICON_SX, color: active ? colors.blue.deep : colors.gray[600] },
+                    'aria-hidden': true,
+                  })}
+                  label={label}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => applySuggestion(label)}
+                  sx={{
+                    flexShrink: 0,
+                    height: QUICK_CHIP_H,
+                    borderRadius: 9999,
+                    fontSize: `${QUICK_CHIP_FONT_PX}px`,
+                    fontWeight: 600,
+                    bgcolor: active ? tokens.blue.mutedStrong : colors.gray[100],
+                    color: active ? colors.blue.deep : colors.gray[800],
+                    border: active ? `1px solid ${colors.blue.primary}` : `1px solid ${colors.gray[200]}`,
+                    boxShadow: 'none',
+                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    '& .MuiChip-icon': {
+                      marginLeft: '10px',
+                      marginRight: `${QUICK_ICON_TEXT_GAP_PX}px`,
+                    },
+                    '& .MuiChip-label': {
+                      px: `${QUICK_CHIP_PAD_X}px`,
+                      py: 0,
+                      pl: 0,
+                    },
+                    '&:hover': {
+                      bgcolor: active ? tokens.blue.muted : colors.gray[200],
+                      borderColor: active ? colors.blue.deep : colors.gray[300],
+                    },
+                    '&:active': {
+                      transform: 'scale(0.98)',
+                    },
+                  }}
+                />
+              )
+            })}
           </Box>
         </Box>
       ) : null}

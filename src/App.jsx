@@ -96,7 +96,10 @@ function rowsMatchingDetailStation(prev, flatItems) {
 import { cssEscapeAttr } from './utils/cssEscape.js'
 import { buildRegionFilterOptions } from './utils/regionDisplay.js'
 import { itemMatchesEvSearchQuery } from './utils/evSearch.js'
-import { SEARCH_REGION_KEYWORDS } from './utils/searchRegionBounds.js'
+import {
+  pickMobileSearchRadiusTier,
+  squareBoundsLiteralAroundCenter,
+} from './utils/mobileRadiusSearch.js'
 import { zoomForHorizontalSpanMeters } from './utils/mapZoomMeters.js'
 import {
   spacing,
@@ -113,6 +116,7 @@ import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
 import { FilterModalSelect } from './components/FilterModalSelect.jsx'
 import { StationListMobile } from './components/StationListMobile.jsx'
 import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
+import { MobileMapQuickSearchChipsRail } from './components/MobileMapQuickSearchChipsRail.jsx'
 import { EvStationMapLayer } from './components/EvStationMapLayer.jsx'
 import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
 import { MapInitialGeolocation } from './components/MapInitialGeolocation.jsx'
@@ -431,6 +435,12 @@ function App() {
   const [mobileListAvailOnly, setMobileListAvailOnly] = useState(false)
   /** 클러스터 탭으로 연 목록(지도 묶음 전용 — 상세·검색 파이프라인과 분리) */
   const [clusterBrowseGrouped, setClusterBrowseGrouped] = useState(null)
+  /** 모바일 검색 확정(Enter·칩) 시 내 위치 기준 반경 단계 — 입력 디바운스와 분리 */
+  const [mobileSearchGeo, setMobileSearchGeo] = useState(
+    /** @type {null | { center: { lat: number, lng: number }, radiusKm: number, widenedHint: boolean }} */ (null),
+  )
+  const [confirmedMobileSearchQuery, setConfirmedMobileSearchQuery] = useState('')
+  const commitMobileSearchRef = useRef(() => {})
   const sheetListScrollRef = useRef(null)
   /** 데스크톱 좌측 패널(SideOverlayPanel 루트) 스크롤 — 상세 닫기 후 복원 */
   const desktopPanelScrollRef = useRef(null)
@@ -484,6 +494,8 @@ function App() {
     setSearchQuery('')
     lastFittedSearchQueryRef.current = ''
     setClusterBrowseGrouped(null)
+    setConfirmedMobileSearchQuery('')
+    setMobileSearchGeo(null)
     if (isMobileRef.current) setMobileSheetSnap('closed')
   }, [])
 
@@ -491,36 +503,39 @@ function App() {
     const raw = searchInput.trim()
     lastFittedSearchQueryRef.current = raw.toLowerCase()
     setSearchQuery(searchInput)
-    setSearchViewportFitNonce((n) => n + 1)
-    if (raw) openMobileListSheetToHalf()
-  }, [searchInput, openMobileListSheetToHalf])
+    if (isMobile) {
+      if (raw) {
+        commitMobileSearchRef.current(raw)
+        openMobileListSheetToHalf()
+      } else {
+        setConfirmedMobileSearchQuery('')
+        setMobileSearchGeo(null)
+      }
+    } else {
+      setConfirmedMobileSearchQuery('')
+      setMobileSearchGeo(null)
+      if (raw) setSearchViewportFitNonce((n) => n + 1)
+    }
+    if (raw && !isMobile) openMobileListSheetToHalf()
+  }, [searchInput, isMobile, openMobileListSheetToHalf])
 
-  const pickSearchSuggestion = useCallback((text) => {
-    const q = text.trim().toLowerCase()
-    lastFittedSearchQueryRef.current = q
-    setSearchInput(text)
-    setSearchQuery(text)
-    setSearchViewportFitNonce((n) => n + 1)
-    openMobileListSheetToHalf()
-  }, [openMobileListSheetToHalf])
-
-  /**
-   * 직접 입력: 키워드가 사전 지역명과 정확히 일치할 때만(디바운스 후 추가 지연) 지도 맞춤.
-   * 칩/Enter는 pick/flush에서 이미 lastFittedSearchQueryRef 처리.
-   */
-  useEffect(() => {
-    if (!isMobile) return undefined
-    const q = searchQuery.trim().toLowerCase()
-    if (!q || !SEARCH_REGION_KEYWORDS.has(q)) return undefined
-    const tid = window.setTimeout(() => {
-      if (searchQuerySyncRef.current.trim().toLowerCase() !== q) return
-      if (lastFittedSearchQueryRef.current === q) return
+  const pickSearchSuggestion = useCallback(
+    (text) => {
+      const q = text.trim().toLowerCase()
       lastFittedSearchQueryRef.current = q
-      setSearchViewportFitNonce((n) => n + 1)
-      openMobileListSheetToHalf()
-    }, 340)
-    return () => clearTimeout(tid)
-  }, [searchQuery, isMobile, openMobileListSheetToHalf])
+      setSearchInput(text)
+      setSearchQuery(text)
+      if (isMobile && text.trim()) {
+        commitMobileSearchRef.current(text.trim())
+      } else {
+        setConfirmedMobileSearchQuery('')
+        setMobileSearchGeo(null)
+        if (text.trim()) setSearchViewportFitNonce((n) => n + 1)
+      }
+      if (text.trim()) openMobileListSheetToHalf()
+    },
+    [isMobile, openMobileListSheetToHalf],
+  )
 
   /** 검색어가 있으면 포커스/제목이 충전소명에 묶이지 않도록 선택·상세 해제 */
   useEffect(() => {
@@ -777,6 +792,8 @@ function App() {
   const applySearchAreaFromMap = useCallback(() => {
     setAppliedMapBounds(liveMapBoundsRef.current)
     setClusterBrowseGrouped(null)
+    setConfirmedMobileSearchQuery('')
+    setMobileSearchGeo(null)
     if (isMobile) {
       openMobileListSheetToHalf()
     }
@@ -904,17 +921,61 @@ function App() {
     }
   }, [canRefetchEv])
 
-  const filteredItems = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase()
+  const itemsMatchingChipsOnly = useMemo(() => {
     return items.filter((s) => {
       if (filterBusiNm && s.busiNm !== filterBusiNm) return false
       if (filterSpeed && s.speedCategory !== filterSpeed) return false
       if (filterCtprvnCd && s.ctprvnCd !== filterCtprvnCd) return false
       if (filterSggCd && s.sggCd !== filterSggCd) return false
+      return true
+    })
+  }, [items, filterBusiNm, filterSpeed, filterCtprvnCd, filterSggCd])
+
+  const filteredItems = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase()
+    return itemsMatchingChipsOnly.filter((s) => {
       if (q && !itemMatchesEvSearchQuery(s, q)) return false
       return true
     })
-  }, [items, filterBusiNm, filterSpeed, filterCtprvnCd, filterSggCd, searchQuery])
+  }, [itemsMatchingChipsOnly, searchQuery])
+
+  const mobileGeoActive =
+    isMobile &&
+    mobileSearchGeo != null &&
+    confirmedMobileSearchQuery.trim() !== '' &&
+    searchQuery.trim() === confirmedMobileSearchQuery.trim()
+
+  const filteredItemsForScope = useMemo(() => {
+    if (!mobileGeoActive || !mobileSearchGeo) return filteredItems
+    const { center, radiusKm } = mobileSearchGeo
+    return filteredItems.filter(
+      (s) =>
+        Number.isFinite(s.lat) &&
+        Number.isFinite(s.lng) &&
+        haversineDistanceKm(center.lat, center.lng, s.lat, s.lng) <= radiusKm,
+    )
+  }, [mobileGeoActive, mobileSearchGeo, filteredItems])
+
+  commitMobileSearchRef.current = (rawQuery) => {
+    const raw = rawQuery.trim()
+    if (!isMobile || !raw) return
+    setConfirmedMobileSearchQuery(raw)
+    const center = userLocation || mapCenter
+    const q = raw.toLowerCase()
+    const textRows = itemsMatchingChipsOnly.filter((s) => itemMatchesEvSearchQuery(s, q))
+    const picked = pickMobileSearchRadiusTier(textRows, center)
+    setMobileSearchGeo({
+      center: { lat: center.lat, lng: center.lng },
+      radiusKm: picked.radiusKm,
+      widenedHint: picked.widenedHint,
+    })
+    if (picked.matches.length === 0) {
+      const padKm = Math.min(Number.isFinite(picked.radiusKm) ? picked.radiusKm : 8, 8)
+      setAppliedMapBounds(squareBoundsLiteralAroundCenter(center.lat, center.lng, Math.max(padKm, 1)))
+    } else {
+      setSearchViewportFitNonce((n) => n + 1)
+    }
+  }
 
   /** 초기: live 수신 시 applied가 없으면 적용. 이후는 버튼 탭 시에만 applied 갱신. */
   useEffect(() => {
@@ -928,8 +989,8 @@ function App() {
       [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng],
       [appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng]
     )
-    return filteredItems.filter((s) => b.contains([s.lat, s.lng]))
-  }, [filteredItems, appliedMapBounds])
+    return filteredItemsForScope.filter((s) => b.contains([s.lat, s.lng]))
+  }, [filteredItemsForScope, appliedMapBounds])
 
   /** 모바일 목록용: itemsInScope를 거리순 정렬. userLocation 있으면 내 위치, 없으면 지도 중심 기준. */
   const sortedItemsInScope = useMemo(() => {
@@ -1096,12 +1157,24 @@ function App() {
   }, [isMobile, searchNavActive, mobileSheetSnap])
 
   /** 큰 제목 대신 한 줄 메타(탐색 control rail 상단) */
+  const searchRangeWidenedHint =
+    searchNavActive && mobileGeoActive && mobileSearchGeo?.widenedHint === true
+
   const listSheetMetaLine = useMemo(() => {
     if (appliedMapBounds == null) return '지도 영역 준비 중…'
-    if (searchNavActive) return `검색 결과 ${stationsForMobileListEffective.length}곳`
+    if (searchNavActive) {
+      const base = `검색 결과 ${stationsForMobileListEffective.length}곳`
+      return searchRangeWidenedHint ? `${base} · 주변을 넓혀 찾았어요` : base
+    }
     if (clusterBrowseActive) return `이 구역 묶음 ${stationsForMobileListEffective.length}곳`
     return `이 지역 ${stationsForMobileListEffective.length}곳`
-  }, [appliedMapBounds, searchNavActive, clusterBrowseActive, stationsForMobileListEffective.length])
+  }, [
+    appliedMapBounds,
+    searchNavActive,
+    searchRangeWidenedHint,
+    clusterBrowseActive,
+    stationsForMobileListEffective.length,
+  ])
 
   /**
    * 지도 전용: 현재 로드된 `items` 중 디바운스+패딩 뷰포트 안만 클러스터(성능).
@@ -1821,12 +1894,23 @@ function App() {
             <Box
               sx={{
                 display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'flex-start',
-                gap: `${mobileMapChrome.rowGap}px`,
+                flexDirection: 'column',
+                width: '100%',
+                minWidth: 0,
+                gap: 0,
                 pointerEvents: 'auto',
               }}
             >
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: `${mobileMapChrome.rowGap}px`,
+                  width: '100%',
+                  minWidth: 0,
+                }}
+              >
               <MobileMapSearchBar
                 value={searchInput}
                 onChange={setSearchInput}
@@ -1840,6 +1924,7 @@ function App() {
                 statusQuery={!searchBarFocused && searchQuery.trim() ? searchQuery : ''}
                 searchResultsMode={mobileSearchResultsMode}
                 onSearchBack={clearNavSearch}
+                embedQuickChips={false}
                 suppressQuickChips={
                   searchBarFocused ||
                   (!!detailStation && mobileSheetSnap === 'full') ||
@@ -1918,6 +2003,16 @@ function App() {
                   )}
                 </IconButton>
               </Box>
+              </Box>
+              {!searchBarFocused &&
+              !(!!detailStation && mobileSheetSnap === 'full') &&
+              !(mobileSearchResultsMode && mobileSheetSnap === 'full') ? (
+                <MobileMapQuickSearchChipsRail
+                  variant="fullBleed"
+                  activeQuickQuery={searchQuery}
+                  onSuggestionPick={pickSearchSuggestion}
+                />
+              ) : null}
             </Box>
           </Box>
         )}
@@ -1943,8 +2038,9 @@ function App() {
               enabled={isMobile}
               fitNonce={searchViewportFitNonce}
               searchQuery={searchQuery}
-              filteredItems={filteredItems}
+              filteredItems={filteredItemsForScope}
               setAppliedMapBounds={setAppliedMapBounds}
+              ignoreRegionKeywordBounds={isMobile}
             />
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer

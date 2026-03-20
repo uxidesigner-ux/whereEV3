@@ -25,8 +25,8 @@ function boundsLiteralFromLeaflet(b) {
 }
 
 /**
- * 모바일 검색: 칩/Enter/지역 키워드(debounce) 시에만 부모가 fitNonce를 올려 호출.
- * 1) 사전 지역 bounds 2) 검색 결과 좌표 fit 3) 1건이면 flyTo
+ * 모바일 검색: 부모가 fitNonce를 올릴 때만 호출.
+ * ignoreRegionKeywordBounds: 내 위치 기준 반경 검색 등 — 사전 지역 bounds 없이 결과 좌표만 사용.
  */
 export function MapMobileSearchViewportFitter({
   enabled,
@@ -34,16 +34,19 @@ export function MapMobileSearchViewportFitter({
   searchQuery,
   filteredItems,
   setAppliedMapBounds,
+  ignoreRegionKeywordBounds = false,
 }) {
   const map = useMap()
   const lastProcessedNonceRef = useRef(0)
   const searchQueryRef = useRef(searchQuery)
   const filteredItemsRef = useRef(filteredItems)
+  const ignoreRegionRef = useRef(ignoreRegionKeywordBounds)
 
   useEffect(() => {
     searchQueryRef.current = searchQuery
     filteredItemsRef.current = filteredItems
-  }, [searchQuery, filteredItems])
+    ignoreRegionRef.current = ignoreRegionKeywordBounds
+  }, [searchQuery, filteredItems, ignoreRegionKeywordBounds])
 
   useEffect(() => {
     if (!enabled || fitNonce < 1) return
@@ -53,7 +56,7 @@ export function MapMobileSearchViewportFitter({
     const q = (searchQueryRef.current || '').trim().toLowerCase()
     if (!q) return
 
-    const region = getExactRegionBounds(q)
+    const region = ignoreRegionRef.current ? null : getExactRegionBounds(q)
     let bounds = null
     let single = null
 
