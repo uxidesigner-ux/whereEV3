@@ -4,45 +4,69 @@ import {
   Button,
   Chip,
   Drawer,
+  IconButton,
   List,
   ListItemButton,
   TextField,
   Typography,
 } from '@mui/material'
+import Close from '@mui/icons-material/Close'
 import { appMobileType, colors, radius, motion } from '../theme/dashboardTheme.js'
 
+const defaultDraft = () => ({
+  sort: /** @type {'distance' | 'name'} */ ('distance'),
+  speed: '',
+  availOnly: false,
+  busiNm: '',
+  ctprvnCd: '',
+  sggCd: '',
+})
+
 /**
- * 모바일 단일 필터 시트: Drawer + 스크롤 본문(칩·검색·리스트). 중첩 Modal 없음.
+ * 모바일 앱형 필터 바텀시트 — draft 편집 후「적용하기」로 반영. 닫기(X/백드롭)는 미적용 종료.
  */
 export function MobileFilterSheet({
   open,
   onClose,
-  speedOptions = [],
+  onApply,
+  listSort,
+  listAvailOnly,
+  hasAvailInGroupedScope,
   filterSpeed,
-  onFilterSpeedChange,
   filterBusiNm,
-  onFilterBusiNmChange,
-  busiOptions = [],
   filterCtprvnCd,
-  onFilterCtprvnCdChange,
-  ctprvnOptions = [],
   filterSggCd,
-  onFilterSggCdChange,
-  sggOptions = [],
+  speedOptions = [],
+  busiOptions = [],
+  ctprvnOptions = [],
+  /** 시도별 시군구 — draft.ctprvnCd 기준으로 목록 표시(적용 전 미리보기) */
+  sggCdsByCtprvn = {},
 }) {
+  const [draft, setDraft] = useState(defaultDraft)
   const [busiSearch, setBusiSearch] = useState('')
-  const ctprvnSelected = !!filterCtprvnCd
   const titleRef = useRef(null)
+  const ctprvnSelected = !!draft.ctprvnCd
+  const sggOptions = sggCdsByCtprvn[draft.ctprvnCd] ?? []
 
   useEffect(() => {
-    if (open) setBusiSearch('')
-  }, [open])
+    if (!open) return
+    setDraft({
+      sort: listSort,
+      speed: filterSpeed,
+      availOnly: listAvailOnly,
+      busiNm: filterBusiNm,
+      ctprvnCd: filterCtprvnCd,
+      sggCd: filterSggCd,
+    })
+    setBusiSearch('')
+  }, [open, listSort, listAvailOnly, filterSpeed, filterBusiNm, filterCtprvnCd, filterSggCd])
 
   useEffect(() => {
     if (!open) return
     const id = requestAnimationFrame(() => titleRef.current?.focus())
     return () => cancelAnimationFrame(id)
   }, [open])
+
   const filteredBusi = useMemo(() => {
     const q = busiSearch.trim().toLowerCase()
     if (!q) return busiOptions
@@ -51,6 +75,17 @@ export function MobileFilterSheet({
       return t.includes(q)
     })
   }, [busiOptions, busiSearch])
+
+  const resetDraft = () => setDraft(defaultDraft())
+
+  const chipBase = (selected) => ({
+    height: 34,
+    fontSize: '0.8125rem',
+    fontWeight: selected ? 700 : 600,
+    borderRadius: `${radius.md}px`,
+    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+    '& .MuiChip-label': { px: 1.25 },
+  })
 
   return (
     <Drawer
@@ -61,12 +96,12 @@ export function MobileFilterSheet({
       slotProps={{
         backdrop: {
           sx: {
-            bgcolor: 'rgba(15,23,42,0.44)',
-            backdropFilter: 'brightness(0.94)',
-            WebkitBackdropFilter: 'brightness(0.94)',
+            bgcolor: 'rgba(15,23,42,0.38)',
+            backdropFilter: 'blur(8px)',
+            WebkitBackdropFilter: 'blur(8px)',
           },
         },
-        transition: { timeout: { enter: motion.duration.enter, exit: motion.duration.exit } },
+        transition: { timeout: { enter: motion.duration.sheet, exit: motion.duration.exit } },
       }}
       PaperProps={{
         component: 'div',
@@ -75,47 +110,70 @@ export function MobileFilterSheet({
         'aria-labelledby': 'ev-filter-sheet-title',
         sx: {
           maxHeight: 'min(88dvh, 100%)',
-          borderTopLeftRadius: radius.sheet,
-          borderTopRightRadius: radius.sheet,
+          borderTopLeftRadius: radius.sheetApp,
+          borderTopRightRadius: radius.sheetApp,
           bgcolor: colors.white,
           display: 'flex',
           flexDirection: 'column',
           overflow: 'hidden',
+          boxShadow: '0 -8px 40px rgba(15,23,42,0.14)',
         },
       }}
     >
       <Box
         sx={{
           flexShrink: 0,
-          pt: 1,
-          pb: 1,
-          px: 2,
+          pt: 1.25,
+          pb: 1.5,
+          px: 2.5,
           borderBottom: `1px solid ${colors.gray[200]}`,
         }}
       >
         <Box
           sx={{
-            width: 36,
+            width: 40,
             height: 4,
             borderRadius: 2,
             bgcolor: colors.gray[300],
             mx: 'auto',
-            mb: 1,
+            mb: 1.25,
           }}
           aria-hidden
         />
-        <Typography
-          id="ev-filter-sheet-title"
-          ref={titleRef}
-          tabIndex={-1}
-          variant="subtitle1"
-          component="h2"
-          sx={{ color: colors.gray[900], outline: 'none', ...appMobileType.filterSheetTitle }}
-        >
-          필터
-        </Typography>
-        <Typography variant="body2" sx={{ color: colors.gray[600], display: 'block', mt: 0.35, ...appMobileType.filterSheetHint }}>
-          조건을 바꾼 뒤 닫으면 목록·지도에 반영됩니다.
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+          <Typography
+            id="ev-filter-sheet-title"
+            ref={titleRef}
+            tabIndex={-1}
+            variant="h6"
+            component="h2"
+            sx={{ color: colors.gray[900], outline: 'none', fontWeight: 700, fontSize: '1.125rem' }}
+          >
+            필터
+          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.25 }}>
+            <Button
+              type="button"
+              variant="text"
+              size="small"
+              onClick={resetDraft}
+              sx={{
+                fontSize: '0.8125rem',
+                fontWeight: 600,
+                color: colors.gray[600],
+                textTransform: 'none',
+                minWidth: 0,
+              }}
+            >
+              초기화
+            </Button>
+            <IconButton onClick={onClose} aria-label="필터 닫기" size="small" sx={{ color: colors.gray[600] }}>
+              <Close />
+            </IconButton>
+          </Box>
+        </Box>
+        <Typography variant="caption" sx={{ display: 'block', mt: 0.75, color: colors.gray[500], fontSize: '0.75rem' }}>
+          변경 후 하단「적용하기」를 누르면 목록·지도에 반영됩니다.
         </Typography>
       </Box>
 
@@ -124,41 +182,92 @@ export function MobileFilterSheet({
           flex: 1,
           minHeight: 0,
           overflow: 'auto',
-          px: 2,
-          pt: 1.5,
-          pb: 'calc(12px + env(safe-area-inset-bottom, 0px))',
+          px: 2.5,
+          pt: 2,
+          pb: 2,
           WebkitOverflowScrolling: 'touch',
         }}
       >
-        <Typography variant="subtitle2" component="h3" sx={{ color: colors.gray[800], display: 'block', mb: 0.85, ...appMobileType.filterSectionLabel }}>
-          충전 타입
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 1, fontSize: '0.8125rem' }}>
+          정렬
         </Typography>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.625, mb: 2 }}>
-          {speedOptions.map((opt) => {
-            const v = opt.value
-            const selected = filterSpeed === v
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2.75 }}>
+          {[
+            { v: 'distance', label: '가까운 순' },
+            { v: 'name', label: '이름순' },
+          ].map(({ v, label }) => {
+            const selected = draft.sort === v
             return (
               <Chip
-                key={v || 'all'}
-                label={opt.label}
-                size="small"
-                onClick={() => onFilterSpeedChange(v)}
+                key={v}
+                label={label}
+                onClick={() => setDraft((d) => ({ ...d, sort: v }))}
                 sx={{
-                  fontSize: appMobileType.filterChip.fontSize,
-                  height: appMobileType.filterChip.height,
-                  fontWeight: selected ? 700 : 600,
+                  ...chipBase(selected),
                   bgcolor: selected ? colors.blue.primary : colors.gray[50],
                   color: selected ? colors.white : colors.gray[700],
                   border: `1px solid ${selected ? colors.blue.primary : colors.gray[200]}`,
-                  transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
-                  '&:active': { transform: 'scale(0.97)' },
                 }}
               />
             )
           })}
         </Box>
 
-        <Typography variant="subtitle2" component="h3" sx={{ color: colors.gray[800], display: 'block', mb: 0.6, ...appMobileType.filterSectionLabel }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 1, fontSize: '0.8125rem' }}>
+          충전 속도
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2.75 }}>
+          {speedOptions.map((opt) => {
+            const v = opt.value
+            const selected = draft.speed === v
+            return (
+              <Chip
+                key={v || 'all'}
+                label={opt.label}
+                onClick={() => setDraft((d) => ({ ...d, speed: v }))}
+                sx={{
+                  ...chipBase(selected),
+                  bgcolor: selected ? colors.blue.primary : colors.gray[50],
+                  color: selected ? colors.white : colors.gray[700],
+                  border: `1px solid ${selected ? colors.blue.primary : colors.gray[200]}`,
+                }}
+              />
+            )
+          })}
+        </Box>
+
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 1, fontSize: '0.8125rem' }}>
+          상태
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75, mb: 2.75 }}>
+          <Chip
+            label="전체"
+            onClick={() => setDraft((d) => ({ ...d, availOnly: false }))}
+            disabled={false}
+            sx={{
+              ...chipBase(!draft.availOnly),
+              bgcolor: !draft.availOnly ? colors.blue.primary : colors.gray[50],
+              color: !draft.availOnly ? colors.white : colors.gray[700],
+              border: `1px solid ${!draft.availOnly ? colors.blue.primary : colors.gray[200]}`,
+            }}
+          />
+          <Chip
+            label="사용 가능만"
+            onClick={() => hasAvailInGroupedScope && setDraft((d) => ({ ...d, availOnly: true }))}
+            disabled={!hasAvailInGroupedScope}
+            sx={{
+              ...chipBase(draft.availOnly),
+              bgcolor: draft.availOnly ? colors.blue.primary : colors.gray[50],
+              color: draft.availOnly ? colors.white : colors.gray[700],
+              border: `1px solid ${draft.availOnly ? colors.blue.primary : colors.gray[200]}`,
+              ...( !hasAvailInGroupedScope ? { opacity: 0.55 } : {}),
+            }}
+          />
+        </Box>
+
+        <Box sx={{ height: 1, bgcolor: colors.gray[200], my: 0.5, mb: 2 }} />
+
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 1, fontSize: '0.8125rem' }}>
           운영기관
         </Typography>
         <TextField
@@ -168,29 +277,29 @@ export function MobileFilterSheet({
           value={busiSearch}
           onChange={(e) => setBusiSearch(e.target.value)}
           sx={{
-            mb: 0.75,
-            '& .MuiOutlinedInput-root': { borderRadius: `${radius.sm}px`, fontSize: appMobileType.searchField.fontSize },
+            mb: 1,
+            '& .MuiOutlinedInput-root': { borderRadius: `${radius.md}px`, fontSize: appMobileType.searchField.fontSize },
           }}
         />
-        <List dense disablePadding sx={{ mb: 2, maxHeight: 168, overflow: 'auto', border: `1px solid ${colors.gray[200]}`, borderRadius: `${radius.sm}px` }}>
+        <List dense disablePadding sx={{ mb: 2.5, maxHeight: 160, overflow: 'auto', border: `1px solid ${colors.gray[200]}`, borderRadius: `${radius.md}px` }}>
           <ListItemButton
-            selected={!filterBusiNm}
-            onClick={() => onFilterBusiNmChange('')}
-            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875 }}
+            selected={!draft.busiNm}
+            onClick={() => setDraft((d) => ({ ...d, busiNm: '' }))}
+            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 1 }}
           >
             전체
           </ListItemButton>
           {filteredBusi.map((opt) => {
             const val = opt.value ?? opt
-            const sel = filterBusiNm === val
+            const sel = draft.busiNm === val
             return (
               <ListItemButton
                 key={val}
                 selected={sel}
-                onClick={() => onFilterBusiNmChange(val)}
+                onClick={() => setDraft((d) => ({ ...d, busiNm: val }))}
                 sx={{
                   fontSize: appMobileType.filterListItem.fontSize,
-                  py: 0.875,
+                  py: 1,
                   bgcolor: sel ? colors.blue.muted : undefined,
                 }}
               >
@@ -200,26 +309,26 @@ export function MobileFilterSheet({
           })}
         </List>
 
-        <Typography variant="subtitle2" component="h3" sx={{ color: colors.gray[800], display: 'block', mb: 0.6, ...appMobileType.filterSectionLabel }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 1, fontSize: '0.8125rem' }}>
           시도 코드
         </Typography>
-        <List dense disablePadding sx={{ mb: 2, maxHeight: 140, overflow: 'auto', border: `1px solid ${colors.gray[200]}`, borderRadius: `${radius.sm}px` }}>
+        <List dense disablePadding sx={{ mb: 2.5, maxHeight: 132, overflow: 'auto', border: `1px solid ${colors.gray[200]}`, borderRadius: `${radius.md}px` }}>
           <ListItemButton
-            selected={!filterCtprvnCd}
-            onClick={() => onFilterCtprvnCdChange('')}
-            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875 }}
+            selected={!draft.ctprvnCd}
+            onClick={() => setDraft((d) => ({ ...d, ctprvnCd: '', sggCd: '' }))}
+            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 1 }}
           >
             미선택
           </ListItemButton>
           {ctprvnOptions.map((opt) => {
             const val = opt.value ?? opt
-            const sel = filterCtprvnCd === val
+            const sel = draft.ctprvnCd === val
             return (
               <ListItemButton
                 key={val}
                 selected={sel}
-                onClick={() => onFilterCtprvnCdChange(val)}
-                sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875, bgcolor: sel ? colors.blue.muted : undefined }}
+                onClick={() => setDraft((d) => ({ ...d, ctprvnCd: val, sggCd: '' }))}
+                sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 1, bgcolor: sel ? colors.blue.muted : undefined }}
               >
                 {opt.label ?? opt.value ?? val}
               </ListItemButton>
@@ -227,65 +336,74 @@ export function MobileFilterSheet({
           })}
         </List>
 
-        <Typography variant="subtitle2" component="h3" sx={{ color: colors.gray[800], display: 'block', mb: 0.6, ...appMobileType.filterSectionLabel }}>
+        <Typography variant="subtitle2" sx={{ fontWeight: 700, color: colors.gray[800], mb: 1, fontSize: '0.8125rem' }}>
           시군구 코드
         </Typography>
         <List
           dense
           disablePadding
           sx={{
-            mb: 2,
-            maxHeight: 140,
+            mb: 1,
+            maxHeight: 132,
             overflow: 'auto',
             border: `1px solid ${colors.gray[200]}`,
-            borderRadius: `${radius.sm}px`,
+            borderRadius: `${radius.md}px`,
             opacity: ctprvnSelected ? 1 : 0.45,
             pointerEvents: ctprvnSelected ? 'auto' : 'none',
           }}
         >
           <ListItemButton
-            selected={!filterSggCd}
+            selected={!draft.sggCd}
             disabled={!ctprvnSelected}
-            onClick={() => onFilterSggCdChange('')}
-            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875 }}
+            onClick={() => setDraft((d) => ({ ...d, sggCd: '' }))}
+            sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 1 }}
           >
             미선택
           </ListItemButton>
           {sggOptions.map((opt) => {
             const val = opt.value ?? opt
-            const sel = filterSggCd === val
+            const sel = draft.sggCd === val
             return (
               <ListItemButton
                 key={val}
                 selected={sel}
                 disabled={!ctprvnSelected}
-                onClick={() => onFilterSggCdChange(val)}
-                sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 0.875, bgcolor: sel ? colors.blue.muted : undefined }}
+                onClick={() => setDraft((d) => ({ ...d, sggCd: val }))}
+                sx={{ fontSize: appMobileType.filterListItem.fontSize, py: 1, bgcolor: sel ? colors.blue.muted : undefined }}
               >
                 {opt.label ?? opt.value ?? val}
               </ListItemButton>
             )
           })}
         </List>
+      </Box>
 
+      <Box
+        sx={{
+          flexShrink: 0,
+          px: 2.5,
+          pt: 1.5,
+          pb: 'calc(20px + env(safe-area-inset-bottom, 0px))',
+          borderTop: `1px solid ${colors.gray[200]}`,
+          bgcolor: colors.white,
+        }}
+      >
         <Button
           fullWidth
           variant="contained"
-          onClick={onClose}
+          onClick={() => onApply({ ...draft })}
           sx={{
-            py: 1.1,
-            borderRadius: `${radius.sm}px`,
-            bgcolor: colors.gray[800],
+            py: 1.35,
+            borderRadius: `${radius.md}px`,
+            bgcolor: colors.blue.primary,
             fontWeight: 700,
-            fontSize: appMobileType.body.fontSize.xs,
+            fontSize: '0.9375rem',
             textTransform: 'none',
-            boxShadow: 'none',
-            transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-            '&:hover': { bgcolor: colors.gray[900], boxShadow: 'none' },
-            '&:active': { transform: 'scale(0.98)' },
+            boxShadow: '0 2px 12px rgba(37,99,235,0.28)',
+            '&:hover': { bgcolor: colors.blue.deep, boxShadow: '0 3px 14px rgba(37,99,235,0.32)' },
           }}
         >
-          완료
+          적용하기
         </Button>
       </Box>
     </Drawer>

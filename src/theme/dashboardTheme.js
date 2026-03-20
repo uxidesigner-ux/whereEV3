@@ -77,6 +77,8 @@ export const radius = {
   card: 12,
   /** 모바일 시트·다이얼로그 상단 */
   sheet: 12,
+  /** 앱형 필터 등 큰 상단 라운드 */
+  sheetApp: 24,
   control: 6,
   full: 9999,
 }
@@ -228,19 +230,36 @@ export const appMobileType = {
   },
 }
 
+/** 모바일 플로팅 검색·FAB 행 (지도 위 오버레이) */
+export const mobileMapChrome = {
+  searchPillH: 52,
+  fabSize: 48,
+  fabGap: 8,
+  rowGap: 10,
+  /** 상·하 패딩(검색 행 주변, safe-area 제외) */
+  padY: 10,
+  padX: 14,
+  /** 그림자 톤 — 검색 pill·원형 FAB 공통 */
+  floatShadow: '0 4px 24px rgba(15, 23, 42, 0.12), 0 2px 10px rgba(15, 23, 42, 0.08)',
+}
+
 /** 바텀 시트 스냅(뷰포트 대비 비율은 MobileBottomSheet props로 조정) */
 export const sheetLayout = {
   /** 목록 시트 접힘 높이 — 헤더(핸들+타이틀 행+divider) min 높이와 맞춤 */
   collapsedPx: 94,
   halfVhRatio: 0.42,
-  /** 모바일 상단 바: 검색·내 위치·필터 행 높이 */
+  /** @deprecated 플로팅 크롬 — 호환용 */
   topChromePx: 56,
-  /** 상단 바 콘텐츠 박스 인셋(상하좌우 시각 균일). safe-area는 App에서 별도 가산 */
-  mobileTopBarInsetPx: 12,
-  /** topChromePx와 동일 권장 — 컨트롤 세트 높이 */
-  mobileTopBarControlPx: 56,
-  /** 인셋 + 컨트롤행 + 인셋 + border(1) → Leaflet/시트 오프셋. iOS 노치 높이는 CSS env(safe-area-inset-top)로 가산 */
-  mobileTopBarStackPx: 12 + 56 + 12 + 1,
+  mobileTopBarInsetPx: mobileMapChrome.padY,
+  mobileTopBarControlPx: mobileMapChrome.searchPillH,
+  /**
+   * Leaflet/목록 시트 topOffset: safe-area + 상단패딩 + max(검색pill, FAB열) + 하단패딩
+   * FAB열 = fabSize*2 + fabGap
+   */
+  mobileTopBarStackPx:
+    mobileMapChrome.padY +
+    Math.max(mobileMapChrome.searchPillH, mobileMapChrome.fabSize * 2 + mobileMapChrome.fabGap) +
+    mobileMapChrome.padY,
 }
 
 export const chartBlueScale = [

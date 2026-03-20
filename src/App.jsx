@@ -94,7 +94,17 @@ function rowsMatchingDetailStation(prev, flatItems) {
   return flatItems.filter((r) => placeKey(r) === key)
 }
 import { cssEscapeAttr } from './utils/cssEscape.js'
-import { appMobileType, colors, spacing, radius, chartBlueScale, glass, motion, sheetLayout } from './theme/dashboardTheme.js'
+import {
+  appMobileType,
+  colors,
+  spacing,
+  radius,
+  chartBlueScale,
+  glass,
+  motion,
+  sheetLayout,
+  mobileMapChrome,
+} from './theme/dashboardTheme.js'
 import { GlassPanel } from './components/GlassPanel.jsx'
 import { StatCard } from './components/StatCard.jsx'
 import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
@@ -638,6 +648,29 @@ function App() {
     setFilterDrawerOpen(false)
   }, [isMobile, closeFilterFromOverlay])
 
+  /** 필터 시트「적용하기」: draft 반영 후 히스토리 스택과 동기화하며 닫기 */
+  const applyMobileFilters = useCallback(
+    (draft) => {
+      setMobileListSort(draft.sort)
+      setMobileListAvailOnly(draft.availOnly)
+      setFilterSpeed(draft.speed)
+      setFilterBusiNm(draft.busiNm)
+      setFilterCtprvnCd(draft.ctprvnCd)
+      setFilterSggCd(draft.sggCd)
+      if (isMobileRef.current && filterHistoryPushed.current) {
+        try {
+          window.history.back()
+        } catch {
+          overlayStackRef.current.pop()
+          closeFilterFromOverlay()
+        }
+      } else {
+        setFilterDrawerOpen(false)
+      }
+    },
+    [closeFilterFromOverlay]
+  )
+
   const openFilterDrawer = useCallback(() => {
     if (filterDrawerOpen || filterOpenPulseGuard.current) return
     /** 상세가 열린 상태에서 필터를 push하면 스택이 [detail,filter]가 되어, 이후 back이 필터를 먼저 닫아 상세 X와 어긋난다. */
@@ -942,6 +975,20 @@ function App() {
     return null
   }, [isMobile, appliedMapBounds, items.length, filteredItems.length, itemsInScope.length])
 
+  /** 목록 시트 헤더: 단일 소스 (detail → stationFocus → searchResults). 접힘/펼침은 레이아웃만 담당 */
+  const listSheetHeaderMode = useMemo(() => {
+    if (detailStation) return 'detail'
+    if (mapSelectedStation) return 'stationFocus'
+    return 'searchResults'
+  }, [detailStation, mapSelectedStation])
+
+  const listSheetHeaderTitle = useMemo(() => {
+    if (listSheetHeaderMode === 'detail' && detailStation) return detailStation.statNm
+    if (listSheetHeaderMode === 'stationFocus' && mapSelectedStation) return mapSelectedStation.statNm
+    if (appliedMapBounds == null) return '지도 영역 확인 중…'
+    return `검색 결과 ${stationsForMobileList.length}곳`
+  }, [listSheetHeaderMode, detailStation, mapSelectedStation, appliedMapBounds, stationsForMobileList.length])
+
   /** 지도 마커용: 데스크탑=filteredItems, 모바일=applied 기준 groupedItemsInScope(1장소 1마커). 선택된 충전소는 범위 밖이어도 포함. */
   const displayStationsForMap = useMemo(() => {
     const base = isMobile
@@ -1221,6 +1268,7 @@ function App() {
                   <Typography
                     variant="h6"
                     component="div"
+                    data-ev-list-header-mode={listSheetHeaderMode}
                     sx={{
                       color: colors.gray[800],
                       overflow: 'hidden',
@@ -1229,11 +1277,7 @@ function App() {
                       ...appMobileType.listSheetTitle,
                     }}
                   >
-                    {mapSelectedStation
-                      ? mapSelectedStation.statNm
-                      : appliedMapBounds == null
-                        ? '지도 영역 확인 중…'
-                        : `검색 결과 ${stationsForMobileList.length}곳`}
+                    {listSheetHeaderTitle}
                   </Typography>
                 </Box>
                 <IconButton
@@ -1480,26 +1524,20 @@ function App() {
               right: 0,
               zIndex: 450,
               boxSizing: 'border-box',
-              /* 세이프 영역 + 동일 인셋: 노치 아래·좌우·하단 시각적으로 같은 여백 */
-              pt: `calc(env(safe-area-inset-top, 0px) + ${sheetLayout.mobileTopBarInsetPx}px)`,
-              pl: `max(${sheetLayout.mobileTopBarInsetPx}px, env(safe-area-inset-left, 0px))`,
-              pr: `max(${sheetLayout.mobileTopBarInsetPx}px, env(safe-area-inset-right, 0px))`,
-              pb: `${sheetLayout.mobileTopBarInsetPx}px`,
-              bgcolor: 'rgba(255,255,255,0.92)',
-              backdropFilter: 'blur(10px)',
-              WebkitBackdropFilter: 'blur(10px)',
-              borderBottom: `1px solid ${colors.gray[200]}`,
-              boxShadow: '0 1px 0 rgba(0,0,0,0.04)',
+              pt: `calc(env(safe-area-inset-top, 0px) + ${mobileMapChrome.padY}px)`,
+              pl: `max(${mobileMapChrome.padX}px, env(safe-area-inset-left, 0px))`,
+              pr: `max(${mobileMapChrome.padX}px, env(safe-area-inset-right, 0px))`,
+              pb: `${mobileMapChrome.padY}px`,
+              pointerEvents: 'none',
             }}
           >
             <Box
               sx={{
                 display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                height: sheetLayout.mobileTopBarControlPx,
-                minHeight: sheetLayout.mobileTopBarControlPx,
-                boxSizing: 'border-box',
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: `${mobileMapChrome.rowGap}px`,
+                pointerEvents: 'auto',
               }}
             >
               <TextField
@@ -1511,80 +1549,110 @@ function App() {
                 sx={{
                   flex: 1,
                   minWidth: 0,
-                  height: sheetLayout.mobileTopBarControlPx,
+                  height: mobileMapChrome.searchPillH,
                   '& .MuiOutlinedInput-root': {
-                    height: sheetLayout.mobileTopBarControlPx,
-                    minHeight: sheetLayout.mobileTopBarControlPx,
+                    height: mobileMapChrome.searchPillH,
+                    minHeight: mobileMapChrome.searchPillH,
                     boxSizing: 'border-box',
                     fontSize: appMobileType.searchField.fontSize,
-                    bgcolor: colors.gray[50],
-                    borderRadius: `${radius.sm}px`,
-                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
-                    '& fieldset': { borderColor: colors.gray[200] },
-                    '&:hover fieldset': { borderColor: colors.gray[300] },
+                    bgcolor: colors.white,
+                    borderRadius: radius.full,
+                    boxShadow: mobileMapChrome.floatShadow,
+                    pl: '18px',
+                    pr: '18px',
+                    transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    '& fieldset': { borderColor: 'rgba(15,23,42,0.06)' },
+                    '&:hover': {
+                      boxShadow: '0 6px 28px rgba(15, 23, 42, 0.14), 0 2px 12px rgba(15, 23, 42, 0.09)',
+                    },
+                    '&:hover fieldset': { borderColor: 'rgba(15,23,42,0.1)' },
                     '&.Mui-focused fieldset': { borderColor: colors.blue.primary, borderWidth: 1 },
                     alignItems: 'center',
                   },
                   '& .MuiInputBase-input': {
                     py: 0,
-                    height: `${sheetLayout.mobileTopBarControlPx}px`,
+                    height: `${mobileMapChrome.searchPillH}px`,
                     boxSizing: 'border-box',
-                    lineHeight: `${sheetLayout.mobileTopBarControlPx}px`,
+                    lineHeight: `${mobileMapChrome.searchPillH}px`,
                   },
                 }}
                 slotProps={{
                   input: {
                     startAdornment: (
-                      <InputAdornment position="start">
-                        <SearchIcon sx={{ fontSize: 20, color: colors.gray[500] }} />
+                      <InputAdornment position="start" sx={{ mr: 0.5, ml: -0.25 }}>
+                        <SearchIcon sx={{ fontSize: 22, color: colors.gray[500] }} />
                       </InputAdornment>
                     ),
                   },
                 }}
               />
-              <IconButton
-                onClick={() => setGeoNonce((n) => n + 1)}
-                aria-label="현재 위치로 이동"
+              <Box
                 sx={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: `${mobileMapChrome.fabGap}px`,
                   flexShrink: 0,
-                  width: sheetLayout.mobileTopBarControlPx,
-                  height: sheetLayout.mobileTopBarControlPx,
-                  minWidth: sheetLayout.mobileTopBarControlPx,
-                  minHeight: sheetLayout.mobileTopBarControlPx,
-                  boxSizing: 'border-box',
-                  bgcolor: colors.gray[50],
-                  border: `1px solid ${colors.gray[200]}`,
-                  borderRadius: `${radius.sm}px`,
-                  color: colors.gray[800],
-                  transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-                  '&:hover': { bgcolor: colors.gray[100], borderColor: colors.gray[300] },
-                  '&:active': { transform: 'scale(0.95)' },
+                  /* Leaflet 줌(우하단)과 겹침 완화: 상단 우측 스택 */
+                  mt: 0,
                 }}
               >
-                <MyLocationIcon sx={{ fontSize: 22 }} />
-              </IconButton>
-              <IconButton
-                onClick={openFilterDrawer}
-                aria-label={detailStation ? '상세를 닫은 뒤 필터를 사용할 수 있습니다' : '필터'}
-                disabled={!!detailStation}
-                sx={{
-                  flexShrink: 0,
-                  width: sheetLayout.mobileTopBarControlPx,
-                  height: sheetLayout.mobileTopBarControlPx,
-                  minWidth: sheetLayout.mobileTopBarControlPx,
-                  minHeight: sheetLayout.mobileTopBarControlPx,
-                  boxSizing: 'border-box',
-                  bgcolor: colors.gray[50],
-                  border: `1px solid ${colors.gray[200]}`,
-                  borderRadius: `${radius.sm}px`,
-                  color: colors.gray[800],
-                  transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-                  '&:hover': { bgcolor: colors.gray[100], borderColor: colors.gray[300] },
-                  '&:active': { transform: 'scale(0.95)' },
-                }}
-              >
-                <TuneIcon sx={{ fontSize: 22 }} />
-              </IconButton>
+                <IconButton
+                  onClick={() => setGeoNonce((n) => n + 1)}
+                  aria-label="현재 위치로 이동"
+                  sx={{
+                    width: mobileMapChrome.fabSize,
+                    height: mobileMapChrome.fabSize,
+                    minWidth: mobileMapChrome.fabSize,
+                    minHeight: mobileMapChrome.fabSize,
+                    boxSizing: 'border-box',
+                    bgcolor: colors.white,
+                    border: '1px solid rgba(15,23,42,0.06)',
+                    borderRadius: '50%',
+                    color: colors.gray[800],
+                    boxShadow: mobileMapChrome.floatShadow,
+                    transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    '&:hover': {
+                      bgcolor: colors.white,
+                      boxShadow: '0 6px 28px rgba(15, 23, 42, 0.14), 0 2px 12px rgba(15, 23, 42, 0.09)',
+                    },
+                    '&:active': { transform: 'scale(0.96)' },
+                  }}
+                >
+                  <MyLocationIcon sx={{ fontSize: 24 }} />
+                </IconButton>
+                <IconButton
+                  onClick={openFilterDrawer}
+                  aria-label={detailStation ? '상세를 닫은 뒤 필터를 사용할 수 있습니다' : '필터'}
+                  disabled={!!detailStation}
+                  sx={{
+                    width: mobileMapChrome.fabSize,
+                    height: mobileMapChrome.fabSize,
+                    minWidth: mobileMapChrome.fabSize,
+                    minHeight: mobileMapChrome.fabSize,
+                    boxSizing: 'border-box',
+                    bgcolor: colors.white,
+                    border: '1px solid rgba(15,23,42,0.06)',
+                    borderRadius: '50%',
+                    color: colors.gray[800],
+                    boxShadow: mobileMapChrome.floatShadow,
+                    transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    '&:hover': {
+                      bgcolor: colors.white,
+                      boxShadow: '0 6px 28px rgba(15, 23, 42, 0.14), 0 2px 12px rgba(15, 23, 42, 0.09)',
+                    },
+                    '&:active': { transform: 'scale(0.96)' },
+                    '&.Mui-disabled': {
+                      bgcolor: colors.gray[100],
+                      color: colors.gray[400],
+                      boxShadow: 'none',
+                      borderColor: colors.gray[200],
+                    },
+                  }}
+                >
+                  <TuneIcon sx={{ fontSize: 24 }} />
+                </IconButton>
+              </Box>
             </Box>
           </Box>
         )}
@@ -1614,7 +1682,7 @@ function App() {
                 defaultMarkerIcon={DEFAULT_MARKER_ICON}
                 selectedMarkerIcon={SELECTED_MARKER_ICON}
               />
-            <ZoomControl position="topright" />
+            <ZoomControl position={isMobile ? 'bottomright' : 'topright'} />
             {!isMobile && (
               <LocationControl
                 setUserLocation={setUserLocation}
@@ -1738,20 +1806,6 @@ function App() {
           필터 열림 시 투명 레이어로 지도 제스처를 확실히 삼킴(백드롭 틈 대비).
           FAB는 오버레이 해제 후 exit + fabReveal ms 뒤 페이드인해 시트 전환과 어긋남 완화.
         */}
-        {isMobile && filterDrawerOpen && (
-          <Box
-            sx={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 1150,
-              pointerEvents: 'auto',
-              bgcolor: 'rgba(15,23,42,0.06)',
-              backdropFilter: 'brightness(0.97)',
-              WebkitBackdropFilter: 'brightness(0.97)',
-            }}
-            aria-hidden
-          />
-        )}
         {isMobile && showSearchAreaButton && !mobileOverlayBlocking && (
           <Box
             sx={{
@@ -1811,18 +1865,18 @@ function App() {
         <MobileFilterSheet
           open={filterDrawerOpen}
           onClose={closeFilterDrawer}
+          onApply={applyMobileFilters}
+          listSort={mobileListSort}
+          listAvailOnly={mobileListAvailOnly}
+          hasAvailInGroupedScope={hasAvailInGroupedScope}
           speedOptions={SPEED_FILTER_OPTIONS}
           filterSpeed={filterSpeed}
-          onFilterSpeedChange={setFilterSpeed}
           filterBusiNm={filterBusiNm}
-          onFilterBusiNmChange={setFilterBusiNm}
           busiOptions={filterOptions.busiNms}
           filterCtprvnCd={filterCtprvnCd}
-          onFilterCtprvnCdChange={setFilterCtprvnCd}
           ctprvnOptions={filterOptions.ctprvnCds}
           filterSggCd={filterSggCd}
-          onFilterSggCdChange={setFilterSggCd}
-          sggOptions={filterOptions.sggCdsByCtprvn[filterCtprvnCd] ?? []}
+          sggCdsByCtprvn={filterOptions.sggCdsByCtprvn}
         />
 
         {isMobile ? (
