@@ -4,41 +4,38 @@ import { createTheme, ThemeProvider, CssBaseline } from '@mui/material'
 import { lightTokens, darkTokens, applyEvCssVariables, tokensToLegacyColors } from './semanticTokens.js'
 import { radius, motion } from './dashboardTheme.js'
 
-const STORAGE_KEY = 'whereev-theme-preference'
+/** 모바일 상단 토글·앱 기본 persistence (light / dark) */
+export const THEME_STORAGE_KEY = 'whereev-theme'
+const LEGACY_STORAGE_KEY = 'whereev-theme-preference'
 
 const ThemeModeContext = createContext(null)
 
-/** @returns {{ tokens: import('./semanticTokens.js').lightTokens, preference: 'light'|'dark'|'system', setPreference: (p: 'light'|'dark'|'system') => void, resolvedMode: 'light'|'dark' }} */
+/** @returns {{ tokens: import('./semanticTokens.js').lightTokens, preference: 'light'|'dark', setPreference: (p: 'light'|'dark') => void, togglePreference: () => void, resolvedMode: 'light'|'dark' }} */
 export function useEvTheme() {
   const ctx = useContext(ThemeModeContext)
   if (!ctx) throw new Error('useEvTheme must be used within ThemeModeProvider')
   return ctx
 }
 
-function readStoredPreference() {
+function readStoredTheme() {
   try {
-    const v = localStorage.getItem(STORAGE_KEY)
-    if (v === 'light' || v === 'dark' || v === 'system') return v
+    const v = localStorage.getItem(THEME_STORAGE_KEY)
+    if (v === 'light' || v === 'dark') return v
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY)
+    if (legacy === 'light' || legacy === 'dark') {
+      localStorage.setItem(THEME_STORAGE_KEY, legacy)
+      return legacy
+    }
   } catch {
     /* noop */
   }
-  return 'system'
+  return 'light'
 }
 
 export function ThemeModeProvider({ children }) {
-  const [preference, setPreferenceState] = useState(readStoredPreference)
-  const [systemDark, setSystemDark] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches,
-  )
+  const [preference, setPreferenceState] = useState(readStoredTheme)
 
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)')
-    const fn = () => setSystemDark(mq.matches)
-    mq.addEventListener('change', fn)
-    return () => mq.removeEventListener('change', fn)
-  }, [])
-
-  const resolvedMode = preference === 'system' ? (systemDark ? 'dark' : 'light') : preference
+  const resolvedMode = preference
   const tokens = resolvedMode === 'dark' ? darkTokens : lightTokens
 
   useEffect(() => {
@@ -46,13 +43,18 @@ export function ThemeModeProvider({ children }) {
   }, [tokens, resolvedMode])
 
   const setPreference = useCallback((p) => {
+    if (p !== 'light' && p !== 'dark') return
     setPreferenceState(p)
     try {
-      localStorage.setItem(STORAGE_KEY, p)
+      localStorage.setItem(THEME_STORAGE_KEY, p)
     } catch {
       /* noop */
     }
   }, [])
+
+  const togglePreference = useCallback(() => {
+    setPreference(resolvedMode === 'dark' ? 'light' : 'dark')
+  }, [resolvedMode, setPreference])
 
   const muiTheme = useMemo(
     () =>
@@ -108,8 +110,8 @@ export function ThemeModeProvider({ children }) {
   const colors = useMemo(() => tokensToLegacyColors(tokens), [tokens])
 
   const value = useMemo(
-    () => ({ tokens, colors, preference, setPreference, resolvedMode }),
-    [tokens, colors, preference, setPreference, resolvedMode],
+    () => ({ tokens, colors, preference, setPreference, togglePreference, resolvedMode }),
+    [tokens, colors, preference, setPreference, togglePreference, resolvedMode],
   )
 
   return (

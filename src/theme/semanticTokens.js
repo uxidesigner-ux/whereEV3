@@ -14,7 +14,7 @@ export const lightTokens = {
     header: '#f9fafb',
     muted: '#f3f4f6',
     chipIdle: '#f3f4f6',
-    listRowSelected: 'rgba(37, 99, 235, 0.05)',
+    listRowSelected: 'rgba(31, 69, 255, 0.06)',
   },
   border: {
     default: '#e5e7eb',
@@ -31,16 +31,16 @@ export const lightTokens = {
     onPrimary: '#ffffff',
   },
   blue: {
-    main: '#2563eb',
-    deep: '#1d4ed8',
-    light: '#3b82f6',
-    lighter: '#60a5fa',
-    pale: '#93c5fd',
+    main: '#1F45FF',
+    deep: '#152EC9',
+    light: '#4D6AFF',
+    lighter: '#6B82FF',
+    pale: 'rgba(31, 69, 255, 0.28)',
     /** 칩·토글 active 배경 */
-    muted: 'rgba(37, 99, 235, 0.12)',
-    mutedStrong: 'rgba(37, 99, 235, 0.14)',
-    borderSoft: 'rgba(37, 99, 235, 0.35)',
-    glowSoft: 'rgba(37, 99, 235, 0.22)',
+    muted: 'rgba(31, 69, 255, 0.12)',
+    mutedStrong: 'rgba(31, 69, 255, 0.15)',
+    borderSoft: 'rgba(31, 69, 255, 0.38)',
+    glowSoft: 'rgba(31, 69, 255, 0.26)',
   },
   status: {
     avail: { chipBg: 'rgba(22, 163, 74, 0.22)', rowBg: 'rgba(22, 163, 74, 0.03)', fg: '#166534', border: 'rgba(22, 163, 74, 0.35)' },
@@ -57,14 +57,16 @@ export const lightTokens = {
     fenceStroke: '#5a6274',
     fenceWeight: 1.5,
     fenceStrokeOpacity: 0.58,
-    markerDot: '#2563eb',
+    markerDot: '#1F45FF',
     markerStroke: '#ffffff',
-    markerRing: 'rgba(37, 99, 235, 0.35)',
-    pinGradientStart: '#3b82f6',
-    pinGradientMid: '#2563eb',
-    pinGradientEnd: '#1d4ed8',
-    pinTip: '#1d4ed8',
-    userCircle: '#2563eb',
+    markerRing: 'rgba(31, 69, 255, 0.4)',
+    /** 브랜드 마커 내부 번개 */
+    markerBolt: '#FCFC07',
+    pinGradientStart: '#4D6AFF',
+    pinGradientMid: '#1F45FF',
+    pinGradientEnd: '#152EC9',
+    pinTip: '#121FA3',
+    userCircle: '#1F45FF',
     userFillOpacity: 0.25,
   },
   glass: {
@@ -78,10 +80,10 @@ export const lightTokens = {
     float: '0 4px 24px rgba(15, 23, 42, 0.12), 0 2px 10px rgba(15, 23, 42, 0.08)',
     sheet: '0 -2px 20px rgba(0,0,0,0.07)',
     card: '0 1px 4px rgba(15, 23, 42, 0.08)',
-    searchFocused: '0 6px 28px rgba(15, 23, 42, 0.16), 0 0 0 2px rgba(37, 99, 235, 0.22)',
-    selectedRing: '0 0 0 2px #ffffff, 0 0 0 4px #2563eb',
+    searchFocused: '0 6px 28px rgba(15, 23, 42, 0.16), 0 0 0 2px rgba(31, 69, 255, 0.28)',
+    selectedRing: '0 0 0 2px #ffffff, 0 0 0 4px #1F45FF',
   },
-  chartBlue: ['#2563eb', '#3b82f6', '#60a5fa', '#93c5fd', '#1d4ed8', '#1e40af'],
+  chartBlue: ['#1F45FF', '#4D6AFF', '#6B82FF', '#8FA3FF', '#152EC9', '#121FA3'],
   control: {
     fabBg: '#ffffff',
     fabBorder: 'rgba(15,23,42,0.06)',
@@ -102,7 +104,7 @@ export const darkTokens = {
     header: '#151A20',
     muted: '#1B2128',
     chipIdle: '#1B2128',
-    listRowSelected: 'rgba(110, 168, 255, 0.08)',
+    listRowSelected: 'rgba(109, 136, 255, 0.1)',
   },
   border: {
     default: '#2A313A',
@@ -119,15 +121,15 @@ export const darkTokens = {
     onPrimary: '#0E1116',
   },
   blue: {
-    main: '#6EA8FF',
-    deep: '#4B8FFF',
-    light: '#8BB8FF',
-    lighter: '#A8C9FF',
-    pale: 'rgba(110, 168, 255, 0.35)',
-    muted: 'rgba(110, 168, 255, 0.14)',
-    mutedStrong: 'rgba(110, 168, 255, 0.18)',
-    borderSoft: 'rgba(110, 168, 255, 0.35)',
-    glowSoft: 'rgba(110, 168, 255, 0.25)',
+    main: '#6D88FF',
+    deep: '#5574FF',
+    light: '#879CFF',
+    lighter: '#A3B0FF',
+    pale: 'rgba(109, 136, 255, 0.38)',
+    muted: 'rgba(109, 136, 255, 0.14)',
+    mutedStrong: 'rgba(109, 136, 255, 0.2)',
+    borderSoft: 'rgba(109, 136, 255, 0.4)',
+    glowSoft: 'rgba(109, 136, 255, 0.3)',
   },
   status: {
     avail: { chipBg: 'rgba(52, 211, 153, 0.2)', rowBg: 'rgba(52, 211, 153, 0.06)', fg: '#6EE7B7', border: 'rgba(52, 211, 153, 0.35)' },
@@ -142,38 +144,39 @@ export const darkTokens = {
     /** 다크: 짙은 채우기 대신 살짝 띄운 블루그레이 */
     fenceFill: 'rgba(120, 165, 220, 0.14)',
     fenceFillOpacity: 1,
-    fenceStroke: 'rgba(110, 168, 255, 0.42)',
+    fenceStroke: 'rgba(109, 136, 255, 0.45)',
     fenceWeight: 1.5,
     fenceStrokeOpacity: 0.85,
-    markerDot: '#6EA8FF',
-    markerStroke: '#F3F5F7',
-    markerRing: 'rgba(110, 168, 255, 0.55)',
-    pinGradientStart: '#8BB8FF',
-    pinGradientMid: '#6EA8FF',
-    pinGradientEnd: '#4B8FFF',
-    pinTip: '#4B8FFF',
-    userCircle: '#6EA8FF',
+    markerDot: '#6D88FF',
+    markerStroke: '#000000',
+    markerRing: 'rgba(109, 136, 255, 0.55)',
+    markerBolt: '#FCFC07',
+    pinGradientStart: '#879CFF',
+    pinGradientMid: '#6D88FF',
+    pinGradientEnd: '#5574FF',
+    pinTip: '#3A4DB8',
+    userCircle: '#6D88FF',
     userFillOpacity: 0.22,
   },
   glass: {
     panelBg: 'rgba(21, 26, 32, 0.72)',
-    panelBorder: 'rgba(110, 168, 255, 0.12)',
+    panelBorder: 'rgba(109, 136, 255, 0.14)',
     panelShadow: '0 8px 32px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(42, 49, 58, 0.8)',
     panelHoverBg: 'rgba(27, 33, 40, 0.88)',
     panelHoverShadow:
-      '0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(110, 168, 255, 0.14), 0 0 24px rgba(110, 168, 255, 0.06)',
+      '0 12px 40px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(109, 136, 255, 0.16), 0 0 24px rgba(109, 136, 255, 0.08)',
   },
   shadow: {
     float: '0 4px 24px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(42, 49, 58, 0.6)',
     sheet: '0 -4px 28px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(42, 49, 58, 0.5)',
     card: '0 0 0 1px rgba(42, 49, 58, 0.9), 0 2px 12px rgba(0, 0, 0, 0.35)',
-    searchFocused: '0 6px 28px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(110, 168, 255, 0.35)',
-    selectedRing: '0 0 0 2px #151A20, 0 0 0 4px #6EA8FF, 0 0 20px rgba(110,168,255,0.25)',
+    searchFocused: '0 6px 28px rgba(0, 0, 0, 0.55), 0 0 0 2px rgba(109, 136, 255, 0.4)',
+    selectedRing: '0 0 0 2px #151A20, 0 0 0 4px #6D88FF, 0 0 20px rgba(109,136,255,0.28)',
   },
-  chartBlue: ['#6EA8FF', '#4B8FFF', '#8BB8FF', '#A8C9FF', '#3B7EE8', '#2E6BC9'],
+  chartBlue: ['#6D88FF', '#5574FF', '#879CFF', '#A3B0FF', '#4D62E8', '#3A4DB8'],
   control: {
     fabBg: '#1B2128',
-    fabBorder: 'rgba(110, 168, 255, 0.2)',
+    fabBorder: 'rgba(109, 136, 255, 0.22)',
     searchBg: '#151A20',
     searchBorder: '#2A313A',
   },
@@ -226,8 +229,10 @@ export function applyEvCssVariables(t, mode) {
   root.style.setProperty('--ev-bg-app', t.bg.app)
   root.style.setProperty('--ev-body-bg', t.bg.app)
   root.style.setProperty('--ev-map-marker-dot', m.markerDot)
+  root.style.setProperty('--ev-map-marker-fill', t.blue.main)
+  root.style.setProperty('--ev-map-marker-bolt', m.markerBolt)
   root.style.setProperty('--ev-map-marker-stroke', m.markerStroke)
-  root.style.setProperty('--ev-map-marker-ring', t.blue.mutedStrong)
+  root.style.setProperty('--ev-map-marker-ring', t.blue.borderSoft)
   root.style.setProperty('--ev-map-marker-shadow', mode === 'dark' ? '0 2px 12px rgba(0,0,0,0.5)' : '0 2px 8px rgba(0, 0, 0, 0.22)')
   root.style.setProperty('--ev-map-pin-start', m.pinGradientStart)
   root.style.setProperty('--ev-map-pin-mid', m.pinGradientMid)

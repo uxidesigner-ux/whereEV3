@@ -216,35 +216,44 @@ path.ev-map-explore-fence {
   background: transparent !important;
   border: none !important;
 }
-.ev-marker-default .ev-marker-dot {
+/* 브랜드 SVG 마커(원 39.5 + 1px stroke, 내부 번개) */
+.ev-marker-default .ev-marker-brand {
   display: block;
-  width: 20px;
-  height: 20px;
-  margin: 3px;
+  width: 22px;
+  height: 22px;
+  margin: 2px;
+  line-height: 0;
   border-radius: 50%;
-  background: var(--ev-map-marker-dot, #2563eb);
-  border: 3px solid var(--ev-map-marker-stroke, #fff);
   box-sizing: border-box;
   box-shadow: var(--ev-map-marker-shadow, 0 2px 8px rgba(0, 0, 0, 0.22));
 }
-.ev-marker-selected .ev-marker-dot {
+.ev-marker-default .ev-marker-brand-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+/* viewBox stroke-width=1은 소형 렌더에서 너무 얇음 → 화면 기준 1px 테두리 */
+.ev-marker-brand-svg .ev-marker-brand-circle {
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}
+.ev-marker-selected .ev-marker-brand {
   display: block;
   width: 28px;
   height: 28px;
   margin: 5px;
+  line-height: 0;
   border-radius: 50%;
-  background: var(--ev-map-marker-dot, #2563eb);
-  border: 3px solid var(--ev-map-marker-stroke, #fff);
   box-sizing: border-box;
   box-shadow:
-    0 0 0 4px var(--ev-map-marker-ring, rgba(37, 99, 235, 0.35)),
+    0 0 0 4px var(--ev-map-marker-ring, rgba(31, 69, 255, 0.4)),
     0 2px 10px rgba(0, 0, 0, 0.25);
 }
-[data-ev-color-mode='dark'] .ev-marker-selected .ev-marker-dot {
+[data-ev-color-mode='dark'] .ev-marker-selected .ev-marker-brand {
   box-shadow:
-    0 0 0 4px var(--ev-map-marker-ring, rgba(110, 168, 255, 0.55)),
+    0 0 0 4px var(--ev-map-marker-ring, rgba(109, 136, 255, 0.55)),
     0 2px 14px rgba(0, 0, 0, 0.55),
-    0 0 16px rgba(110, 168, 255, 0.2);
+    0 0 16px rgba(109, 136, 255, 0.22);
 }
 .leaflet-div-icon.ev-marker-selected {
   z-index: 1000;
@@ -265,41 +274,45 @@ path.ev-map-explore-fence {
 .ev-marker-pin-body {
   position: absolute;
   left: 50%;
-  top: 6px;
+  top: 4px;
   transform: translateX(-50%);
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: linear-gradient(
-    160deg,
-    var(--ev-map-pin-start, #3b82f6) 0%,
-    var(--ev-map-pin-mid, #2563eb) 55%,
-    var(--ev-map-pin-end, #1d4ed8) 100%
-  );
-  border: 3px solid var(--ev-map-marker-stroke, #fff);
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: none;
   box-sizing: border-box;
+  line-height: 0;
   box-shadow:
-    0 0 0 4px var(--ev-map-pin-ring, rgba(37, 99, 235, 0.4)),
+    0 0 0 4px var(--ev-map-pin-ring, rgba(31, 69, 255, 0.4)),
     0 6px 14px rgba(0, 0, 0, 0.28),
     0 2px 4px rgba(0, 0, 0, 0.12),
-    0 0 20px var(--ev-map-pin-ring, rgba(37, 99, 235, 0.15));
+    0 0 20px var(--ev-map-pin-ring, rgba(31, 69, 255, 0.15));
+  border-radius: 50%;
+}
+.ev-marker-pin-body .ev-marker-brand-svg {
+  display: block;
+  width: 36px;
+  height: 36px;
 }
 [data-ev-color-mode='dark'] .ev-marker-pin-body {
   box-shadow:
-    0 0 0 4px var(--ev-map-pin-ring, rgba(110, 168, 255, 0.45)),
+    0 0 0 4px var(--ev-map-pin-ring, rgba(109, 136, 255, 0.45)),
     0 6px 18px rgba(0, 0, 0, 0.55),
-    0 0 24px rgba(110, 168, 255, 0.18);
+    0 0 24px rgba(109, 136, 255, 0.2);
 }
 .ev-marker-pin-tip {
   position: absolute;
   left: 50%;
-  top: 37px;
+  top: 39px;
   transform: translateX(-50%);
   width: 0;
   height: 0;
   border-left: 9px solid transparent;
   border-right: 9px solid transparent;
-  border-top: 12px solid var(--ev-map-pin-tip, #1d4ed8);
+  border-top: 12px solid var(--ev-map-pin-tip, #121FA3);
   filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.22));
 }
 
@@ -322,7 +335,7 @@ path.ev-map-explore-fence {
   margin-left: -16px;
   margin-top: -16px;
   border-radius: 50%;
-  border: 2px solid var(--ev-map-ripple, #2563eb);
+  border: 2px solid var(--ev-map-ripple, #1f45ff);
   opacity: 0.5;
   animation: ev-location-ripple 2s ease-out infinite;
   box-sizing: border-box;
@@ -337,7 +350,7 @@ path.ev-map-explore-fence {
   margin-left: -16px;
   margin-top: -16px;
   border-radius: 50%;
-  border: 2px solid var(--ev-map-ripple, #2563eb);
+  border: 2px solid var(--ev-map-ripple, #1f45ff);
   opacity: 0.4;
   animation: ev-location-ripple 2s ease-out infinite 0.7s;
   box-sizing: border-box;

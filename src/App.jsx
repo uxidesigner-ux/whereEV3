@@ -16,7 +16,8 @@ import ChevronLeft from '@mui/icons-material/ChevronLeft'
 import ChevronRight from '@mui/icons-material/ChevronRight'
 import SearchIcon from '@mui/icons-material/Search'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
-import TuneIcon from '@mui/icons-material/Tune'
+import LightModeOutlined from '@mui/icons-material/LightModeOutlined'
+import DarkModeOutlined from '@mui/icons-material/DarkModeOutlined'
 import ArrowBack from '@mui/icons-material/ArrowBack'
 import Refresh from '@mui/icons-material/Refresh'
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Circle, CircleMarker, useMap } from 'react-leaflet'
@@ -123,23 +124,25 @@ import { ThemeAppearanceControl } from './components/ThemeAppearanceControl.jsx'
 
 const SEOUL_CENTER = [37.5665, 126.978]
 
+/** 브랜드 원형 마커: r=39.5, stroke·fill은 CSS 변수(라이트 흰 테두리 / 다크 검정 테두리) */
+const EV_MAP_MARKER_SVG = `<svg class="ev-marker-brand-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" fill="none" aria-hidden="true" focusable="false"><circle class="ev-marker-brand-circle" cx="40" cy="40" r="39.5" fill="var(--ev-map-marker-fill, #1F45FF)" stroke="var(--ev-map-marker-stroke, #fff)"/><path d="M33.0072 19L29 43.15H37.0057L33.0072 61L52 35.8H43.0034L51.0004 19H33.0072Z" fill="var(--ev-map-marker-bolt, #FCFC07)"/></svg>`
+
 const DEFAULT_MARKER_ICON = L.divIcon({
   className: 'ev-marker ev-marker-default',
-  html: '<span class="ev-marker-dot"></span>',
+  html: `<span class="ev-marker-brand">${EV_MAP_MARKER_SVG}</span>`,
   iconSize: [26, 26],
   iconAnchor: [13, 13],
 })
 const SELECTED_MARKER_ICON = L.divIcon({
   className: 'ev-marker ev-marker-selected',
-  html: '<span class="ev-marker-dot"></span>',
+  html: `<span class="ev-marker-brand">${EV_MAP_MARKER_SVG}</span>`,
   iconSize: [38, 38],
   iconAnchor: [19, 19],
 })
 /** 모바일: 팝업 없이 선택 시 pin형 액티브 마커 (아래 뾰족) */
 const MOBILE_PIN_SELECTED_MARKER_ICON = L.divIcon({
   className: 'ev-marker ev-marker-pin-selected',
-  html:
-    '<div class="ev-marker-pin" aria-hidden="true"><span class="ev-marker-pin-body"></span><span class="ev-marker-pin-tip"></span></div>',
+  html: `<div class="ev-marker-pin" aria-hidden="true"><div class="ev-marker-pin-body">${EV_MAP_MARKER_SVG}</div><span class="ev-marker-pin-tip"></span></div>`,
   iconSize: [48, 56],
   iconAnchor: [24, 56],
 })
@@ -507,7 +510,7 @@ function MapView({
 }
 
 function App() {
-  const { tokens, colors } = useEvTheme()
+  const { tokens, colors, resolvedMode, togglePreference } = useEvTheme()
   const chartPalette = tokens.chartBlue
   const [items, setItems] = useState([])
   const [totalCount, setTotalCount] = useState(null)
@@ -1673,7 +1676,7 @@ function App() {
                           border: `2px solid ${
                             c.disabled ? colors.gray[200] : c.on ? colors.blue.primary : colors.gray[200]
                           }`,
-                          boxShadow: c.on && !c.disabled ? '0 1px 8px rgba(37, 99, 235, 0.22)' : 'none',
+                          boxShadow: c.on && !c.disabled ? `0 1px 8px ${tokens.blue.glowSoft}` : 'none',
                           opacity: c.disabled ? 0.85 : 1,
                           transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
                           '& .MuiChip-label': { px: '16px', py: 0 },
@@ -1873,9 +1876,9 @@ function App() {
                 }}
               >
                 <IconButton
-                  onClick={() => openFilterDrawer()}
-                  aria-label="필터"
-                  disabled={!!detailStation}
+                  type="button"
+                  onClick={() => togglePreference()}
+                  aria-label={resolvedMode === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
                   sx={{
                     width: mobileMapChrome.fabSize,
                     height: mobileMapChrome.fabSize,
@@ -1887,15 +1890,23 @@ function App() {
                     borderRadius: '50%',
                     color: tokens.text.primary,
                     boxShadow: tokens.shadow.float,
-                    transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, color 0.2s ease, background-color 0.2s ease`,
                     '&:hover': {
                       bgcolor: tokens.bg.raised,
                       boxShadow: `${tokens.shadow.float}, 0 0 20px ${tokens.blue.glowSoft}`,
                     },
+                    '&:focus-visible': {
+                      outline: `2px solid ${tokens.blue.main}`,
+                      outlineOffset: 2,
+                    },
                     '&:active': { transform: 'scale(0.96)' },
                   }}
                 >
-                  <TuneIcon sx={{ fontSize: 22 }} />
+                  {resolvedMode === 'dark' ? (
+                    <DarkModeOutlined sx={{ fontSize: 22 }} aria-hidden />
+                  ) : (
+                    <LightModeOutlined sx={{ fontSize: 22 }} aria-hidden />
+                  )}
                 </IconButton>
                 <IconButton
                   onClick={() => setGeoNonce((n) => n + 1)}

@@ -1,11 +1,11 @@
 import { Box, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material'
 import LightModeOutlined from '@mui/icons-material/LightModeOutlined'
 import DarkModeOutlined from '@mui/icons-material/DarkModeOutlined'
-import SettingsBrightnessOutlined from '@mui/icons-material/SettingsBrightnessOutlined'
 import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 
 /**
- * 라이트 / 다크 / 시스템. 필터 시트·데스크톱 패널 등 설정성 진입점에 배치.
+ * 라이트 / 다크. 필터 시트·데스크톱 패널 등 설정 진입점.
+ * 상단 원형 버튼은 App에서 togglePreference로 즉시 전환.
  */
 export function ThemeAppearanceControl({ compact = false }) {
   const { preference, setPreference, tokens } = useEvTheme()
@@ -46,10 +46,6 @@ export function ThemeAppearanceControl({ compact = false }) {
           },
         }}
       >
-        <ToggleButton value="system" aria-label="시스템 설정 따름">
-          <SettingsBrightnessOutlined sx={{ fontSize: 18, mr: 0.5 }} />
-          시스템
-        </ToggleButton>
         <ToggleButton value="light" aria-label="라이트 모드">
           <LightModeOutlined sx={{ fontSize: 18, mr: 0.5 }} />
           라이트
