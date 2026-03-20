@@ -12,8 +12,6 @@ import {
   IconButton,
   Chip,
   Button,
-  TextField,
-  InputAdornment,
 } from '@mui/material'
 import EvStationIcon from '@mui/icons-material/EvStation'
 import ChevronLeft from '@mui/icons-material/ChevronLeft'
@@ -95,6 +93,7 @@ function rowsMatchingDetailStation(prev, flatItems) {
 }
 import { cssEscapeAttr } from './utils/cssEscape.js'
 import { buildRegionFilterOptions } from './utils/regionDisplay.js'
+import { itemMatchesEvSearchQuery } from './utils/evSearch.js'
 import {
   appMobileType,
   colors,
@@ -111,6 +110,7 @@ import { StatCard } from './components/StatCard.jsx'
 import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
 import { FilterModalSelect } from './components/FilterModalSelect.jsx'
 import { StationListMobile } from './components/StationListMobile.jsx'
+import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
 import { StationDetailModal } from './components/StationDetailModal.jsx'
 import { StationDetailSheet } from './components/StationDetailSheet.jsx'
 import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
@@ -495,7 +495,9 @@ function App() {
   const [filterSpeed, setFilterSpeed] = useState('') // '' | '급속' | '완속'
   const [filterCtprvnCd, setFilterCtprvnCd] = useState('')
   const [filterSggCd, setFilterSggCd] = useState('')
+  const [searchInput, setSearchInput] = useState('')
   const [searchQuery, setSearchQuery] = useState('')
+  const [searchBarFocused, setSearchBarFocused] = useState(false)
   const [geoNonce, setGeoNonce] = useState(0)
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
   const isMobile = useMediaQuery('(max-width: 900px)')
@@ -550,6 +552,36 @@ function App() {
   useEffect(() => {
     filterDrawerOpenRef.current = filterDrawerOpen
   }, [filterDrawerOpen])
+
+  /** 모바일 탐색: 입력은 즉시 UI, 목록·마커 필터는 짧게 디바운스 */
+  useEffect(() => {
+    const id = window.setTimeout(() => setSearchQuery(searchInput), 140)
+    return () => clearTimeout(id)
+  }, [searchInput])
+
+  const clearNavSearch = useCallback(() => {
+    setSearchInput('')
+    setSearchQuery('')
+  }, [])
+
+  const flushSearchFromInput = useCallback(() => {
+    setSearchQuery(searchInput)
+  }, [searchInput])
+
+  const pickSearchSuggestion = useCallback((text) => {
+    setSearchInput(text)
+    setSearchQuery(text)
+  }, [])
+
+  /** 검색어가 있으면 포커스/제목이 충전소명에 묶이지 않도록 선택·상세 해제 */
+  useEffect(() => {
+    if (!isMobile) return
+    if (!searchQuery.trim()) return
+    setMapSelectedStation(null)
+    mapSelectedStationRef.current = null
+    setDetailStation(null)
+    detailStationRef.current = null
+  }, [searchQuery, isMobile])
 
   /**
    * 데스크톱 전환 시 스택·플래그만 정리(히스토리 엔트리는 브라우저에 남을 수 있음).
@@ -854,13 +886,7 @@ function App() {
       if (filterSpeed && s.speedCategory !== filterSpeed) return false
       if (filterCtprvnCd && s.ctprvnCd !== filterCtprvnCd) return false
       if (filterSggCd && s.sggCd !== filterSggCd) return false
-      if (q) {
-        const hay = [s.statNm, s.adres, s.rnAdres, s.busiNm, s.chgerNm, s.outputKw]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-        if (!hay.includes(q)) return false
-      }
+      if (q && !itemMatchesEvSearchQuery(s, q)) return false
       return true
     })
   }, [items, filterBusiNm, filterSpeed, filterCtprvnCd, filterSggCd, searchQuery])
@@ -961,6 +987,7 @@ function App() {
    */
   const mobileListEmptyInfo = useMemo(() => {
     if (!isMobile || appliedMapBounds == null) return null
+    const q = searchQuery.trim()
     if (items.length === 0) {
       return {
         variant: 'no_data',
@@ -968,11 +995,25 @@ function App() {
         subtitle: '네트워크·API 키를 확인한 뒤 다시 시도해 주세요.',
       }
     }
+    if (q && filteredItems.length === 0) {
+      return {
+        variant: 'no_filter',
+        title: '검색 결과가 없어요',
+        subtitle: '다른 지역명·충전소명을 입력하거나, 검색어를 지우고 다시 확인해 보세요.',
+      }
+    }
     if (filteredItems.length === 0) {
       return {
         variant: 'no_filter',
         title: '조건에 맞는 충전소가 없습니다',
         subtitle: '검색어를 지우거나 필터를 느슨하게 조정해 보세요.',
+      }
+    }
+    if (q && itemsInScope.length === 0) {
+      return {
+        variant: 'no_in_view',
+        title: '현재 지도 범위에서는 찾을 수 없어요',
+        subtitle: '지도를 옮긴 뒤「이 지역 검색」으로 다시 맞춰 보거나, 검색어를 조정해 보세요.',
       }
     }
     if (itemsInScope.length === 0) {
@@ -983,21 +1024,32 @@ function App() {
       }
     }
     return null
-  }, [isMobile, appliedMapBounds, items.length, filteredItems.length, itemsInScope.length])
+  }, [isMobile, appliedMapBounds, items.length, filteredItems.length, itemsInScope.length, searchQuery])
 
   /** 목록 시트 헤더: 단일 소스 (detail → stationFocus → searchResults). 접힘/펼침은 레이아웃만 담당 */
   const listSheetHeaderMode = useMemo(() => {
     if (detailStation) return 'detail'
+    if (searchQuery.trim()) return 'searchResults'
     if (mapSelectedStation) return 'stationFocus'
     return 'searchResults'
-  }, [detailStation, mapSelectedStation])
+  }, [detailStation, mapSelectedStation, searchQuery])
+
+  const searchNavActive = searchQuery.trim().length > 0
 
   const listSheetHeaderTitle = useMemo(() => {
     if (listSheetHeaderMode === 'detail' && detailStation) return detailStation.statNm
     if (listSheetHeaderMode === 'stationFocus' && mapSelectedStation) return mapSelectedStation.statNm
     if (appliedMapBounds == null) return '지도 영역 확인 중…'
+    if (searchNavActive) return `검색 결과 ${stationsForMobileList.length}곳`
     return `이 지역 충전소 ${stationsForMobileList.length}곳`
-  }, [listSheetHeaderMode, detailStation, mapSelectedStation, appliedMapBounds, stationsForMobileList.length])
+  }, [
+    listSheetHeaderMode,
+    detailStation,
+    mapSelectedStation,
+    appliedMapBounds,
+    stationsForMobileList.length,
+    searchNavActive,
+  ])
 
   /** 지도 마커용: 데스크탑=filteredItems, 모바일=applied 기준 groupedItemsInScope(1장소 1마커). 선택된 충전소는 범위 밖이어도 포함. */
   const displayStationsForMap = useMemo(() => {
@@ -1535,51 +1587,16 @@ function App() {
                 pointerEvents: 'auto',
               }}
             >
-              <TextField
-                size="small"
-                placeholder="충전소·주소 검색"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                aria-label="충전소 검색"
-                sx={{
-                  flex: 1,
-                  minWidth: 0,
-                  height: mobileMapChrome.searchPillH,
-                  '& .MuiOutlinedInput-root': {
-                    height: mobileMapChrome.searchPillH,
-                    minHeight: mobileMapChrome.searchPillH,
-                    boxSizing: 'border-box',
-                    fontSize: appMobileType.searchField.fontSize,
-                    bgcolor: colors.white,
-                    borderRadius: radius.full,
-                    boxShadow: mobileMapChrome.floatShadow,
-                    pl: '18px',
-                    pr: '18px',
-                    transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
-                    '& fieldset': { borderColor: 'rgba(15,23,42,0.06)' },
-                    '&:hover': {
-                      boxShadow: '0 6px 28px rgba(15, 23, 42, 0.14), 0 2px 12px rgba(15, 23, 42, 0.09)',
-                    },
-                    '&:hover fieldset': { borderColor: 'rgba(15,23,42,0.1)' },
-                    '&.Mui-focused fieldset': { borderColor: colors.blue.primary, borderWidth: 1 },
-                    alignItems: 'center',
-                  },
-                  '& .MuiInputBase-input': {
-                    py: 0,
-                    height: `${mobileMapChrome.searchPillH}px`,
-                    boxSizing: 'border-box',
-                    lineHeight: `${mobileMapChrome.searchPillH}px`,
-                  },
-                }}
-                slotProps={{
-                  input: {
-                    startAdornment: (
-                      <InputAdornment position="start" sx={{ mr: 0.5, ml: -0.25 }}>
-                        <SearchIcon sx={{ fontSize: 22, color: colors.gray[500] }} />
-                      </InputAdornment>
-                    ),
-                  },
-                }}
+              <MobileMapSearchBar
+                value={searchInput}
+                onChange={setSearchInput}
+                onClear={clearNavSearch}
+                onSubmit={flushSearchFromInput}
+                focused={searchBarFocused}
+                onFocus={() => setSearchBarFocused(true)}
+                onBlur={() => setSearchBarFocused(false)}
+                onSuggestionPick={pickSearchSuggestion}
+                statusQuery={!searchBarFocused && searchQuery.trim() ? searchQuery : ''}
               />
               <Box
                 sx={{

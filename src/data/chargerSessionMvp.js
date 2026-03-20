@@ -122,3 +122,13 @@ export function getChargerSessionForUi(row) {
 
   return deriveMvpSessionPayloadForKey(effectiveKey)
 }
+
+/**
+ * 목록 카드「지금 충전 가능」배지 전용.
+ * `applyMvpChargerOverlay` 적용 후 행의 표시용 `stat`만 보며, 총 대수(`rows.length` 등)와 분리.
+ * @param {object[]|undefined|null} rows
+ */
+export function groupHasMvpAvailableCharger(rows) {
+  if (!Array.isArray(rows) || rows.length === 0) return false
+  return rows.some((r) => String(r?.stat ?? '').trim() === '2')
+}

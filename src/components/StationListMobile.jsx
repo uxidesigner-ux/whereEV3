@@ -5,6 +5,7 @@ import MapOutlined from '@mui/icons-material/MapOutlined'
 import SearchOff from '@mui/icons-material/SearchOff'
 import InboxOutlined from '@mui/icons-material/InboxOutlined'
 import { appMobileType, colors, motion, radius } from '../theme/dashboardTheme.js'
+import { groupHasMvpAvailableCharger } from '../data/chargerSessionMvp.js'
 import { formatDistanceKm } from '../utils/geo.js'
 
 const EMPTY_ICONS = {
@@ -109,6 +110,9 @@ export function StationListMobile({
         const distLabel = formatDistanceKm(s.distanceKm)
         const speedBadge = s.speedBadge ?? null
         const locationHint = s.locationHint ?? ''
+        const rows = Array.isArray(s.rows) ? s.rows : []
+        const totalChargers = typeof s.totalChargers === 'number' ? s.totalChargers : rows.length
+        const showAvailBadge = groupHasMvpAvailableCharger(rows)
         const tel = (s.telno || '').trim()
         const mapsHref =
           s.lat != null && s.lng != null
@@ -213,7 +217,7 @@ export function StationListMobile({
               ) : null}
             </Box>
 
-            {/* 3행: 위치 힌트 */}
+            {/* 위치 힌트 (보조) */}
             {locationHint ? (
               <Typography
                 variant="caption"
@@ -222,12 +226,52 @@ export function StationListMobile({
                   color: colors.gray[500],
                   fontSize: '0.75rem',
                   lineHeight: 1.45,
-                  mb: 1.25,
+                  mb: 1,
                 }}
               >
                 {locationHint}
               </Typography>
             ) : null}
+
+            {/* 3행: 충전기 대수(실데이터) + 지금 충전 가능(MVP 표시 stat) */}
+            <Box
+              sx={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                alignItems: 'center',
+                gap: 0.75,
+                mb: 1.125,
+              }}
+            >
+              <Typography
+                component="span"
+                variant="caption"
+                sx={{
+                  color: colors.gray[600],
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.01em',
+                }}
+              >
+                충전기 {totalChargers}대
+              </Typography>
+              {showAvailBadge ? (
+                <Chip
+                  label="지금 충전 가능"
+                  size="small"
+                  sx={{
+                    height: 22,
+                    fontSize: '0.6875rem',
+                    fontWeight: 700,
+                    borderRadius: 9999,
+                    bgcolor: 'rgba(22, 163, 74, 0.12)',
+                    color: '#15803d',
+                    border: '1px solid rgba(22, 163, 74, 0.38)',
+                    '& .MuiChip-label': { px: 1, py: 0 },
+                  }}
+                />
+              ) : null}
+            </Box>
 
             {/* 4행: 길찾기 / 전화 */}
             <Box
@@ -236,7 +280,7 @@ export function StationListMobile({
                 flexDirection: 'row',
                 gap: 1,
                 pt: 1.25,
-                mt: locationHint ? 0 : 0.25,
+                mt: 0,
                 borderTop: `1px solid ${colors.gray[100]}`,
               }}
               onClick={stop}
