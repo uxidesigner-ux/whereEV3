@@ -90,24 +90,6 @@ function buildPlaceGroupFromRows(rows, distanceKmPreserve) {
   }
 }
 
-/** 부트용: map bounds 디바운스 없이 center+zoom 기준으로 뷰 안 마커만 먼저 묶는다 */
-function groupChargersForBootMapView(items, centerLat, centerLng, radiiKm) {
-  for (const maxKm of radiiKm) {
-    const validItems = items.filter((r) => {
-      const la = Number(r.lat)
-      const ln = Number(r.lng)
-      return (
-        Number.isFinite(la) &&
-        Number.isFinite(ln) &&
-        haversineDistanceKm(la, ln, centerLat, centerLng) <= maxKm
-      )
-    })
-    const grouped = groupChargerRowsByPlaceMapLite(validItems)
-    if (grouped.length > 0) return grouped
-  }
-  return []
-}
-
 /**
  * API 정렬이 비지리적이어서 뷰포트·부트 반경 안에 충전소가 없을 때 — 지도에 실제로 보이는 중심 기준 가까운 행만 잘라 그룹.
  */
@@ -142,12 +124,7 @@ import {
   squareBoundsLiteralAroundCenter,
 } from './utils/mobileRadiusSearch.js'
 import { zoomForHorizontalSpanMeters } from './utils/mapZoomMeters.js'
-import {
-  computeBootLeafletView,
-  GWANGHWAMUN_FALLBACK,
-  mapBootstrapWidthPx,
-  BOOT_MAP_MARKER_SEARCH_RADII_KM,
-} from './utils/mapInitialView.js'
+import { computeBootLeafletView, GWANGHWAMUN_FALLBACK, mapBootstrapWidthPx } from './utils/mapInitialView.js'
 import {
   spacing,
   radius,
@@ -240,6 +217,10 @@ const MAP_CLUSTER_BOUNDS_DEBOUNCE_MS = 320
 const INITIAL_MAP_MARKERS_LITE_CAP = 96
 /** `groupedNearestPlacesForMap`에 넣을 최대 행 수(장소 수는 그룹 후 더 적음) */
 const NEAREST_FALLBACK_MAX_ROWS = 480
+/** 부트 앵커(내 위치 또는 광화문) 주변 우선 표시용 — 반경 제한 없이 가까운 행부터 */
+const MAP_ANCHOR_NEAREST_MAX_ROWS = 640
+/** 모바일: LayerGroup만 쓸 때 한 번에 올릴 마커 상한(성능) */
+const MOBILE_MAP_MARKER_CAP = 260
 
 /** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
 const MOBILE_DETAIL_HEADER_GUTTER = 2.5
@@ -1426,11 +1407,13 @@ function App() {
     return { lat: la, lng: ln }
   }, [liveMapBounds, leafletInitial.center])
 
-  /** 초기 로딩 중: `leafletInitial` 중심과 1000m 뷰에 맞는 반경부터 마커 후보(디바운스 bounds 비의존) */
-  const groupedBootMarkers = useMemo(() => {
-    const [lat0, lng0] = leafletInitial.center
-    if (!Number.isFinite(lat0) || !Number.isFinite(lng0) || items.length === 0) return []
-    return groupChargersForBootMapView(items, lat0, lng0, BOOT_MAP_MARKER_SEARCH_RADII_KM)
+  /**
+   * 지도 앵커: 위치 성공 시 `leafletInitial`=내 좌표, 실패 시 광화문. 항상 이 점에 가까운 충전소를 먼저 그린다.
+   */
+  const mapAnchorStations = useMemo(() => {
+    const [la, ln] = leafletInitial.center
+    if (!Number.isFinite(la) || !Number.isFinite(ln) || items.length === 0) return []
+    return groupedNearestPlacesForMap(items, la, ln, MAP_ANCHOR_NEAREST_MAX_ROWS)
   }, [items, leafletInitial.center])
 
   /**
@@ -1461,32 +1444,29 @@ function App() {
    * 뷰포트·부트 반경 모두 비었을 때만 계산(비용 제한). 첫 배치가 사용자 주변에 없어도 지도에 바로 마커가 생기게 함.
    */
   const groupedMapNearestFallback = useMemo(() => {
-    if (groupedAllStationsForMap.length > 0 || groupedBootMarkers.length > 0) return []
+    if (groupedAllStationsForMap.length > 0 || mapAnchorStations.length > 0) return []
     const { lat, lng } = mapViewCenterForMarkers
     return groupedNearestPlacesForMap(items, lat, lng, NEAREST_FALLBACK_MAX_ROWS)
-  }, [items, mapViewCenterForMarkers, groupedAllStationsForMap, groupedBootMarkers])
+  }, [items, mapViewCenterForMarkers, groupedAllStationsForMap, mapAnchorStations])
 
   /**
-   * 지도 마커 전용 소스 (`items` → 라이트 그룹). 시트/검색의 filteredItems·itemsInScope·groupedItemsInScope와 무관.
-   * - 뷰포트 클러스터용 `groupedAllStationsForMap` 우선
-   * - 부트 직후 bounds 불일치·디바운스로 뷰포트가 비면 `groupedBootMarkers`(중심 반경 summary)로 폴백
-   * - API가 비지리적이면 `groupedMapNearestFallback`(실제 지도 중심 근접)
+   * 지도 마커 전용 소스. 시트/검색 파생과 무관.
+   * - 부트·초기: 앵커(내 위치 또는 광화문)에 가까운 데이터 우선 → 위치 불가여도 광화문 주변 표시
+   * - 이후: 뷰포트에 데이터가 있으면 뷰포트, 없으면 앵커·폴백
    */
   const mapStations = useMemo(() => {
     const viewportGrouped = groupedAllStationsForMap
-    const boot = groupedBootMarkers
+    const anchor = mapAnchorStations
     const nearest = groupedMapNearestFallback
     if (awaitingInitialMapPaint) {
-      if (boot.length > 0) return boot
+      if (anchor.length > 0) return anchor
       if (viewportGrouped.length > 0) return viewportGrouped
-      if (nearest.length > 0) return nearest
-      return viewportGrouped
+      return nearest
     }
     if (viewportGrouped.length > 0) return viewportGrouped
-    if (boot.length > 0) return boot
-    if (nearest.length > 0) return nearest
-    return viewportGrouped
-  }, [awaitingInitialMapPaint, groupedAllStationsForMap, groupedBootMarkers, groupedMapNearestFallback])
+    if (anchor.length > 0) return anchor
+    return nearest.length > 0 ? nearest : viewportGrouped
+  }, [awaitingInitialMapPaint, groupedAllStationsForMap, mapAnchorStations, groupedMapNearestFallback])
 
   /** 지도 초기 페인트 전용: `mapStations` 중 지도 중심에 가까운 상한만(무거운 시트 파생과 분리) */
   const mapMarkersInitial = useMemo(() => {
@@ -1502,11 +1482,25 @@ function App() {
       .map(({ s }) => s)
   }, [mapStations, mapViewCenterForMarkers])
 
+  /** 모바일: MarkerCluster 비사용 → 한 번에 그릴 개수만 제한(지도 중심 근접 순) */
+  const mapStationsMobileCapped = useMemo(() => {
+    if (!isMobile) return mapStations
+    const cap = MOBILE_MAP_MARKER_CAP
+    if (mapStations.length <= cap) return mapStations
+    const { lat, lng } = mapViewCenterForMarkers
+    return [...mapStations]
+      .map((s) => ({ s, d: haversineDistanceKm(s.lat, s.lng, lat, lng) }))
+      .sort((a, b) => a.d - b.d)
+      .slice(0, cap)
+      .map(({ s }) => s)
+  }, [isMobile, mapStations, mapViewCenterForMarkers])
+
   const mapLayerStations = useMemo(() => {
+    if (isMobile) return mapStationsMobileCapped
     if (mapMarkersRenderPhase !== 'lite') return mapStations
     if (mapStations.length <= INITIAL_MAP_MARKERS_LITE_CAP) return mapStations
     return mapMarkersInitial
-  }, [mapMarkersRenderPhase, mapStations, mapMarkersInitial])
+  }, [isMobile, mapStationsMobileCapped, mapMarkersRenderPhase, mapStations, mapMarkersInitial])
 
   useEffect(() => {
     if (mapStations.length === 0) {
@@ -1514,6 +1508,7 @@ function App() {
       setMapMarkersRenderPhase('lite')
       return undefined
     }
+    if (isMobile) return undefined
     if (mapClusterUpgradeScheduledRef.current) return undefined
     mapClusterUpgradeScheduledRef.current = true
 
@@ -1534,7 +1529,7 @@ function App() {
       cancelled = true
       window.clearTimeout(t)
     }
-  }, [mapStations.length])
+  }, [mapStations.length, isMobile])
 
   const mapBootDiagPrevAwaitingRef = useRef(false)
   useEffect(() => {
@@ -1550,7 +1545,7 @@ function App() {
         mapStations: mapStations.length,
         mapLayerStations: mapLayerStations.length,
         mapMarkersPhase: mapMarkersRenderPhase,
-        groupedBootMarkers: groupedBootMarkers.length,
+        mapAnchorStations: mapAnchorStations.length,
         groupedAllStationsForMap: groupedAllStationsForMap.length,
         mapClusterBoundsPadded: !!mapClusterBoundsPadded,
       })
@@ -1564,7 +1559,7 @@ function App() {
     mapStations.length,
     mapLayerStations.length,
     mapMarkersRenderPhase,
-    groupedBootMarkers.length,
+    mapAnchorStations.length,
     groupedAllStationsForMap.length,
     mapClusterBoundsPadded,
   ])
@@ -2580,7 +2575,7 @@ function App() {
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer
               stations={mapLayerStations}
-              variant={mapMarkersRenderPhase === 'lite' ? 'lite' : 'full'}
+              variant={isMobile || mapMarkersRenderPhase === 'lite' ? 'lite' : 'full'}
               onDetailClick={openDetailPreserve}
               onClusterTap={handleClusterStationsTap}
               selectedId={mapSelectedStation?.id}
