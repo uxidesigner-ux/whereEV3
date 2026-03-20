@@ -35,7 +35,7 @@ const QUICK_ICON_TEXT_GAP_PX = 7
 const QUICK_CHIP_PAD_X = 14
 
 /**
- * 모바일 지도 상단 플로팅 탐색 바 + 상태 칩 + 퀵 검색 레일(기본 노출)
+ * 모바일 지도 상단 플로팅 탐색 바 + (옵션) 퀵 검색 레일
  */
 export function MobileMapSearchBar({
   value,
@@ -46,7 +46,6 @@ export function MobileMapSearchBar({
   onFocus,
   onBlur,
   onSuggestionPick,
-  statusQuery = '',
   activeQuickQuery = '',
   /** 검색 포커스(키보드) 또는 상세 full 등에서 퀵칩 숨김 */
   suppressQuickChips = false,
@@ -209,35 +208,6 @@ export function MobileMapSearchBar({
           },
         }}
       />
-
-      {statusQuery.trim() ? (
-        <Box
-          sx={{
-            position: 'relative',
-            mt: 0.5,
-            zIndex: 2,
-            pointerEvents: 'auto',
-            maxWidth: '100%',
-          }}
-        >
-          <Chip
-            label={statusQuery.trim()}
-            size="small"
-            onDelete={onClear}
-            sx={{
-              maxWidth: '100%',
-              height: 28,
-              fontWeight: 700,
-              fontSize: '0.75rem',
-              borderRadius: 9999,
-              bgcolor: tokens.blue.muted,
-              color: colors.blue.deep,
-              border: `1px solid ${tokens.blue.borderSoft}`,
-              '& .MuiChip-label': { px: 1.25, overflow: 'hidden', textOverflow: 'ellipsis' },
-            }}
-          />
-        </Box>
-      ) : null}
 
       {!suppressQuickChips && embedQuickChips ? (
         <Box

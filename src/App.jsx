@@ -1413,7 +1413,8 @@ function App() {
         <MobileBottomSheet
           key={detailStation ? 'mobile-sheet-detail' : 'mobile-sheet-list'}
           topOffsetPx={sheetLayout.mobileTopBarStackPx}
-          halfVhRatio={sheetLayout.halfVhRatio}
+          halfVhRatio={detailStation ? 0.7 : sheetLayout.halfVhRatio}
+          halfMaxAvailableRatio={detailStation ? 1 : 0.68}
           snap={mobileSheetSnap}
           onSnapChange={handleMobileSheetSnapChange}
           listScrollRef={sheetListScrollRef}
@@ -1668,7 +1669,7 @@ function App() {
                     pt: 1.5,
                     pb: 1.5,
                     mt: 1,
-                    borderTop: '1px solid rgba(15, 23, 42, 0.05)',
+                    bgcolor: 'transparent',
                   }}
                 >
                   {[
@@ -1732,16 +1733,16 @@ function App() {
                             lineHeight: 1.2,
                             fontWeight: 700,
                             borderRadius: 9999,
-                            bgcolor: c.disabled ? colors.gray[100] : colors.gray[200],
-                            color: c.disabled ? colors.gray[400] : colors.gray[900],
-                            border: `2px solid ${c.disabled ? colors.gray[200] : colors.gray[400]}`,
-                            boxShadow: c.disabled ? 'none' : '0 1px 4px rgba(15, 23, 42, 0.08)',
+                            bgcolor: c.disabled ? colors.gray[50] : tokens.bg.muted,
+                            color: c.disabled ? colors.gray[400] : colors.gray[800],
+                            border: `1px solid ${c.disabled ? colors.gray[200] : colors.gray[300]}`,
+                            boxShadow: 'none',
                             opacity: c.disabled ? 0.85 : 1,
-                            transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                            transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
                             '& .MuiChip-label': { px: '16px', py: 0 },
                             '&:hover': {
-                              bgcolor: c.disabled ? colors.gray[100] : colors.gray[300],
-                              borderColor: c.disabled ? colors.gray[200] : colors.gray[500],
+                              bgcolor: c.disabled ? colors.gray[50] : colors.gray[200],
+                              borderColor: c.disabled ? colors.gray[200] : colors.gray[400],
                             },
                           }}
                         />
@@ -1760,26 +1761,30 @@ function App() {
                           lineHeight: 1.2,
                           fontWeight: c.on ? 700 : 600,
                           borderRadius: 9999,
-                          bgcolor: c.disabled ? colors.gray[100] : c.on ? colors.blue.primary : colors.white,
-                          color: c.disabled ? colors.gray[400] : c.on ? colors.white : colors.gray[800],
-                          border: `2px solid ${
-                            c.disabled ? colors.gray[200] : c.on ? colors.blue.primary : colors.gray[200]
+                          bgcolor: c.disabled
+                            ? colors.gray[50]
+                            : c.on
+                              ? tokens.blue.mutedStrong
+                              : tokens.bg.muted,
+                          color: c.disabled ? colors.gray[400] : c.on ? colors.blue.deep : colors.gray[800],
+                          border: `1px solid ${
+                            c.disabled ? colors.gray[200] : c.on ? colors.blue.primary : colors.gray[300]
                           }`,
-                          boxShadow: c.on && !c.disabled ? `0 1px 8px ${tokens.blue.glowSoft}` : 'none',
+                          boxShadow: 'none',
                           opacity: c.disabled ? 0.85 : 1,
-                          transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                          transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
                           '& .MuiChip-label': { px: '16px', py: 0 },
                           '&:hover': {
                             bgcolor: c.disabled
-                              ? colors.gray[100]
+                              ? colors.gray[50]
                               : c.on
-                                ? colors.blue.deep
-                                : colors.gray[50],
+                                ? tokens.blue.muted
+                                : colors.gray[200],
                             borderColor: c.disabled
                               ? colors.gray[200]
                               : c.on
                                 ? colors.blue.deep
-                                : colors.gray[300],
+                                : colors.gray[400],
                           },
                         }}
                       />
@@ -1969,7 +1974,6 @@ function App() {
                 onBlur={() => setSearchBarFocused(false)}
                 onSuggestionPick={pickSearchSuggestion}
                 activeQuickQuery={searchQuery}
-                statusQuery={!searchBarFocused && searchQuery.trim() ? searchQuery : ''}
                 searchResultsMode={mobileSearchResultsMode}
                 onSearchBack={clearNavSearch}
                 embedQuickChips={false}

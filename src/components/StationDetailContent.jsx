@@ -344,7 +344,6 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         ...footerBleed,
         pt: 1.25,
         pb: isSheet ? 'calc(10px + env(safe-area-inset-bottom, 0px))' : 1.5,
-        borderTop: `1px solid ${colors.gray[200]}`,
         bgcolor: tokens.bg.subtle,
       }}
     >
@@ -356,6 +355,29 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
           gap: { xs: 1, sm: 1.5 },
         }}
       >
+        {telno ? (
+          <Button
+            variant="outlined"
+            startIcon={<Phone sx={{ fontSize: { xs: 20, sm: 22 } }} />}
+            href={`tel:${telno}`}
+            aria-label="전화 걸기"
+            sx={{
+              ...FOOTER_BTN_SX,
+              flex: '1 1 0',
+              borderColor: tokens.border.strong,
+              bgcolor: tokens.bg.paper,
+              color: tokens.text.primary,
+              transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+              '&:hover': {
+                borderColor: tokens.border.default,
+                bgcolor: tokens.bg.muted,
+              },
+              '&:active': { transform: 'scale(0.98)' },
+            }}
+          >
+            전화
+          </Button>
+        ) : null}
         <Button
           variant="contained"
           startIcon={<Directions sx={{ fontSize: { xs: 20, sm: 22 } }} />}
@@ -376,28 +398,6 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         >
           충전소 위치 길찾기
         </Button>
-        {telno ? (
-          <Button
-            variant="outlined"
-            startIcon={<Phone sx={{ fontSize: { xs: 20, sm: 22 } }} />}
-            href={`tel:${telno}`}
-            aria-label="전화 걸기"
-            sx={{
-              ...FOOTER_BTN_SX,
-              borderColor: tokens.border.strong,
-              bgcolor: tokens.bg.paper,
-              color: tokens.text.primary,
-              transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-              '&:hover': {
-                borderColor: tokens.border.default,
-                bgcolor: tokens.bg.muted,
-              },
-              '&:active': { transform: 'scale(0.98)' },
-            }}
-          >
-            전화
-          </Button>
-        ) : null}
       </Box>
     </Box>
   )

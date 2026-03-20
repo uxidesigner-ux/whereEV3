@@ -12,16 +12,16 @@ const FULL_GAP_BELOW_TOP_OFFSET_PX = 8
  * @param {number} topOffsetPx
  * @param {number} halfVhRatio
  * @param {number} fullMarginPx
- * @param {{ peekVhRatio?: number | null, capFullBelowTopOffset?: boolean }} [opts]
+ * @param {{ peekVhRatio?: number | null, capFullBelowTopOffset?: boolean, halfMaxAvailableRatio?: number }} [opts]
  */
 function computeHeights(topOffsetPx, halfVhRatio, fullMarginPx, opts = {}) {
   if (typeof window === 'undefined') {
     return { closed: 0, half: 320, full: 640, peek: undefined, snapOrder: ['closed', 'half', 'full'] }
   }
-  const { peekVhRatio = null, capFullBelowTopOffset = false } = opts
+  const { peekVhRatio = null, capFullBelowTopOffset = false, halfMaxAvailableRatio = 0.68 } = opts
   const vh = window.innerHeight
   const maxHForHalf = Math.max(220, vh - topOffsetPx - fullMarginPx)
-  const half = Math.round(Math.min(vh * halfVhRatio, maxHForHalf * 0.68))
+  const half = Math.round(Math.min(vh * halfVhRatio, maxHForHalf * halfMaxAvailableRatio))
   let full = Math.round(vh)
   if (capFullBelowTopOffset) {
     const capped = Math.round(vh - topOffsetPx - FULL_GAP_BELOW_TOP_OFFSET_PX)
@@ -74,13 +74,21 @@ export function MobileBottomSheet({
   capFullBelowTopOffset = false,
   /** false면 full이 화면 전체를 덮는 모드(상단 safe-area 패딩·높은 z-index) */
   immersiveFull = true,
+  /**
+   * half 높이 상한 = (뷰포트 − top − margin) × 이 값. 목록은 0.68, 상세 등 더 크게 열 때 1에 가깝게.
+   */
+  halfMaxAvailableRatio = 0.68,
 }) {
   const { colors, tokens } = useEvTheme()
   const isControlled = snapProp !== undefined
   const [snapInternal, setSnapInternal] = useState(/** @type {SheetSnap} */ (defaultSnap))
   const snap = isControlled ? snapProp : snapInternal
   const [heightState, setHeightState] = useState(() =>
-    computeHeights(topOffsetPx, halfVhRatio, fullMarginPx, { peekVhRatio, capFullBelowTopOffset })
+    computeHeights(topOffsetPx, halfVhRatio, fullMarginPx, {
+      peekVhRatio,
+      capFullBelowTopOffset,
+      halfMaxAvailableRatio,
+    })
   )
   const snapOrder = heightState.snapOrder
   const heights = useMemo(() => {
@@ -96,8 +104,14 @@ export function MobileBottomSheet({
   }, [snap])
 
   const recomputeHeights = useCallback(() => {
-    setHeightState(computeHeights(topOffsetPx, halfVhRatio, fullMarginPx, { peekVhRatio, capFullBelowTopOffset }))
-  }, [topOffsetPx, halfVhRatio, fullMarginPx, peekVhRatio, capFullBelowTopOffset])
+    setHeightState(
+      computeHeights(topOffsetPx, halfVhRatio, fullMarginPx, {
+        peekVhRatio,
+        capFullBelowTopOffset,
+        halfMaxAvailableRatio,
+      })
+    )
+  }, [topOffsetPx, halfVhRatio, fullMarginPx, peekVhRatio, capFullBelowTopOffset, halfMaxAvailableRatio])
 
   useEffect(() => {
     recomputeHeights()
