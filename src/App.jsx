@@ -10,17 +10,18 @@ import {
   Chip,
   Button,
 } from '@mui/material'
-import { useTheme } from '@mui/material/styles'
 import EvStationIcon from '@mui/icons-material/EvStation'
 import ChevronLeft from '@mui/icons-material/ChevronLeft'
 import ChevronRight from '@mui/icons-material/ChevronRight'
 import SearchIcon from '@mui/icons-material/Search'
+import MapOutlined from '@mui/icons-material/MapOutlined'
+import ViewList from '@mui/icons-material/ViewList'
 import MyLocationIcon from '@mui/icons-material/MyLocation'
 import LightModeOutlined from '@mui/icons-material/LightModeOutlined'
 import DarkModeOutlined from '@mui/icons-material/DarkModeOutlined'
 import ArrowBack from '@mui/icons-material/ArrowBack'
 import Refresh from '@mui/icons-material/Refresh'
-import { MapContainer, TileLayer, Marker, Popup, ZoomControl, Circle, CircleMarker, useMap } from 'react-leaflet'
+import { MapContainer, ZoomControl, Circle, CircleMarker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import {
   BarChart,
@@ -46,10 +47,10 @@ import {
   haversineDistanceKm,
   placeKey,
   formatListSummary,
-  formatDistanceKm,
   summarizeSpeedCategories,
   pickShortLocationHint,
 } from './utils/geo.js'
+import { groupChargerRowsByPlace } from './utils/evStationGroup.js'
 
 /** 상세/마커 동기화용: 동일 장소(placeKey) 행으로 그룹 객체 재구성 */
 function buildPlaceGroupFromRows(rows, distanceKmPreserve) {
@@ -93,11 +94,8 @@ function rowsMatchingDetailStation(prev, flatItems) {
 import { cssEscapeAttr } from './utils/cssEscape.js'
 import { buildRegionFilterOptions } from './utils/regionDisplay.js'
 import { itemMatchesEvSearchQuery } from './utils/evSearch.js'
-import {
-  SEARCH_REGION_KEYWORDS,
-  computeExploreHighlightBoundsForSearch,
-  cloneViewportBoundsLiteral,
-} from './utils/searchRegionBounds.js'
+import { SEARCH_REGION_KEYWORDS } from './utils/searchRegionBounds.js'
+import { zoomForHorizontalSpanMeters } from './utils/mapZoomMeters.js'
 import {
   spacing,
   radius,
@@ -113,8 +111,9 @@ import { SideOverlayPanel } from './components/SideOverlayPanel.jsx'
 import { FilterModalSelect } from './components/FilterModalSelect.jsx'
 import { StationListMobile } from './components/StationListMobile.jsx'
 import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
+import { EvStationMapLayer } from './components/EvStationMapLayer.jsx'
 import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
-import { MapExploreHighlightFence } from './components/MapExploreHighlightFence.jsx'
+import { MapInitialGeolocation } from './components/MapInitialGeolocation.jsx'
 import { StationDetailModal } from './components/StationDetailModal.jsx'
 import { StationDetailFooterActions } from './components/StationDetailContent.jsx'
 import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
@@ -187,7 +186,9 @@ function LocationControl({ setUserLocation, setLocationError, setLocationLoading
             (pos) => {
               const { latitude, longitude } = pos.coords
               setUserRef.current({ lat: latitude, lng: longitude })
-              map.setView([latitude, longitude], 15)
+              const w = map.getContainer()?.clientWidth || window.innerWidth
+              const z = zoomForHorizontalSpanMeters(w, 100, latitude)
+              map.setView([latitude, longitude], z)
               setErrorRef.current(null)
               setLoadingRef.current(false)
             },
@@ -232,7 +233,9 @@ function MapGeolocationSync({ geoNonce, setUserLocation, setLocationError, setLo
       (pos) => {
         const { latitude, longitude } = pos.coords
         setUserLocation({ lat: latitude, lng: longitude })
-        map.setView([latitude, longitude], 15)
+        const w = map.getContainer()?.clientWidth || window.innerWidth
+        const z = zoomForHorizontalSpanMeters(w, 100, latitude)
+        map.setView([latitude, longitude], z)
         setLocationError(null)
         setLocationLoading(false)
       },
@@ -379,136 +382,6 @@ function LocationRipple({ userLocation }) {
   )
 }
 
-function mapPopupDistOrHint(s) {
-  if (s.distanceKm != null && !Number.isNaN(s.distanceKm)) return formatDistanceKm(s.distanceKm)
-  return (s.locationHint || '').trim()
-}
-
-function mapPopupMetaLine(s) {
-  const speed = (s.speedBadge || s.speedCategory || '').trim()
-  const busi = (s.busiNm || '').trim() || '—'
-  return speed ? `${busi} · ${speed}` : busi
-}
-
-function MapView({
-  stations,
-  onDetailClick,
-  selectedId,
-  isMobile,
-  defaultMarkerIcon,
-  selectedMarkerIcon,
-  selectedMarkerIconMobile,
-  uiColors,
-  mapTileUrl,
-  mapTileAttribution,
-}) {
-  const muiThemeLocal = useTheme()
-  const iconFor = (id) => {
-    if (selectedId !== id) return defaultMarkerIcon
-    return isMobile && selectedMarkerIconMobile ? selectedMarkerIconMobile : selectedMarkerIcon
-  }
-  return (
-    <>
-      <TileLayer attribution={mapTileAttribution} url={mapTileUrl} subdomains="abcd" maxZoom={20} />
-      {stations.map((s) => {
-        const hint = mapPopupDistOrHint(s)
-        const meta = mapPopupMetaLine(s)
-        const mapsHref = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}`
-        return (
-          <Marker
-            key={s.id}
-            position={[s.lat, s.lng]}
-            icon={iconFor(s.id)}
-            zIndexOffset={selectedId === s.id ? 700 : 0}
-            eventHandlers={
-              isMobile && onDetailClick
-                ? {
-                    click: () => {
-                      onDetailClick(s)
-                    },
-                  }
-                : undefined
-            }
-          >
-            {!isMobile ? (
-              <Popup maxWidth={260}>
-                <Box
-                  component="div"
-                  sx={{
-                    fontFamily: muiThemeLocal.typography.fontFamily,
-                    margin: '-4px -6px',
-                    minWidth: 200,
-                  }}
-                >
-                  <Typography
-                    component="div"
-                    sx={{
-                      fontWeight: 700,
-                      fontSize: '0.875rem',
-                      color: uiColors.gray[900],
-                      lineHeight: 1.25,
-                    }}
-                  >
-                    {s.statNm}
-                  </Typography>
-                  {hint ? (
-                    <Typography component="div" sx={{ fontSize: '0.6875rem', color: uiColors.gray[500], mt: 0.2, lineHeight: 1.35 }}>
-                      {hint}
-                    </Typography>
-                  ) : null}
-                  <Typography component="div" sx={{ fontSize: '0.6875rem', color: uiColors.gray[600], mt: 0.15, lineHeight: 1.35 }}>
-                    {meta}
-                  </Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.25, mt: 0.5 }}>
-                    {onDetailClick ? (
-                      <Button
-                        type="button"
-                        variant="text"
-                        size="small"
-                        onClick={() => onDetailClick(s)}
-                        sx={{
-                          minWidth: 0,
-                          fontSize: '0.75rem',
-                          fontWeight: 700,
-                          py: 0.2,
-                          px: 0.5,
-                          color: uiColors.blue.primary,
-                          textTransform: 'none',
-                        }}
-                      >
-                        상세
-                      </Button>
-                    ) : null}
-                    <Button
-                      component="a"
-                      href={mapsHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      variant="text"
-                      size="small"
-                      sx={{
-                        minWidth: 0,
-                        fontSize: '0.75rem',
-                        fontWeight: 600,
-                        py: 0.2,
-                        px: 0.5,
-                        color: uiColors.gray[700],
-                        textTransform: 'none',
-                      }}
-                    >
-                      길찾기
-                    </Button>
-                  </Box>
-                </Box>
-              </Popup>
-            ) : null}
-          </Marker>
-        )
-      })}
-    </>
-  )
-}
-
 function App() {
   const { tokens, colors, resolvedMode, togglePreference } = useEvTheme()
   const chartPalette = tokens.chartBlue
@@ -530,10 +403,6 @@ function App() {
   /** 칩/Enter로 맞춤한 직후, debounce 지역 fit 중복 방지 */
   const lastFittedSearchQueryRef = useRef('')
   const searchQuerySyncRef = useRef(searchQuery)
-  /** 탐색 강조 사각형: 검색 확정·지역 fit·이 지역 검색 시에만 갱신 */
-  const [mapExploreFenceBounds, setMapExploreFenceBounds] = useState(/** @type {null | { southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} */ (null))
-  const [mapExploreFenceVersion, setMapExploreFenceVersion] = useState(0)
-  const prevSearchFenceNonceRef = useRef(0)
   const [geoNonce, setGeoNonce] = useState(0)
   const [filterDrawerOpen, setFilterDrawerOpen] = useState(false)
   const isMobile = useMediaQuery('(max-width: 900px)')
@@ -550,7 +419,7 @@ function App() {
   const [detailStation, setDetailStation] = useState(null)
   const detailStationRef = useRef(null)
   /** 목록 시트 스냅: 상세 진입/복귀 시에도 부모가 유지 */
-  const [mobileSheetSnap, setMobileSheetSnap] = useState(/** @type {'closed' | 'half' | 'full'} */ ('closed'))
+  const [mobileSheetSnap, setMobileSheetSnap] = useState(/** @type {'closed' | 'peek' | 'half' | 'full'} */ ('closed'))
   /** 상세 진입 직전 목록 시트 스냅 — 닫을 때 복원 */
   const sheetSnapBeforeDetailRef = useRef(/** @type {'closed' | 'half' | 'full'} */ ('closed'))
   const [mobileListSort, setMobileListSort] = useState(/** @type {'distance' | 'name'} */ ('distance'))
@@ -607,7 +476,6 @@ function App() {
     setSearchInput('')
     setSearchQuery('')
     lastFittedSearchQueryRef.current = ''
-    setMapExploreFenceBounds(null)
     if (isMobileRef.current) setMobileSheetSnap('closed')
   }, [])
 
@@ -645,13 +513,6 @@ function App() {
     }, 340)
     return () => clearTimeout(tid)
   }, [searchQuery, isMobile, openMobileListSheetToHalf])
-
-  useEffect(() => {
-    if (!isMobile) {
-      setMapExploreFenceBounds(null)
-      prevSearchFenceNonceRef.current = 0
-    }
-  }, [isMobile])
 
   /** 검색어가 있으면 포커스/제목이 충전소명에 묶이지 않도록 선택·상세 해제 */
   useEffect(() => {
@@ -882,11 +743,6 @@ function App() {
   const applySearchAreaFromMap = useCallback(() => {
     setAppliedMapBounds(liveMapBoundsRef.current)
     if (isMobile) {
-      const vb = cloneViewportBoundsLiteral(liveMapBoundsRef.current)
-      if (vb) {
-        setMapExploreFenceBounds(vb)
-        setMapExploreFenceVersion((v) => v + 1)
-      }
       openMobileListSheetToHalf()
     }
     mapSelectedStationRef.current = null
@@ -916,7 +772,7 @@ function App() {
     let cancelled = false
     setLoading(true)
     setApiError(null)
-    fetchEvChargers({ pageNo: 1, numOfRows: 200, maxPages: 3 })
+    fetchEvChargers({ pageNo: 1, numOfRows: 500, maxPages: 200 })
       .then(({ items: list, totalCount: total }) => {
         if (cancelled) return
         setItems(list)
@@ -937,7 +793,7 @@ function App() {
     setDetailRefreshing(true)
     setApiError(null)
     try {
-      const { items: list, totalCount: total } = await fetchEvChargers({ pageNo: 1, numOfRows: 200, maxPages: 3 })
+      const { items: list, totalCount: total } = await fetchEvChargers({ pageNo: 1, numOfRows: 500, maxPages: 200 })
       setItems(list)
       if (total != null) setTotalCount(total)
       setLastEvFetchAt(new Date().toISOString())
@@ -990,23 +846,6 @@ function App() {
       return true
     })
   }, [items, filterBusiNm, filterSpeed, filterCtprvnCd, filterSggCd, searchQuery])
-
-  /** 검색 fitNonce가 바뀔 때만 탐색 fence 갱신(타이핑만으로는 갱신 안 함). filteredItems 아래에 두어 TDZ(선언 전 참조) 방지. */
-  useEffect(() => {
-    if (!isMobile) return
-    if (searchViewportFitNonce === prevSearchFenceNonceRef.current) return
-    prevSearchFenceNonceRef.current = searchViewportFitNonce
-    if (searchViewportFitNonce < 1) return
-    const q = searchQuery.trim().toLowerCase()
-    if (!q) {
-      setMapExploreFenceBounds(null)
-      setMapExploreFenceVersion((v) => v + 1)
-      return
-    }
-    const b = computeExploreHighlightBoundsForSearch(searchQuery, filteredItems)
-    setMapExploreFenceBounds(b)
-    setMapExploreFenceVersion((v) => v + 1)
-  }, [searchViewportFitNonce, searchQuery, filteredItems, isMobile])
 
   /** 초기: live 수신 시 applied가 없으면 적용. 이후는 버튼 탭 시에만 applied 갱신. */
   useEffect(() => {
@@ -1152,6 +991,16 @@ function App() {
   }, [detailStation, mapSelectedStation, searchQuery])
 
   const searchNavActive = searchQuery.trim().length > 0
+  /** 모바일: 검색 결과 전용 시트 레이아웃(상세와 분리 — 상세 시 엔 false) */
+  const mobileSearchResultsMode = isMobile && searchNavActive && !detailStation
+
+  /** 검색 종료 시 peek 스냅 제거(검색 결과 모드 전용 디텐트) */
+  useEffect(() => {
+    if (!isMobile) return
+    if (!searchNavActive && mobileSheetSnap === 'peek') {
+      setMobileSheetSnap('closed')
+    }
+  }, [isMobile, searchNavActive, mobileSheetSnap])
 
   /** 큰 제목 대신 한 줄 메타(탐색 control rail 상단) */
   const listSheetMetaLine = useMemo(() => {
@@ -1160,16 +1009,22 @@ function App() {
     return `이 지역 ${stationsForMobileList.length}곳`
   }, [appliedMapBounds, searchNavActive, stationsForMobileList.length])
 
-  /** 지도 마커용: 데스크탑=filteredItems, 모바일=applied 기준 groupedItemsInScope(1장소 1마커). 선택된 충전소는 범위 밖이어도 포함. */
-  const displayStationsForMap = useMemo(() => {
-    const base = isMobile
-      ? (appliedMapBounds ? groupedItemsInScope : [])
-      : filteredItems
-    if (mapSelectedStation && !base.some((s) => s.id === mapSelectedStation.id)) {
-      return [mapSelectedStation, ...base]
-    }
-    return base
-  }, [isMobile, appliedMapBounds, groupedItemsInScope, filteredItems, mapSelectedStation])
+  /**
+   * 지도 전용: API 전체 `items`를 장소 단위로 묶은 분포(검색/필터/뷰포트와 무관).
+   * 선택된 장소는 목록·필터와 무관하게 강조·포커스할 수 있도록 배열에 합류.
+   */
+  const groupedAllStationsForMap = useMemo(() => {
+    const validItems = items.filter((r) => {
+      const la = Number(r.lat)
+      const ln = Number(r.lng)
+      return Number.isFinite(la) && Number.isFinite(ln)
+    })
+    const grouped = groupChargerRowsByPlace(validItems)
+    const sel = mapSelectedStation
+    if (!sel) return grouped
+    if (grouped.some((s) => s.id === sel.id)) return grouped
+    return [sel, ...grouped]
+  }, [items, mapSelectedStation])
 
   /** live와 applied가 충분히 다를 때만 "이 지역 충전소 검색하기" 노출 (중심 거리 > 0.15km) */
   const showSearchAreaButton = useMemo(() => {
@@ -1384,6 +1239,11 @@ function App() {
           onSnapChange={handleMobileSheetSnapChange}
           listScrollRef={sheetListScrollRef}
           onSnapHeightPxChange={handleSheetSnapHeightPx}
+          pullBodyToExpandWhenHalf={!!detailStation}
+          peekVhRatio={mobileSearchResultsMode ? sheetLayout.searchResultsPeekVhRatio : null}
+          capFullBelowTopOffset={mobileSearchResultsMode}
+          immersiveFull={!mobileSearchResultsMode}
+          allowPeekBodyExpand={mobileSearchResultsMode}
           footer={
             detailStation ? (
               <StationDetailFooterActions station={detailStation} variant="sheet" />
@@ -1395,7 +1255,7 @@ function App() {
             if (d) {
               if (snap === 'full') {
                 return (
-                  <Box sx={{ bgcolor: colors.gray[50], borderBottom: `1px solid ${colors.gray[200]}` }}>
+                  <Box sx={{ bgcolor: tokens.bg.subtle, borderBottom: `1px solid ${colors.gray[200]}` }}>
                     <Box
                       sx={{
                         display: 'flex',
@@ -1439,6 +1299,7 @@ function App() {
                         aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
                         size="small"
                         sx={{ color: colors.gray[600], mt: 0.25 }}
+                        onPointerDown={(e) => e.stopPropagation()}
                       >
                         {detailRefreshing ? (
                           <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} />
@@ -1450,8 +1311,12 @@ function App() {
                   </Box>
                 )
               }
+              /* half: 뒤로가기 없음 — full에서만 노출. 헤더 전체를 드래그해 half→full */
               return (
-                <Box sx={{ bgcolor: colors.gray[50], borderBottom: `1px solid ${colors.gray[200]}` }} data-ev-list-header-mode="detail">
+                <Box
+                  sx={{ bgcolor: tokens.bg.subtle, borderBottom: `1px solid ${colors.gray[200]}` }}
+                  data-ev-list-header-mode="detail"
+                >
                   <Box
                     {...sheetDragHandlers}
                     sx={{
@@ -1463,34 +1328,36 @@ function App() {
                     }}
                   >
                     <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto' }} aria-hidden />
-                  </Box>
-                  <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, px: 0.5, pb: 1 }}>
-                    <IconButton onClick={handleCloseDetail} aria-label="뒤로" size="small" sx={{ color: colors.gray[700], mt: -0.25 }}>
-                      <ArrowBack />
-                    </IconButton>
-                    <Box sx={{ flex: 1, minWidth: 0 }}>
-                      <Typography variant="subtitle1" component="h2" sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1.0625rem', lineHeight: 1.3 }}>
-                        {d.statNm}
-                      </Typography>
-                      {detailHeaderSubtitle ? (
-                        <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: colors.gray[500] }}>
-                          {detailHeaderSubtitle}
+                    <Box sx={{ display: 'flex', alignItems: 'flex-start', gap: 0.25, px: 0.5, pt: 0.75, pb: 0 }}>
+                      <Box sx={{ flex: 1, minWidth: 0, pr: 0.5 }}>
+                        <Typography
+                          variant="subtitle1"
+                          component="h2"
+                          sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1.0625rem', lineHeight: 1.3 }}
+                        >
+                          {d.statNm}
                         </Typography>
-                      ) : null}
+                        {detailHeaderSubtitle ? (
+                          <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: colors.gray[500] }}>
+                            {detailHeaderSubtitle}
+                          </Typography>
+                        ) : null}
+                      </Box>
+                      <IconButton
+                        onClick={() => canRefetchEv && refreshEvData()}
+                        disabled={!canRefetchEv || detailRefreshing}
+                        aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
+                        size="small"
+                        sx={{ color: colors.gray[600], mt: -0.125, flexShrink: 0 }}
+                        onPointerDown={(e) => e.stopPropagation()}
+                      >
+                        {detailRefreshing ? (
+                          <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} />
+                        ) : (
+                          <Refresh sx={{ fontSize: 22 }} />
+                        )}
+                      </IconButton>
                     </Box>
-                    <IconButton
-                      onClick={() => canRefetchEv && refreshEvData()}
-                      disabled={!canRefetchEv || detailRefreshing}
-                      aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
-                      size="small"
-                      sx={{ color: colors.gray[600], mt: -0.25 }}
-                    >
-                      {detailRefreshing ? (
-                        <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} />
-                      ) : (
-                        <Refresh sx={{ fontSize: 22 }} />
-                      )}
-                    </IconButton>
                   </Box>
                 </Box>
               )
@@ -1864,6 +1731,13 @@ function App() {
                 onSuggestionPick={pickSearchSuggestion}
                 activeQuickQuery={searchQuery}
                 statusQuery={!searchBarFocused && searchQuery.trim() ? searchQuery : ''}
+                searchResultsMode={mobileSearchResultsMode}
+                onSearchBack={clearNavSearch}
+                suppressQuickChips={
+                  searchBarFocused ||
+                  (!!detailStation && mobileSheetSnap === 'full') ||
+                  (mobileSearchResultsMode && mobileSheetSnap === 'full')
+                }
               />
               <Box
                 sx={{
@@ -1875,6 +1749,34 @@ function App() {
                   gap: `${mobileMapChrome.rowGap}px`,
                 }}
               >
+                <IconButton
+                  onClick={() => setGeoNonce((n) => n + 1)}
+                  aria-label="현재 위치로 이동"
+                  sx={{
+                    width: mobileMapChrome.fabSize,
+                    height: mobileMapChrome.fabSize,
+                    minWidth: mobileMapChrome.fabSize,
+                    minHeight: mobileMapChrome.fabSize,
+                    boxSizing: 'border-box',
+                    bgcolor: tokens.control.fabBg,
+                    border: `1px solid ${tokens.control.fabBorder}`,
+                    borderRadius: '50%',
+                    color: tokens.text.primary,
+                    boxShadow: tokens.shadow.float,
+                    transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, color 0.2s ease, background-color 0.2s ease`,
+                    '&:hover': {
+                      bgcolor: tokens.bg.raised,
+                      boxShadow: `${tokens.shadow.float}, 0 0 20px ${tokens.blue.glowSoft}`,
+                    },
+                    '&:focus-visible': {
+                      outline: `2px solid ${tokens.blue.main}`,
+                      outlineOffset: 2,
+                    },
+                    '&:active': { transform: 'scale(0.96)' },
+                  }}
+                >
+                  <MyLocationIcon sx={{ fontSize: 24 }} />
+                </IconButton>
                 <IconButton
                   type="button"
                   onClick={() => togglePreference()}
@@ -1908,30 +1810,6 @@ function App() {
                     <LightModeOutlined sx={{ fontSize: 22 }} aria-hidden />
                   )}
                 </IconButton>
-                <IconButton
-                  onClick={() => setGeoNonce((n) => n + 1)}
-                  aria-label="현재 위치로 이동"
-                  sx={{
-                    width: mobileMapChrome.fabSize,
-                    height: mobileMapChrome.fabSize,
-                    minWidth: mobileMapChrome.fabSize,
-                    minHeight: mobileMapChrome.fabSize,
-                    boxSizing: 'border-box',
-                    bgcolor: tokens.control.fabBg,
-                    border: `1px solid ${tokens.control.fabBorder}`,
-                    borderRadius: '50%',
-                    color: tokens.text.primary,
-                    boxShadow: tokens.shadow.float,
-                    transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
-                    '&:hover': {
-                      bgcolor: tokens.bg.raised,
-                      boxShadow: `${tokens.shadow.float}, 0 0 20px ${tokens.blue.glowSoft}`,
-                    },
-                    '&:active': { transform: 'scale(0.96)' },
-                  }}
-                >
-                  <MyLocationIcon sx={{ fontSize: 24 }} />
-                </IconButton>
               </Box>
             </Box>
           </Box>
@@ -1953,6 +1831,7 @@ function App() {
           >
             <MapCenterTracker setMapCenter={setMapCenter} />
             <MapBoundsTracker setMapBounds={setLiveMapBounds} />
+            <MapInitialGeolocation setUserLocation={setUserLocation} />
             <MapMobileSearchViewportFitter
               enabled={isMobile}
               fitNonce={searchViewportFitNonce}
@@ -1960,23 +1839,20 @@ function App() {
               filteredItems={filteredItems}
               setAppliedMapBounds={setAppliedMapBounds}
             />
-            {isMobile && (
-              <MapExploreHighlightFence boundsLiteral={mapExploreFenceBounds} version={mapExploreFenceVersion} mapTokens={tokens.map} />
-            )}
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
-            <MapView
-                stations={displayStationsForMap}
-                onDetailClick={openDetailPreserve}
-                selectedId={mapSelectedStation?.id}
-                isMobile={isMobile}
-                defaultMarkerIcon={DEFAULT_MARKER_ICON}
-                selectedMarkerIcon={SELECTED_MARKER_ICON}
-                selectedMarkerIconMobile={MOBILE_PIN_SELECTED_MARKER_ICON}
-                uiColors={colors}
-                mapTileUrl={tokens.map.tileUrl}
-                mapTileAttribution={tokens.map.tileAttribution}
-              />
-            <ZoomControl position={isMobile ? 'bottomright' : 'topright'} />
+            <EvStationMapLayer
+              stations={groupedAllStationsForMap}
+              onDetailClick={openDetailPreserve}
+              selectedId={mapSelectedStation?.id}
+              isMobile={isMobile}
+              defaultMarkerIcon={DEFAULT_MARKER_ICON}
+              selectedMarkerIcon={SELECTED_MARKER_ICON}
+              selectedMarkerIconMobile={MOBILE_PIN_SELECTED_MARKER_ICON}
+              uiColors={colors}
+              mapTileUrl={tokens.map.tileUrl}
+              mapTileAttribution={tokens.map.tileAttribution}
+            />
+            {!isMobile && <ZoomControl position="topright" />}
             {!isMobile && (
               <LocationControl
                 setUserLocation={setUserLocation}
@@ -2105,32 +1981,25 @@ function App() {
           필터 열림 시 투명 레이어로 지도 제스처를 확실히 삼킴(백드롭 틈 대비).
           FAB는 오버레이 해제 후 exit + fabReveal ms 뒤 페이드인해 시트 전환과 어긋남 완화.
         */}
-        {isMobile && showSearchAreaButton && !mobileOverlayBlocking && (
+        {isMobile && mobileSearchResultsMode && mobileSheetSnap === 'full' && !mobileOverlayBlocking ? (
           <Box
             sx={{
               position: 'fixed',
               left: 0,
               right: 0,
+              bottom: `max(16px, calc(env(safe-area-inset-bottom, 0px) + 12px))`,
               display: 'flex',
               justifyContent: 'center',
               paddingLeft: `max(12px, env(safe-area-inset-left, 0px))`,
               paddingRight: `max(12px, env(safe-area-inset-right, 0px))`,
-              bottom: `calc(${mobileSheetHeightPx}px + env(safe-area-inset-bottom, 0px) + 8px)`,
-              zIndex: 1001,
-              opacity: fabReveal ? 1 : 0,
-              transform: fabReveal ? 'translateY(0)' : 'translateY(10px)',
-              pointerEvents: fabReveal ? 'auto' : 'none',
-              transition: [
-                `bottom ${motion.duration.sheet}ms ${motion.easing.standard}`,
-                `opacity ${motion.duration.enter}ms ${motion.easing.standard}`,
-                `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-              ].join(', '),
+              zIndex: 1100,
+              pointerEvents: 'auto',
             }}
           >
             <Button
               variant="contained"
-              startIcon={<SearchIcon sx={{ fontSize: 20 }} />}
-              onClick={applySearchAreaFromMap}
+              startIcon={<MapOutlined sx={{ fontSize: 20 }} />}
+              onClick={() => setMobileSheetSnap('peek')}
               sx={{
                 display: 'inline-flex',
                 width: 'auto',
@@ -2153,10 +2022,96 @@ function App() {
                 '&:active': { transform: 'scale(0.98)' },
               }}
             >
-              이 지역 검색
+              지도보기
             </Button>
           </Box>
-        )}
+        ) : null}
+
+        {isMobile &&
+        (showSearchAreaButton || (mobileSearchResultsMode && mobileSheetSnap === 'peek')) &&
+        !mobileOverlayBlocking ? (
+          <Box
+            sx={{
+              position: 'fixed',
+              left: 0,
+              right: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              paddingLeft: `max(12px, env(safe-area-inset-left, 0px))`,
+              paddingRight: `max(12px, env(safe-area-inset-right, 0px))`,
+              bottom: `calc(${mobileSheetHeightPx}px + env(safe-area-inset-bottom, 0px) + 8px)`,
+              zIndex: 1001,
+              opacity: fabReveal ? 1 : 0,
+              transform: fabReveal ? 'translateY(0)' : 'translateY(10px)',
+              pointerEvents: fabReveal ? 'auto' : 'none',
+              transition: [
+                `bottom ${motion.duration.sheet}ms ${motion.easing.standard}`,
+                `opacity ${motion.duration.enter}ms ${motion.easing.standard}`,
+                `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+              ].join(', '),
+            }}
+          >
+            {mobileSearchResultsMode && mobileSheetSnap === 'peek' ? (
+              <Button
+                variant="contained"
+                startIcon={<ViewList sx={{ fontSize: 20 }} />}
+                onClick={() => setMobileSheetSnap('half')}
+                sx={{
+                  display: 'inline-flex',
+                  width: 'auto',
+                  minWidth: 0,
+                  px: 2.75,
+                  py: 1.125,
+                  borderRadius: 9999,
+                  boxShadow: '0 4px 16px rgba(37,99,235,0.35), 0 2px 8px rgba(0,0,0,0.12)',
+                  bgcolor: colors.blue.primary,
+                  fontWeight: 700,
+                  fontSize: '0.8125rem',
+                  textTransform: 'none',
+                  whiteSpace: 'nowrap',
+                  transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                  '& .MuiButton-startIcon': { ml: 0, mr: 0.5 },
+                  '&:hover': {
+                    bgcolor: colors.blue.deep,
+                    boxShadow: '0 5px 18px rgba(37,99,235,0.4), 0 2px 10px rgba(0,0,0,0.14)',
+                  },
+                  '&:active': { transform: 'scale(0.98)' },
+                }}
+              >
+                목록 보기
+              </Button>
+            ) : (
+              <Button
+                variant="contained"
+                startIcon={<SearchIcon sx={{ fontSize: 20 }} />}
+                onClick={applySearchAreaFromMap}
+                sx={{
+                  display: 'inline-flex',
+                  width: 'auto',
+                  minWidth: 0,
+                  px: 2.75,
+                  py: 1.125,
+                  borderRadius: 9999,
+                  boxShadow: '0 4px 16px rgba(37,99,235,0.35), 0 2px 8px rgba(0,0,0,0.12)',
+                  bgcolor: colors.blue.primary,
+                  fontWeight: 700,
+                  fontSize: '0.8125rem',
+                  textTransform: 'none',
+                  whiteSpace: 'nowrap',
+                  transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                  '& .MuiButton-startIcon': { ml: 0, mr: 0.5 },
+                  '&:hover': {
+                    bgcolor: colors.blue.deep,
+                    boxShadow: '0 5px 18px rgba(37,99,235,0.4), 0 2px 10px rgba(0,0,0,0.14)',
+                  },
+                  '&:active': { transform: 'scale(0.98)' },
+                }}
+              >
+                이 지역 검색
+              </Button>
+            )}
+          </Box>
+        ) : null}
 
         {/* 패널: 모바일 = 바텀시트, 데스크톱 = 좌측 패널 */}
         {panelEl}

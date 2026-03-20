@@ -51,10 +51,10 @@ function buildDetailUi(colors, tokens) {
     all: {
       idle: { border: `1px solid ${colors.gray[300]}`, bgcolor: tokens.bg.paper, color: colors.gray[700] },
       active: {
-        border: `2px solid ${colors.blue.primary}`,
+        border: `1px solid ${colors.blue.primary}`,
         bgcolor: tokens.blue.mutedStrong,
         color: colors.blue.deep,
-        boxShadow: `0 1px 6px ${tokens.blue.glowSoft}, 0 0 0 1px ${tokens.blue.borderSoft}`,
+        boxShadow: 'none',
       },
     },
     avail: {
@@ -64,10 +64,10 @@ function buildDetailUi(colors, tokens) {
         color: tokens.status.avail.fg,
       },
       active: {
-        border: `2px solid ${tokens.status.avail.fg}`,
+        border: `1px solid ${tokens.status.avail.fg}`,
         bgcolor: tokens.status.avail.chipBg,
         color: tokens.status.avail.fg,
-        boxShadow: `0 1px 6px ${tokens.status.avail.border}`,
+        boxShadow: 'none',
       },
     },
     use: {
@@ -77,19 +77,19 @@ function buildDetailUi(colors, tokens) {
         color: tokens.status.use.fg,
       },
       active: {
-        border: `2px solid ${tokens.status.use.fg}`,
+        border: `1px solid ${tokens.status.use.fg}`,
         bgcolor: tokens.status.use.chipBg,
         color: tokens.status.use.fg,
-        boxShadow: `0 1px 6px ${tokens.status.use.border}`,
+        boxShadow: 'none',
       },
     },
     maint: {
       idle: { border: `1px solid ${colors.gray[300]}`, bgcolor: tokens.bg.muted, color: colors.gray[600] },
       active: {
-        border: `2px solid ${colors.gray[500]}`,
+        border: `1px solid ${colors.gray[500]}`,
         bgcolor: tokens.status.maint.chipBg,
         color: tokens.text.primary,
-        boxShadow: `0 1px 5px rgba(0,0,0,0.14), 0 0 0 1px ${colors.gray[300]}`,
+        boxShadow: 'none',
       },
     },
   }
@@ -130,14 +130,11 @@ function StatFilterChip({ label, selected, disabled, onClick, paletteKey }) {
         fontSize: appMobileType.chipRail.fontSize,
         fontWeight: selected ? 800 : 600,
         letterSpacing: selected ? '0.01em' : '0.005em',
-        transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+        transition: `border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}`,
         '& .MuiChip-label': { px: 1.4, py: 0.125 },
         ...tone,
-        ...(selected && !disabled
-          ? { transform: 'scale(1.02)', zIndex: 1 }
-          : {}),
         ...(disabled
-          ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none', boxShadow: 'none', transform: 'none' }
+          ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none', boxShadow: 'none' }
           : {}),
       }}
     />
@@ -309,6 +306,26 @@ function ChargerCard({ row, idx }) {
   )
 }
 
+const FOOTER_BTN_SX = {
+  flex: '1 1 0',
+  minWidth: 0,
+  minHeight: 48,
+  maxHeight: 48,
+  py: 0,
+  px: { xs: 0.75, sm: 1.25 },
+  borderRadius: `${radius.sm}px`,
+  fontWeight: 700,
+  fontSize: { xs: '0.8125rem', sm: '0.9375rem' },
+  lineHeight: 1.2,
+  textTransform: 'none',
+  whiteSpace: 'nowrap',
+  '& .MuiButton-startIcon': {
+    marginRight: { xs: 0.35, sm: 0.75 },
+    marginLeft: 0,
+    flexShrink: 0,
+  },
+}
+
 /**
  * 하단 길찾기·전화 CTA (모바일 시트에서는 스크롤 밖에 두기 위해 분리).
  * @param {'dialog' | 'sheet'} variant — dialog: 본문 패딩 상쇄용 가로 bleed, sheet: 패딩 없음
@@ -318,42 +335,38 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
   if (!station) return null
   const telno = station.telno?.trim() || ''
   const mapsUrl = `https://www.google.com/maps/dir/?api=1&destination=${station.lat},${station.lng}`
-  const stackActions = variant === 'sheet'
+  const isSheet = variant === 'sheet'
   const footerBleed = variant === 'dialog' ? { mx: -2, px: 2 } : {}
 
   return (
     <Box
       sx={{
         ...footerBleed,
-        pt: 1.5,
-        pb: stackActions ? 'calc(10px + env(safe-area-inset-bottom, 0px))' : 1.5,
+        pt: 1.25,
+        pb: isSheet ? 'calc(10px + env(safe-area-inset-bottom, 0px))' : 1.5,
         borderTop: `1px solid ${colors.gray[200]}`,
         bgcolor: tokens.bg.subtle,
       }}
     >
-      <Typography
-        variant="subtitle2"
-        component="h3"
-        sx={{ color: colors.gray[700], display: 'block', mb: 1, ...appMobileType.sectionBlock }}
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'stretch',
+          gap: { xs: 1, sm: 1.5 },
+        }}
       >
-        이동·문의
-      </Typography>
-      <Box sx={{ display: 'flex', flexDirection: stackActions ? 'column' : 'row', gap: 1 }}>
         <Button
           variant="contained"
-          startIcon={<Directions />}
+          startIcon={<Directions sx={{ fontSize: { xs: 20, sm: 22 } }} />}
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
+          aria-label="충전소 위치 길찾기"
           sx={{
-            flex: 1,
-            minHeight: 48,
-            py: 1.125,
-            borderRadius: `${radius.sm}px`,
+            ...FOOTER_BTN_SX,
+            flex: telno ? '1 1 0' : '1 1 auto',
             bgcolor: colors.blue.primary,
-            fontWeight: 600,
-            ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
-            textTransform: 'none',
             color: tokens.text.onPrimary,
             boxShadow: `0 1px 4px ${tokens.blue.glowSoft}`,
             transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
@@ -363,29 +376,28 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         >
           충전소 위치 길찾기
         </Button>
-        {telno && (
+        {telno ? (
           <Button
             variant="outlined"
-            startIcon={<Phone />}
+            startIcon={<Phone sx={{ fontSize: { xs: 20, sm: 22 } }} />}
             href={`tel:${telno}`}
+            aria-label="전화 걸기"
             sx={{
-              flex: 1,
-              minHeight: 48,
-              py: 1.125,
-              borderRadius: `${radius.sm}px`,
-              borderColor: colors.gray[300],
+              ...FOOTER_BTN_SX,
+              borderColor: tokens.border.strong,
               bgcolor: tokens.bg.paper,
-              color: colors.gray[800],
-              fontWeight: 600,
-              ...(stackActions ? { fontSize: appMobileType.buttonPrimary.fontSize } : {}),
-              textTransform: 'none',
+              color: tokens.text.primary,
               transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
+              '&:hover': {
+                borderColor: tokens.border.default,
+                bgcolor: tokens.bg.muted,
+              },
               '&:active': { transform: 'scale(0.98)' },
             }}
           >
             전화
           </Button>
-        )}
+        ) : null}
       </Box>
     </Box>
   )
@@ -397,7 +409,7 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
  * @param {boolean} [chargerSummaryUpdatedInHeader] — true면 필터 블록 하단의 상태 갱신 문구 숨김(헤더에 표시될 때).
  * @param {'all'|'2'|'3'|'5'} [chargerStatFilter]
  * @param {(v: 'all'|'2'|'3'|'5') => void} [onChargerStatFilterChange]
- * @param {boolean} [detachedFooter] — true면 이동·문의 CTA는 렌더하지 않음(시트 하단 고정 영역에서 별도 렌더).
+ * @param {boolean} [detachedFooter] — true면 하단 길찾기·전화 CTA는 렌더하지 않음(시트 footer에서 별도 렌더).
  */
 export function StationDetailContent({
   station,
@@ -458,14 +470,14 @@ export function StationDetailContent({
                       position: 'sticky',
                       top: 0,
                       zIndex: 4,
-                      bgcolor: tokens.bg.paper,
+                      bgcolor: 'transparent',
                       mx: -2,
                       px: 2,
                       pt: 0.25,
                       pb: 1,
                       mb: 0.5,
-                      borderBottom: `1px solid ${colors.gray[100]}`,
-                      boxShadow: tokens.shadow.card,
+                      borderBottom: 'none',
+                      boxShadow: 'none',
                     }
                   : {}
               }

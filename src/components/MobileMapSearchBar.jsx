@@ -1,6 +1,12 @@
-import { useRef } from 'react'
+import { createElement, useRef } from 'react'
 import { Box, Chip, IconButton, InputAdornment, TextField } from '@mui/material'
 import Close from '@mui/icons-material/Close'
+import ArrowBack from '@mui/icons-material/ArrowBack'
+import FlashOn from '@mui/icons-material/FlashOn'
+import ElectricalServices from '@mui/icons-material/ElectricalServices'
+import Schedule from '@mui/icons-material/Schedule'
+import Business from '@mui/icons-material/Business'
+import LocationOn from '@mui/icons-material/LocationOn'
 import { EvBrandSearchLogo } from './EvBrandSearchLogo.jsx'
 import { motion, radius, mobileMapChrome } from '../theme/dashboardTheme.js'
 import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
@@ -8,16 +14,29 @@ import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 /** iOS Safari: input computed font-size < 16px 이면 포커스 시 페이지 자동 확대 */
 const SEARCH_INPUT_FONT_PX = 16
 
-const SUGGESTIONS = ['급속', '완속', '24시간', '환경부', '강남', '판교', '성수', '종로']
+const ICON_SX = { fontSize: 16 }
 
-/**
- * 모바일 지도 상단 플로팅 탐색 바 + 상태 칩·추천(오버레이, 상단 고정 높이 불변)
- */
+/** 퀵 검색: 라벨 + 의미 아이콘 */
+const QUICK_SUGGESTIONS = [
+  { label: '급속', Icon: FlashOn },
+  { label: '완속', Icon: ElectricalServices },
+  { label: '24시간', Icon: Schedule },
+  { label: '환경부', Icon: Business },
+  { label: '강남', Icon: LocationOn },
+  { label: '판교', Icon: LocationOn },
+  { label: '성수', Icon: LocationOn },
+  { label: '종로', Icon: LocationOn },
+]
+
 const QUICK_CHIP_H = 42
 const QUICK_CHIP_FONT_PX = 14
-const QUICK_CHIP_GAP_PX = 9
-const QUICK_CHIP_PAD_X = 15
+const QUICK_CHIP_GAP_PX = 8
+const QUICK_ICON_TEXT_GAP_PX = 7
+const QUICK_CHIP_PAD_X = 14
 
+/**
+ * 모바일 지도 상단 플로팅 탐색 바 + 상태 칩 + 퀵 검색 레일(기본 노출)
+ */
 export function MobileMapSearchBar({
   value,
   onChange,
@@ -26,12 +45,14 @@ export function MobileMapSearchBar({
   focused,
   onFocus,
   onBlur,
-  /** 추천 칩 선택 시 즉시 필터 반영(디바운스 생략) */
   onSuggestionPick,
-  /** 비어 있지 않으면 필드 아래 상태 칩 */
   statusQuery = '',
-  /** 적용 검색어와 동일한 칩에 선택 강조 */
   activeQuickQuery = '',
+  /** 검색 포커스(키보드) 또는 상세 full 등에서 퀵칩 숨김 */
+  suppressQuickChips = false,
+  /** 검색 결과 모드: leading 로고 대신 뒤로(검색 종료) */
+  searchResultsMode = false,
+  onSearchBack,
 }) {
   const { colors, tokens } = useEvTheme()
   const blurTimer = useRef(0)
@@ -60,7 +81,17 @@ export function MobileMapSearchBar({
   const searchIdleShadow = tokens.shadow.float
 
   return (
-    <Box sx={{ position: 'relative', flex: 1, minWidth: 0, alignSelf: 'flex-start' }}>
+    <Box
+      sx={{
+        position: 'relative',
+        flex: 1,
+        minWidth: 0,
+        alignSelf: 'flex-start',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 0,
+      }}
+    >
       <TextField
         size="small"
         placeholder="충전소명 · 지역 · 급속/완속 검색"
@@ -78,6 +109,7 @@ export function MobileMapSearchBar({
         sx={{
           flex: 1,
           minWidth: 0,
+          width: '100%',
           height: mobileMapChrome.searchPillH,
           '& .MuiOutlinedInput-root': {
             height: mobileMapChrome.searchPillH,
@@ -88,14 +120,13 @@ export function MobileMapSearchBar({
             bgcolor: tokens.control.searchBg,
             borderRadius: radius.full,
             boxShadow: focused ? searchFocusShadow : searchIdleShadow,
-            pl: '16px',
+            pl: '12px',
             pr: '10px',
             transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
             '& fieldset': { borderColor: tokens.control.searchBorder },
             '&:hover fieldset': { borderColor: tokens.border.strong },
             '&.Mui-focused fieldset': { borderColor: colors.blue.primary, borderWidth: 1 },
             alignItems: 'center',
-            /* 포커스 시 높이·패딩 변화 없음(MUI small 기본 보정) */
             '&.Mui-focused': {
               minHeight: mobileMapChrome.searchPillH,
               height: mobileMapChrome.searchPillH,
@@ -118,7 +149,7 @@ export function MobileMapSearchBar({
               <InputAdornment
                 position="start"
                 sx={{
-                  mr: '11px',
+                  mr: searchResultsMode ? '8px' : '12px',
                   ml: 0,
                   display: 'flex',
                   alignItems: 'center',
@@ -126,18 +157,37 @@ export function MobileMapSearchBar({
                   maxHeight: 'none',
                 }}
               >
-                <Box
-                  component="span"
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    lineHeight: 0,
-                  }}
-                  aria-hidden
-                >
-                  <EvBrandSearchLogo size={22} />
-                </Box>
+                {searchResultsMode && onSearchBack ? (
+                  <IconButton
+                    type="button"
+                    size="small"
+                    aria-label="검색 결과 닫기"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => onSearchBack()}
+                    sx={{
+                      p: 0.5,
+                      ml: -0.5,
+                      color: colors.gray[700],
+                      borderRadius: radius.md,
+                    }}
+                  >
+                    <ArrowBack sx={{ fontSize: 22 }} />
+                  </IconButton>
+                ) : (
+                  <Box
+                    component="span"
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      height: mobileMapChrome.searchPillH,
+                      lineHeight: 0,
+                    }}
+                    aria-hidden
+                  >
+                    <EvBrandSearchLogo />
+                  </Box>
+                )}
               </InputAdornment>
             ),
             endAdornment: value.trim() ? (
@@ -161,9 +211,7 @@ export function MobileMapSearchBar({
       {statusQuery.trim() ? (
         <Box
           sx={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
+            position: 'relative',
             mt: 0.5,
             zIndex: 2,
             pointerEvents: 'auto',
@@ -189,34 +237,30 @@ export function MobileMapSearchBar({
         </Box>
       ) : null}
 
-      {focused && !value.trim() ? (
+      {!suppressQuickChips ? (
         <Box
+          component="nav"
+          aria-label="빠른 검색 제안"
           sx={{
-            position: 'absolute',
-            top: '100%',
-            left: 0,
-            right: 0,
-            mt: 0.75,
-            zIndex: 2,
+            mt: 1,
             display: 'flex',
             flexWrap: 'wrap',
             alignItems: 'center',
             gap: `${QUICK_CHIP_GAP_PX}px`,
             width: '100%',
             minWidth: 0,
-            p: 1.25,
-            borderRadius: `${radius.md}px`,
-            bgcolor: tokens.bg.paper,
-            boxShadow: tokens.shadow.float,
-            border: `1px solid ${colors.gray[200]}`,
             pointerEvents: 'auto',
           }}
         >
-          {SUGGESTIONS.map((label) => {
+          {QUICK_SUGGESTIONS.map(({ label, Icon }) => {
             const active = activeQuickQuery.trim() === label.trim()
             return (
               <Chip
                 key={label}
+                icon={createElement(Icon, {
+                  sx: { ...ICON_SX, color: active ? colors.blue.deep : colors.gray[600] },
+                  'aria-hidden': true,
+                })}
                 label={label}
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applySuggestion(label)}
@@ -227,12 +271,17 @@ export function MobileMapSearchBar({
                   fontWeight: 600,
                   bgcolor: active ? tokens.blue.mutedStrong : colors.gray[100],
                   color: active ? colors.blue.deep : colors.gray[800],
-                  border: active ? `2px solid ${colors.blue.primary}` : `1px solid ${colors.gray[200]}`,
-                  boxShadow: active ? `0 2px 10px ${tokens.blue.glowSoft}` : 'none',
-                  transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                  border: active ? `1px solid ${colors.blue.primary}` : `1px solid ${colors.gray[200]}`,
+                  boxShadow: 'none',
+                  transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+                  '& .MuiChip-icon': {
+                    marginLeft: '10px',
+                    marginRight: `${QUICK_ICON_TEXT_GAP_PX}px`,
+                  },
                   '& .MuiChip-label': {
                     px: `${QUICK_CHIP_PAD_X}px`,
                     py: 0,
+                    pl: 0,
                   },
                   '&:hover': {
                     bgcolor: active ? tokens.blue.muted : colors.gray[200],

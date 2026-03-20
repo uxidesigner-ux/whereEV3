@@ -53,3 +53,11 @@ UI는 **기본 row(실데이터 필드) + 표시용 `stat` + `getChargerSessionF
 - `src/dev/mockEvChargers.js` — DEV 목록 대체 + 오버레이
 - `src/components/StationDetailContent.jsx` — row + 세션 합성·안내 문구
 - `src/App.jsx` — 데이터 로드 분기
+
+---
+
+## 목록 fetch·지도 표시 (whereEV3)
+
+- **Safemap `fetchEvChargers`:** `response.body.totalCount`가 있으면 페이지를 순회해 **가능한 한 전부** 적재한다. `numOfRows`·`maxPages` 상한에 걸리면 그때까지가 한계(예: 500×200페이지까지).
+- **지도:** `items` 전체를 장소(`placeKey`) 단위로 묶어 마커로 표시하고, **Leaflet.markercluster**로 줌에 따라 클러스터/개별 전환.
+- **시트·KPI:** 기존과 같이 `filteredItems` → 뷰포트 `itemsInScope` → 목록 그룹 파이프라인(검색·필터·이 지역 검색).

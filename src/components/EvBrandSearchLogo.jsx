@@ -1,7 +1,8 @@
 import { useId } from 'react'
 import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 
-const SIZE_PX = 22
+/** 검색바 leading 마크 기본 크기(22px → 약 150% = 33px) */
+const SIZE_PX = 33
 
 /**
  * 모바일 검색바 leading 브랜드 마크. 그라데이션 핀 + 번개 실루엣.

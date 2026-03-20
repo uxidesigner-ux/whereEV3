@@ -251,6 +251,8 @@ export const mobileMapChrome = {
   padY: 10,
   /** 좁힐수록 플로팅 검색 pill이 넓어짐 (safe-area min과 함께 사용) */
   padX: 8,
+  /** 검색바 아래 퀵칩 레일(기본 2줄 flex-wrap) 예상 높이 — 시트/토스트 top 보정 */
+  quickChipsBelowSearchPx: 108,
   /** @deprecated tokens.shadow.float */
   floatShadow: L.shadow.float,
 }
@@ -260,6 +262,8 @@ export const sheetLayout = {
   /** 목록 시트 접힘 높이 — 핸들+결과 메타 한 줄 기준 */
   collapsedPx: 78,
   halfVhRatio: 0.42,
+  /** 검색 결과 모드: 지도 크게 보기(searchMapPeek) 시트 높이 ≈ 뷰포트 비율 (10~14% 권장) */
+  searchResultsPeekVhRatio: 0.12,
   /** @deprecated 플로팅 크롬 — 호환용 */
   topChromePx: 56,
   mobileTopBarInsetPx: mobileMapChrome.padY,
@@ -271,7 +275,7 @@ export const sheetLayout = {
   mobileTopBarStackPx:
     mobileMapChrome.safeAreaInnerTopPad +
     Math.max(
-      mobileMapChrome.searchPillH,
+      mobileMapChrome.searchPillH + mobileMapChrome.quickChipsBelowSearchPx,
       mobileMapChrome.fabSize * 2 + mobileMapChrome.rowGap,
     ) +
     mobileMapChrome.padY,

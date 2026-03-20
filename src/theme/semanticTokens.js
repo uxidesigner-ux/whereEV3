@@ -49,7 +49,8 @@ export const lightTokens = {
     unknown: { chipBg: '#f3f4f6', fg: '#1f2937', border: '#e5e7eb' },
   },
   map: {
-    tileUrl: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png',
+    /** light_all 대비 한 단계 눌린 뉴트럴 톤(Voyager) */
+    tileUrl: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
     tileAttribution:
       '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>',
     fenceFill: '#434a58',
