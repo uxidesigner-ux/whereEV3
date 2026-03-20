@@ -3,7 +3,7 @@ import { useMap } from 'react-leaflet'
 import { zoomForHorizontalSpanMeters } from '../utils/mapZoomMeters.js'
 
 /**
- * 앱 최초 1회: 위치 권한 허용 시 현재 위치 중심 + 가로폭 ≈ 100m 줌.
+ * 앱 최초 1회: 위치 권한 허용 시 현재 위치 중심 + 가로폭 ≈ 1000m 줌.
  * 실패·거부 시 기존 MapContainer 초기 center/zoom 유지. (로딩 UI 없음 — 내 위치 버튼과 구분)
  */
 export function MapInitialGeolocation({ setUserLocation }) {
@@ -27,7 +27,7 @@ export function MapInitialGeolocation({ setUserLocation }) {
               : typeof window !== 'undefined'
                 ? window.innerWidth
                 : 400
-          const z = zoomForHorizontalSpanMeters(w, 100, lat)
+          const z = zoomForHorizontalSpanMeters(w, 1000, lat)
           map.setView([lat, lng], z, { animate: false })
           setUserLocation({ lat, lng })
         }

@@ -429,6 +429,8 @@ function App() {
   const sheetSnapBeforeDetailRef = useRef(/** @type {'closed' | 'half' | 'full'} */ ('closed'))
   const [mobileListSort, setMobileListSort] = useState(/** @type {'distance' | 'name'} */ ('distance'))
   const [mobileListAvailOnly, setMobileListAvailOnly] = useState(false)
+  /** 클러스터 탭으로 연 목록(지도 묶음 전용 — 상세·검색 파이프라인과 분리) */
+  const [clusterBrowseGrouped, setClusterBrowseGrouped] = useState(null)
   const sheetListScrollRef = useRef(null)
   /** 데스크톱 좌측 패널(SideOverlayPanel 루트) 스크롤 — 상세 닫기 후 복원 */
   const desktopPanelScrollRef = useRef(null)
@@ -481,6 +483,7 @@ function App() {
     setSearchInput('')
     setSearchQuery('')
     lastFittedSearchQueryRef.current = ''
+    setClusterBrowseGrouped(null)
     if (isMobileRef.current) setMobileSheetSnap('closed')
   }, [])
 
@@ -529,6 +532,12 @@ function App() {
     detailStationRef.current = null
   }, [searchQuery, isMobile])
 
+  /** 검색 활성 시 클러스터 전용 목록 해제(검색 결과와 상태 혼동 방지) */
+  useEffect(() => {
+    if (!isMobile) return
+    if (searchQuery.trim()) setClusterBrowseGrouped(null)
+  }, [searchQuery, isMobile])
+
   /**
    * 데스크톱 전환 시 스택·플래그만 정리(히스토리 엔트리는 브라우저에 남을 수 있음).
    * 잔여 pushState는 전역 popstate(아래 effect)에서 열린 오버레이가 있으면 동기화한다.
@@ -568,6 +577,7 @@ function App() {
   }, [])
 
   const openDetailPreserve = useCallback((s) => {
+    setClusterBrowseGrouped(null)
     const scrollSaveEl = isMobile ? sheetListScrollRef.current : desktopPanelScrollRef.current
     if (scrollSaveEl) savedListScrollTopRef.current = scrollSaveEl.scrollTop
     mapSelectedStationRef.current = s
@@ -766,6 +776,7 @@ function App() {
   /** 「이 지역 검색」: 영역 적용 + 목록 시트를 검색 결과 모드로(포커스·상세 초기화) */
   const applySearchAreaFromMap = useCallback(() => {
     setAppliedMapBounds(liveMapBoundsRef.current)
+    setClusterBrowseGrouped(null)
     if (isMobile) {
       openMobileListSheetToHalf()
     }
@@ -774,6 +785,16 @@ function App() {
     setDetailStation(null)
     detailStationRef.current = null
   }, [isMobile, openMobileListSheetToHalf])
+
+  const handleClusterStationsTap = useCallback(({ stations }) => {
+    if (!isMobile || !Array.isArray(stations) || stations.length === 0) return
+    setDetailStation(null)
+    detailStationRef.current = null
+    mapSelectedStationRef.current = null
+    setMapSelectedStation(null)
+    setClusterBrowseGrouped(stations)
+    setMobileSheetSnap('half')
+  }, [isMobile])
 
   useEffect(() => {
     const key = (import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
@@ -977,6 +998,29 @@ function App() {
     return arr
   }, [groupedItemsInScope, mobileListAvailOnly, mobileListSort])
 
+  const clusterBrowseActive = Array.isArray(clusterBrowseGrouped) && clusterBrowseGrouped.length > 0
+
+  const clusterBrowseListSorted = useMemo(() => {
+    if (clusterBrowseGrouped == null) return null
+    const ref = userLocation || mapCenter
+    const withDist = clusterBrowseGrouped.map((s) => ({
+      ...s,
+      distanceKm: haversineDistanceKm(ref.lat, ref.lng, s.lat, s.lng),
+    }))
+    let g = withDist
+    if (mobileListAvailOnly) g = g.filter((s) => (s.statCounts['2'] ?? 0) > 0)
+    const arr = [...g]
+    if (mobileListSort === 'name') {
+      arr.sort((a, b) => a.statNm.localeCompare(b.statNm, 'ko', { numeric: true }))
+    } else {
+      arr.sort((a, b) => a.distanceKm - b.distanceKm)
+    }
+    return arr
+  }, [clusterBrowseGrouped, userLocation, mapCenter, mobileListAvailOnly, mobileListSort])
+
+  const stationsForMobileListEffective =
+    clusterBrowseListSorted != null ? clusterBrowseListSorted : stationsForMobileList
+
   const hasAvailInGroupedScope = useMemo(
     () => groupedItemsInScope.some((s) => (s.statCounts?.['2'] ?? 0) > 0),
     [groupedItemsInScope]
@@ -1034,9 +1078,10 @@ function App() {
   const listSheetHeaderMode = useMemo(() => {
     if (detailStation) return 'detail'
     if (searchQuery.trim()) return 'searchResults'
+    if (clusterBrowseActive) return 'clusterBrowse'
     if (mapSelectedStation) return 'stationFocus'
     return 'searchResults'
-  }, [detailStation, mapSelectedStation, searchQuery])
+  }, [detailStation, mapSelectedStation, searchQuery, clusterBrowseActive])
 
   const searchNavActive = searchQuery.trim().length > 0
   /** 모바일: 검색 결과 전용 시트 레이아웃(상세와 분리 — 상세 시 엔 false) */
@@ -1053,9 +1098,10 @@ function App() {
   /** 큰 제목 대신 한 줄 메타(탐색 control rail 상단) */
   const listSheetMetaLine = useMemo(() => {
     if (appliedMapBounds == null) return '지도 영역 준비 중…'
-    if (searchNavActive) return `검색 결과 ${stationsForMobileList.length}곳`
-    return `이 지역 ${stationsForMobileList.length}곳`
-  }, [appliedMapBounds, searchNavActive, stationsForMobileList.length])
+    if (searchNavActive) return `검색 결과 ${stationsForMobileListEffective.length}곳`
+    if (clusterBrowseActive) return `이 구역 묶음 ${stationsForMobileListEffective.length}곳`
+    return `이 지역 ${stationsForMobileListEffective.length}곳`
+  }, [appliedMapBounds, searchNavActive, clusterBrowseActive, stationsForMobileListEffective.length])
 
   /**
    * 지도 전용: 현재 로드된 `items` 중 디바운스+패딩 뷰포트 안만 클러스터(성능).
@@ -1627,25 +1673,31 @@ function App() {
             <MobileDetailSheetBody station={detailStation} chargerSummaryUpdatedInHeader={chargerSummaryUpdatedInHeader} />
           ) : (
             <StationListMobile
-              key={`scope-${appliedMapBounds ? [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng, appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng].join(',') : 'none'}`}
-              stations={stationsForMobileList}
+              key={`scope-${clusterBrowseActive ? `cluster-${clusterBrowseGrouped.map((s) => s.id).join(',')}` : appliedMapBounds ? [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng, appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng].join(',') : 'none'}`}
+              stations={stationsForMobileListEffective}
               selectedId={mapSelectedStation?.id}
               loadingBounds={appliedMapBounds == null}
               loadingHint="지도에 적용할 검색 영역을 준비하는 중입니다."
               emptyMessage={
-                groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
-                  ? '이 조건에 맞는 충전소가 없습니다'
-                  : (mobileListEmptyInfo?.title ?? '표시할 충전소가 없습니다')
+                clusterBrowseActive && stationsForMobileListEffective.length === 0
+                  ? '이 묶음에서 조건에 맞는 충전소가 없습니다'
+                  : groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                    ? '이 조건에 맞는 충전소가 없습니다'
+                    : (mobileListEmptyInfo?.title ?? '표시할 충전소가 없습니다')
               }
               emptySubMessage={
-                groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
-                  ? '빠른 필터를 바꾸거나 전체 필터에서 조건을 조정해 보세요.'
-                  : mobileListEmptyInfo?.subtitle
+                clusterBrowseActive && stationsForMobileListEffective.length === 0
+                  ? '「사용 가능만」을 끄거나 정렬을 바꿔 보세요.'
+                  : groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                    ? '빠른 필터를 바꾸거나 전체 필터에서 조건을 조정해 보세요.'
+                    : mobileListEmptyInfo?.subtitle
               }
               emptyVariant={
-                groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                clusterBrowseActive && stationsForMobileListEffective.length === 0
                   ? 'no_filter'
-                  : (mobileListEmptyInfo?.variant ?? 'no_in_view')
+                  : groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                    ? 'no_filter'
+                    : (mobileListEmptyInfo?.variant ?? 'no_in_view')
               }
               onOpenDetail={openDetailPreserve}
             />
@@ -1797,8 +1849,8 @@ function App() {
               <Box
                 sx={{
                   display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
                   flexShrink: 0,
                   mt: 0,
                   gap: `${mobileMapChrome.rowGap}px`,
@@ -1898,6 +1950,7 @@ function App() {
             <EvStationMapLayer
               stations={groupedAllStationsForMap}
               onDetailClick={openDetailPreserve}
+              onClusterTap={handleClusterStationsTap}
               selectedId={mapSelectedStation?.id}
               isMobile={isMobile}
               defaultMarkerIcon={DEFAULT_MARKER_ICON}

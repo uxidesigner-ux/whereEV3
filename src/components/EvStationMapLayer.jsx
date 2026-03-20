@@ -1,5 +1,5 @@
 import { useCallback } from 'react'
-import { Marker, Popup, TileLayer } from 'react-leaflet'
+import { Marker, Popup, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { Box, Button, Typography } from '@mui/material'
 import { useTheme } from '@mui/material/styles'
@@ -25,6 +25,7 @@ function mapPopupMetaLine(s) {
 export function EvStationMapLayer({
   stations,
   onDetailClick,
+  onClusterTap,
   selectedId,
   isMobile,
   defaultMarkerIcon,
@@ -34,6 +35,7 @@ export function EvStationMapLayer({
   mapTileUrl,
   mapTileAttribution,
 }) {
+  const map = useMap()
   const muiThemeLocal = useTheme()
   const { colors, resolvedMode } = useEvTheme()
 
@@ -78,8 +80,36 @@ export function EvStationMapLayer({
         iconCreateFunction={iconCreateFunction}
         onClusterClick={(e) => {
           const layer = e.layer
-          if (layer && typeof layer.zoomToBounds === 'function') {
-            layer.zoomToBounds({ padding: [56, 56], maxZoom: 17 })
+          if (!layer) return
+          const bounds = typeof layer.getBounds === 'function' ? layer.getBounds() : null
+          const raw = typeof layer.getAllChildMarkers === 'function' ? layer.getAllChildMarkers() : []
+          const picked = []
+          const seen = new Set()
+          for (const m of raw) {
+            const st = m.options?.evStation
+            if (st?.id != null && st.id !== '') {
+              if (!seen.has(st.id)) {
+                seen.add(st.id)
+                picked.push(st)
+              }
+            }
+          }
+          if (picked.length === 0 && stations?.length && bounds?.isValid?.()) {
+            for (const s of stations) {
+              if (s?.id != null && bounds.contains([s.lat, s.lng]) && !seen.has(s.id)) {
+                seen.add(s.id)
+                picked.push(s)
+              }
+            }
+          }
+          if (picked.length > 0 && typeof onClusterTap === 'function') {
+            onClusterTap({ stations: picked, bounds })
+          }
+          if (map && bounds?.isValid?.() && picked.length > 0) {
+            const center = bounds.getCenter()
+            if (!map.getBounds().contains(center)) {
+              map.panTo(center, { animate: true, duration: 0.2 })
+            }
           }
         }}
       >
@@ -91,6 +121,7 @@ export function EvStationMapLayer({
             <Marker
               key={s.id}
               position={[s.lat, s.lng]}
+              evStation={s}
               icon={iconFor(s.id)}
               zIndexOffset={selectedId === s.id ? 700 : 0}
               eventHandlers={

@@ -243,15 +243,32 @@ export function MobileMapSearchBar({
           aria-label="빠른 검색 제안"
           sx={{
             mt: 1,
-            display: 'flex',
-            flexWrap: 'wrap',
-            alignItems: 'center',
-            gap: `${QUICK_CHIP_GAP_PX}px`,
             width: '100%',
             minWidth: 0,
+            mx: 0,
+            px: 0,
             pointerEvents: 'auto',
+            overflowX: 'auto',
+            overflowY: 'hidden',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+            '&::-webkit-scrollbar': { display: 'none' },
           }}
         >
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              flexWrap: 'nowrap',
+              alignItems: 'center',
+              gap: `${QUICK_CHIP_GAP_PX}px`,
+              width: 'max-content',
+              minWidth: '100%',
+              pr: '2px',
+              boxSizing: 'border-box',
+            }}
+          >
           {QUICK_SUGGESTIONS.map(({ label, Icon }) => {
             const active = activeQuickQuery.trim() === label.trim()
             return (
@@ -265,6 +282,7 @@ export function MobileMapSearchBar({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => applySuggestion(label)}
                 sx={{
+                  flexShrink: 0,
                   height: QUICK_CHIP_H,
                   borderRadius: 9999,
                   fontSize: `${QUICK_CHIP_FONT_PX}px`,
@@ -294,6 +312,7 @@ export function MobileMapSearchBar({
               />
             )
           })}
+          </Box>
         </Box>
       ) : null}
     </Box>

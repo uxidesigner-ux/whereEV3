@@ -251,8 +251,8 @@ export const mobileMapChrome = {
   padY: 10,
   /** 좁힐수록 플로팅 검색 pill이 넓어짐 (safe-area min과 함께 사용) */
   padX: 8,
-  /** 검색바 아래 퀵칩 레일(기본 2줄 flex-wrap) 예상 높이 — 시트/토스트 top 보정 */
-  quickChipsBelowSearchPx: 108,
+  /** 검색바 아래 영역(상태 칩·퀵 레일 한 줄) 예상 높이 — 시트/토스트 top 보정 */
+  quickChipsBelowSearchPx: 84,
   /** @deprecated tokens.shadow.float */
   floatShadow: L.shadow.float,
 }
@@ -270,13 +270,13 @@ export const sheetLayout = {
   mobileTopBarControlPx: mobileMapChrome.searchPillH,
   /**
    * Leaflet/목록 시트·토스트 top 보정용(픽셀): safe-area는 CSS에서 별도 합산.
-   * = safeAreaInnerTopPad + max(pill, FAB열) + 하단 padY (FAB열 = 필터+내 위치 스택)
+   * = safeAreaInnerTopPad + max(검색+칩열, FAB행 높이) + 하단 padY
    */
   mobileTopBarStackPx:
     mobileMapChrome.safeAreaInnerTopPad +
     Math.max(
       mobileMapChrome.searchPillH + mobileMapChrome.quickChipsBelowSearchPx,
-      mobileMapChrome.fabSize * 2 + mobileMapChrome.rowGap,
+      mobileMapChrome.fabSize,
     ) +
     mobileMapChrome.padY,
 }
