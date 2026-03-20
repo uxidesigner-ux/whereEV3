@@ -1,11 +1,9 @@
-import { Box, IconButton, Typography } from '@mui/material'
+import { Box, Button, Chip, Typography } from '@mui/material'
 import MapOutlined from '@mui/icons-material/MapOutlined'
-import InfoOutlined from '@mui/icons-material/InfoOutlined'
 import SearchOff from '@mui/icons-material/SearchOff'
 import InboxOutlined from '@mui/icons-material/InboxOutlined'
 import { appMobileType, colors, motion, radius } from '../theme/dashboardTheme.js'
 import { formatDistanceKm } from '../utils/geo.js'
-import { pickPrimaryAddress } from '../api/safemapEv.js'
 
 const EMPTY_ICONS = {
   no_data: InboxOutlined,
@@ -14,8 +12,7 @@ const EMPTY_ICONS = {
 }
 
 /**
- * 모바일 시트용 충전소 목록.
- * 좌측: 지도에서 포커스만 / 우측: 상세 시트 진입.
+ * 모바일 시트: 지도 검색 결과 리스트(리스트 아이템 밀도, 상세 패널 아님).
  */
 export function StationListMobile({
   stations = [],
@@ -39,7 +36,7 @@ export function StationListMobile({
             <Box
               key={i}
               sx={{
-                height: 52,
+                height: 44,
                 borderRadius: 1,
                 bgcolor: colors.gray[200],
                 animation: 'ev-shimmer 1.1s ease-in-out infinite',
@@ -92,141 +89,143 @@ export function StationListMobile({
       </Box>
     )
   }
+
+  const textActionSx = {
+    minWidth: 0,
+    minHeight: 32,
+    py: 0.25,
+    px: 0.75,
+    fontSize: '0.75rem',
+    fontWeight: 700,
+    textTransform: 'none',
+    borderRadius: `${radius.xs}px`,
+  }
+
   return (
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.625 }}>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.375 }}>
       {stations.map((s) => {
         const isSelected = selectedId != null && s.id === selectedId
-        const addrLine = pickPrimaryAddress(s)
+        const distLabel = formatDistanceKm(s.distanceKm)
+        const speedBadge = s.speedBadge ?? null
+        const locationHint = s.locationHint ?? ''
         return (
           <Box
             key={s.id}
             data-ev-station-id={s.id}
             sx={{
-              display: 'flex',
-              alignItems: 'stretch',
-              borderRadius: 1,
-              border: `1px solid ${isSelected ? colors.blue.primary : colors.gray[200]}`,
-              bgcolor: isSelected ? colors.blue.muted : colors.gray[50],
-              overflow: 'hidden',
+              borderRadius: `${radius.xs}px`,
+              border: `1px solid ${isSelected ? 'rgba(37,99,235,0.22)' : 'rgba(0,0,0,0.06)'}`,
+              bgcolor: isSelected ? 'rgba(37,99,235,0.04)' : 'transparent',
+              px: 1,
+              pt: 0.65,
+              pb: 0.45,
               transition: `border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
             }}
           >
-            <Box
-              component="button"
-              type="button"
-              aria-pressed={isSelected}
-              aria-label={`${s.statNm}, 지도에서 보기`}
-              onClick={() => onSelect(s)}
-              sx={{
-                flex: 1,
-                minWidth: 0,
-                textAlign: 'left',
-                p: 1,
-                minHeight: 56,
-                border: 'none',
-                bgcolor: 'transparent',
-                cursor: 'pointer',
-                borderRadius: 0,
-                WebkitTapHighlightColor: 'transparent',
-                transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, transform 0.12s ease`,
-                display: 'flex',
-                gap: 0.75,
-                alignItems: 'flex-start',
-                '&:hover': { bgcolor: isSelected ? 'rgba(255,255,255,0.35)' : 'rgba(255,255,255,0.7)' },
-                '&:active': { bgcolor: colors.gray[100], transform: 'scale(0.997)' },
-              }}
-            >
-              <Box
+            <Box sx={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 1, mb: 0.2 }}>
+              <Typography
+                variant="subtitle1"
+                component="div"
                 sx={{
-                  flexShrink: 0,
-                  width: 32,
-                  height: 32,
-                  borderRadius: `${radius.sm}px`,
-                  bgcolor: isSelected ? 'rgba(37,99,235,0.15)' : colors.gray[100],
-                  border: `1px solid ${isSelected ? colors.blue.primary : colors.gray[200]}`,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: isSelected ? colors.blue.primary : colors.gray[600],
-                  mt: 0.125,
+                  fontWeight: 700,
+                  lineHeight: 1.3,
+                  ...appMobileType.listSheetTitle,
+                  flex: 1,
+                  minWidth: 0,
+                  color: isSelected ? colors.blue.deep : colors.gray[900],
                 }}
-                aria-hidden
               >
-                <MapOutlined sx={{ fontSize: 18 }} />
-              </Box>
-              <Box sx={{ minWidth: 0, flex: 1 }}>
-                <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mb: 0.125, ...appMobileType.listEyebrow }}>
-                  지도에서 보기
+                {s.statNm}
+              </Typography>
+              {distLabel && (
+                <Typography
+                  variant="body2"
+                  component="span"
+                  sx={{
+                    flexShrink: 0,
+                    fontWeight: 700,
+                    color: isSelected ? colors.blue.primary : colors.gray[600],
+                    ...appMobileType.bodyStrong,
+                    fontSize: { xs: '0.8125rem', md: '0.875rem' },
+                  }}
+                >
+                  {distLabel}
                 </Typography>
-                <Typography variant="subtitle1" sx={{ fontWeight: 700, color: colors.gray[900], lineHeight: 1.3, ...appMobileType.chargerCardTitle }}>
-                  {s.statNm}
-                </Typography>
-                {addrLine && (
-                  <Typography
-                    variant="caption"
+              )}
+            </Box>
+
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.4, mb: locationHint ? 0.2 : 0 }}>
+              <Typography variant="body2" sx={{ color: colors.gray[600], ...appMobileType.body, fontSize: '0.8125rem', minWidth: 0 }}>
+                {s.busiNm || '—'}
+              </Typography>
+              {speedBadge && (
+                <Chip
+                  label={speedBadge}
+                  size="small"
+                  sx={{
+                    height: 20,
+                    fontSize: '0.625rem',
+                    fontWeight: 700,
+                    bgcolor: 'rgba(0,0,0,0.04)',
+                    color: colors.gray[600],
+                    border: 'none',
+                    '& .MuiChip-label': { px: 0.5, py: 0 },
+                  }}
+                />
+              )}
+            </Box>
+
+            {locationHint ? (
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  color: colors.gray[500],
+                  fontSize: '0.6875rem',
+                  lineHeight: 1.35,
+                  mb: 0.15,
+                }}
+              >
+                {locationHint}
+              </Typography>
+            ) : null}
+
+            <Box sx={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: 0.25, mt: 0.15 }}>
+              <Button
+                type="button"
+                aria-pressed={isSelected}
+                aria-label={`${s.statNm}, 지도에서 보기`}
+                variant="text"
+                onClick={() => onSelect(s)}
+                sx={{
+                  ...textActionSx,
+                  color: colors.gray[700],
+                  '&:hover': { bgcolor: 'rgba(0,0,0,0.04)' },
+                }}
+              >
+                지도
+              </Button>
+              {onOpenDetail ? (
+                <>
+                  <Typography component="span" sx={{ color: colors.gray[300], fontSize: '0.65rem', userSelect: 'none', px: 0.125 }} aria-hidden>
+                    |
+                  </Typography>
+                  <Button
+                    type="button"
+                    aria-label={`${s.statNm} 상세`}
+                    variant="text"
+                    onClick={() => onOpenDetail(s)}
                     sx={{
-                      color: colors.gray[600],
-                      display: 'block',
-                      mt: 0.25,
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
-                      ...appMobileType.listMeta,
+                      ...textActionSx,
+                      color: colors.blue.primary,
+                      '&:hover': { bgcolor: 'rgba(37,99,235,0.06)' },
                     }}
                   >
-                    {addrLine}
-                  </Typography>
-                )}
-                <Typography variant="body2" sx={{ color: colors.gray[600], display: 'block', mt: 0.35, ...appMobileType.body }}>
-                  {s.busiNm} · {s.chgerTyLabel}
-                </Typography>
-                {(s.totalChargers != null && s.totalChargers > 0) && (
-                  <Typography variant="caption" sx={{ color: colors.gray[600], display: 'block', mt: 0.25, ...appMobileType.secondary }}>
-                    총 {s.totalChargers}대{s.statSummary ? ` · ${s.statSummary}` : ''}
-                  </Typography>
-                )}
-                {s.distanceKm != null && (
-                  <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mt: 0.125, ...appMobileType.caption }}>
-                    {formatDistanceKm(s.distanceKm)}
-                  </Typography>
-                )}
-              </Box>
+                    상세
+                  </Button>
+                </>
+              ) : null}
             </Box>
-            {onOpenDetail && (
-              <Box
-                component="button"
-                type="button"
-                aria-label={`${s.statNm} 상세 정보 열기`}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  onOpenDetail(s)
-                }}
-                sx={{
-                  flexShrink: 0,
-                  width: 56,
-                  minWidth: 56,
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 0.25,
-                  border: 'none',
-                  borderLeft: `1px solid ${colors.gray[200]}`,
-                  bgcolor: colors.white,
-                  cursor: 'pointer',
-                  color: colors.gray[700],
-                  WebkitTapHighlightColor: 'transparent',
-                  transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, transform 0.12s ease`,
-                  '&:hover': { bgcolor: colors.gray[50], color: colors.gray[900] },
-                  '&:active': { bgcolor: colors.gray[100], transform: 'scale(0.97)' },
-                }}
-              >
-                <InfoOutlined sx={{ fontSize: 22, color: colors.blue.primary }} />
-                <Typography variant="caption" sx={{ color: colors.gray[700], ...appMobileType.detailTabLabel }}>
-                  상세
-                </Typography>
-              </Box>
-            )}
           </Box>
         )
       })}

@@ -91,6 +91,9 @@ export const motion = {
   },
   duration: {
     sheet: 300,
+    /** 상세 Drawer 등 오버레이 진입 — 목록 시트와 리듬 맞춤 */
+    detailEnter: 280,
+    detailExit: 200,
     enter: 220,
     exit: 180,
     /** 좌측 데스크톱 패널 슬라이드 */

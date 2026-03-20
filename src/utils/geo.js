@@ -36,3 +36,43 @@ export function formatListSummary(arr, maxShow = 2) {
   if (uniq.length <= maxShow) return uniq.join(' · ')
   return uniq.slice(0, maxShow).join(' · ') + ` +${uniq.length - maxShow}`
 }
+
+/**
+ * 그룹 내 충전기 급속/완속 요약 — 목록 뱃지용.
+ * @param {{ speedCategory?: string }[]} rows
+ * @returns {string | null}
+ */
+export function summarizeSpeedCategories(rows) {
+  const cats = [...new Set((rows || []).map((r) => r.speedCategory).filter(Boolean))]
+  if (cats.length === 0) return null
+  if (cats.length === 1) return cats[0]
+  return '혼합'
+}
+
+/**
+ * 목록용 짧은 위치 맥락(시·구 등). 전체 도로명 주소는 상세로 유도.
+ * @param {{ rnAdres?: string, adres?: string }[]} rows
+ * @param {{ rnAdres?: string, adres?: string }} firstRow
+ */
+export function pickShortLocationHint(rows, firstRow) {
+  const tryLine = () => {
+    const a = (firstRow?.rnAdres || firstRow?.adres || '').trim()
+    if (a) return a
+    for (const r of rows || []) {
+      const t = (r.rnAdres || r.adres || '').trim()
+      if (t) return t
+    }
+    return ''
+  }
+  const line = tryLine()
+  if (!line) return ''
+  const m = line.match(
+    /([가-힣]+(?:특별시|광역시|특별자치시|특별자치도|도)\s+[가-힣]+(?:구|군|시))/
+  )
+  if (m) return m[1].replace(/\s+/g, ' ')
+  const m2 = line.match(/([가-힣]+시\s+[가-힣]+(?:구|군))/)
+  if (m2) return m2[1].replace(/\s+/g, ' ')
+  const parts = line.split(/\s+/).filter(Boolean)
+  if (parts.length >= 2) return `${parts[0]} ${parts[1]}`.slice(0, 32)
+  return line.length > 28 ? `${line.slice(0, 28)}…` : line
+}

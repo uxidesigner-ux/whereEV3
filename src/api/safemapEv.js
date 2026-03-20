@@ -4,6 +4,7 @@
  */
 
 import { webMercatorToLatLng } from '../utils/coordTransform.js'
+import { applyMvpChargerOverlay } from '../data/chargerSessionMvp.js'
 
 const SAFEMAP_BASE =
   typeof import.meta !== 'undefined' && import.meta.env?.VITE_SAFEMAP_API_BASE
@@ -225,14 +226,15 @@ export function normalizeCharger(item, index) {
   }
   const chgerTyCode = get(item, 'chger_ty', 'chgerTy') || ''
   const chgerTyLabel = getChgerTyLabel(chgerTyCode)
-  return {
+  const base = {
     /** 데이터 출처 구분: UI는 표시하지 않으나 mock/API 구분·디버깅용 */
     dataSource: 'safemap',
     id: get(item, 'chger_id', 'chgerId', 'objt_id', 'objtId') || `ev-${index}`,
     statId: get(item, 'stat_id', 'statId'),
     statNm: get(item, 'stat_nm', 'statNm') || '이름 없음',
     chgerId: get(item, 'chger_id', 'chgerId'),
-    stat: get(item, 'stat'), // 충전기 상태 코드 (1~5, 9 등)
+    /** API 원본 stat — `applyMvpChargerOverlay`에서 `apiStat`로 보존, UI용 `stat`은 MVP 시드값 */
+    stat: get(item, 'stat'),
     statUpdDt: get(item, 'stat_upd_dt', 'statUpdDt'),
     chgerTy: chgerTyCode,
     chgerTyLabel,
@@ -287,6 +289,7 @@ export function normalizeCharger(item, index) {
     lat: converted.lat,
     lng: converted.lng,
   }
+  return applyMvpChargerOverlay(base)
 }
 
 /**

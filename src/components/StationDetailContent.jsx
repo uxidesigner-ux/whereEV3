@@ -223,7 +223,7 @@ function ChargerCard({ row, idx }) {
             }}
           />
           <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mt: 0.35, ...appMobileType.captionDense }}>
-            목표 충전량 대비 진행 · MVP 세션 데이터
+            목표 충전량 대비 진행(시뮬레이션)
           </Typography>
         </Box>
       )}
@@ -364,6 +364,22 @@ export function StationDetailContent({
               )}
             </Box>
           )}
+
+          <Typography
+            variant="caption"
+            component="p"
+            sx={{
+              color: colors.gray[400],
+              display: 'block',
+              mt: totalChargers > 0 ? 0.75 : 0,
+              mb: 0,
+              ...appMobileType.captionDense,
+              fontStyle: 'italic',
+              lineHeight: 1.45,
+            }}
+          >
+            * 충전기 상태 및 충전율 정보는 MVP용 시뮬레이션 데이터입니다.
+          </Typography>
 
           <Box sx={{ mt: totalChargers > 0 ? 1 : 0 }}>
             <ChargerListHeading

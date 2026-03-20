@@ -43,10 +43,16 @@ import {
   aggregateStatCounts,
   getLatestStatUpdDt,
   formatStatSummary,
-  pickPrimaryAddress,
 } from './api/safemapEv.js'
 import { getDevMockEvChargers } from './dev/mockEvChargers.js'
-import { haversineDistanceKm, placeKey, formatListSummary } from './utils/geo.js'
+import {
+  haversineDistanceKm,
+  placeKey,
+  formatListSummary,
+  formatDistanceKm,
+  summarizeSpeedCategories,
+  pickShortLocationHint,
+} from './utils/geo.js'
 
 /** 상세/마커 동기화용: 동일 장소(placeKey) 행으로 그룹 객체 재구성 */
 function buildPlaceGroupFromRows(rows, distanceKmPreserve) {
@@ -77,6 +83,8 @@ function buildPlaceGroupFromRows(rows, distanceKmPreserve) {
     rnAdres: rnAdres || (first.rnAdres || '').trim(),
     useTm: first.useTm,
     telno: first.telno,
+    speedBadge: summarizeSpeedCategories(rows),
+    locationHint: pickShortLocationHint(rows, first),
   }
 }
 
@@ -360,6 +368,17 @@ function LocationRipple({ userLocation }) {
   )
 }
 
+function mapPopupDistOrHint(s) {
+  if (s.distanceKm != null && !Number.isNaN(s.distanceKm)) return formatDistanceKm(s.distanceKm)
+  return (s.locationHint || '').trim()
+}
+
+function mapPopupMetaLine(s) {
+  const speed = (s.speedBadge || s.speedCategory || '').trim()
+  const busi = (s.busiNm || '').trim() || '—'
+  return speed ? `${busi} · ${speed}` : busi
+}
+
 function MapView({ stations, onDetailClick, selectedId, isMobile, defaultMarkerIcon, selectedMarkerIcon }) {
   const icon = (id) => (selectedId === id ? selectedMarkerIcon : defaultMarkerIcon)
   return (
@@ -371,51 +390,79 @@ function MapView({ stations, onDetailClick, selectedId, isMobile, defaultMarkerI
         maxZoom={20}
       />
       {stations.map((s) => {
-        const addrLine = pickPrimaryAddress(s)
+        const hint = mapPopupDistOrHint(s)
+        const meta = mapPopupMetaLine(s)
+        const mapsHref = `https://www.google.com/maps/dir/?api=1&destination=${s.lat},${s.lng}`
         return (
           <Marker key={s.id} position={[s.lat, s.lng]} icon={icon(s.id)}>
-            <Popup maxWidth={isMobile ? 220 : 320}>
-              <Box component="div" sx={{ fontFamily: muiTheme.typography.fontFamily }}>
-                {isMobile ? (
-                  <>
-                    <Typography variant="subtitle2" sx={{ color: colors.blue.primary, fontWeight: 600, fontSize: '0.8125rem', lineHeight: 1.3 }}>
-                      {s.statNm}
-                    </Typography>
-                    {addrLine && (
-                      <Typography variant="caption" display="block" sx={{ color: colors.gray[600], fontSize: '0.65rem', mt: 0.25, lineHeight: 1.35 }}>
-                        {addrLine}
-                      </Typography>
-                    )}
-                    <Typography variant="caption" display="block" sx={{ color: colors.gray[600], fontSize: '0.7rem', mt: 0.25 }}>
-                      {s.displayChgerLabel ?? s.chgerTyLabel}
-                    </Typography>
-                    {onDetailClick && (
-                      <Button size="small" variant="contained" onClick={() => onDetailClick(s)} sx={{ mt: 0.75, fontSize: '0.7rem', py: 0.5, bgcolor: colors.blue.primary }}>
-                        상세 보기
-                      </Button>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <Typography variant="subtitle2" sx={{ color: colors.blue.primary, fontWeight: 600, mb: 0.5 }}>
-                      {s.statNm}
-                    </Typography>
-                    <Typography variant="caption" display="block" sx={{ color: colors.gray[600] }}>
-                      운영기관 {s.busiNm} · {s.displayChgerLabel ?? s.chgerTyLabel}
-                    </Typography>
-                    <Typography variant="caption" display="block" sx={{ color: colors.gray[500], mt: 0.5 }}>
-                      이용시간 {s.useTm || '-'} · 전화 {s.telno || '-'}
-                    </Typography>
-                    <Typography variant="caption" display="block" sx={{ color: colors.gray[500] }}>
-                      {addrLine || '-'}
-                    </Typography>
-                    {onDetailClick && (
-                      <Button size="small" variant="outlined" onClick={() => onDetailClick(s)} sx={{ mt: 1, fontSize: '0.75rem' }}>
-                        상세 보기
-                      </Button>
-                    )}
-                  </>
-                )}
+            <Popup maxWidth={isMobile ? 196 : 260}>
+              <Box
+                component="div"
+                sx={{
+                  fontFamily: muiTheme.typography.fontFamily,
+                  margin: '-4px -6px',
+                  minWidth: isMobile ? 0 : 200,
+                }}
+              >
+                <Typography
+                  component="div"
+                  sx={{
+                    fontWeight: 700,
+                    fontSize: isMobile ? '0.8125rem' : '0.875rem',
+                    color: colors.gray[900],
+                    lineHeight: 1.25,
+                  }}
+                >
+                  {s.statNm}
+                </Typography>
+                {hint ? (
+                  <Typography component="div" sx={{ fontSize: '0.6875rem', color: colors.gray[500], mt: 0.2, lineHeight: 1.35 }}>
+                    {hint}
+                  </Typography>
+                ) : null}
+                <Typography component="div" sx={{ fontSize: '0.6875rem', color: colors.gray[600], mt: 0.15, lineHeight: 1.35 }}>
+                  {meta}
+                </Typography>
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 0.25, mt: 0.5 }}>
+                  {onDetailClick ? (
+                    <Button
+                      type="button"
+                      variant="text"
+                      size="small"
+                      onClick={() => onDetailClick(s)}
+                      sx={{
+                        minWidth: 0,
+                        fontSize: '0.75rem',
+                        fontWeight: 700,
+                        py: 0.2,
+                        px: 0.5,
+                        color: colors.blue.primary,
+                        textTransform: 'none',
+                      }}
+                    >
+                      상세
+                    </Button>
+                  ) : null}
+                  <Button
+                    component="a"
+                    href={mapsHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    variant="text"
+                    size="small"
+                    sx={{
+                      minWidth: 0,
+                      fontSize: '0.75rem',
+                      fontWeight: 600,
+                      py: 0.2,
+                      px: 0.5,
+                      color: colors.gray[700],
+                      textTransform: 'none',
+                    }}
+                  >
+                    길찾기
+                  </Button>
+                </Box>
               </Box>
             </Popup>
           </Marker>
@@ -455,6 +502,10 @@ function App() {
   const detailStationRef = useRef(null)
   /** 목록 시트 스냅: 상세 진입/복귀 시에도 부모가 유지 */
   const [mobileSheetSnap, setMobileSheetSnap] = useState(/** @type {'collapsed' | 'half' | 'full'} */ ('collapsed'))
+  /** 상세 진입 직전 목록 시트 스냅 — 닫을 때 복원 */
+  const sheetSnapBeforeDetailRef = useRef(/** @type {'collapsed' | 'half' | 'full'} */ ('half'))
+  const [mobileListSort, setMobileListSort] = useState(/** @type {'distance' | 'name'} */ ('distance'))
+  const [mobileListAvailOnly, setMobileListAvailOnly] = useState(false)
   const sheetListScrollRef = useRef(null)
   /** 데스크톱 좌측 패널(SideOverlayPanel 루트) 스크롤 — 상세 닫기 후 복원 */
   const desktopPanelScrollRef = useRef(null)
@@ -518,6 +569,7 @@ function App() {
     detailHistoryPushed.current = false
     setDetailStation(null)
     detailStationRef.current = null
+    if (isMobileRef.current) setMobileSheetSnap(sheetSnapBeforeDetailRef.current)
     restoreListAfterDetailClose()
   }, [restoreListAfterDetailClose])
 
@@ -536,6 +588,7 @@ function App() {
     const same = cur?.id === s.id
     if (isMobile) {
       if (!wasOpen) {
+        sheetSnapBeforeDetailRef.current = mobileSheetSnap
         try {
           window.history.pushState({ evOverlay: 'detail' }, '')
           overlayStackRef.current.push('detail')
@@ -553,7 +606,8 @@ function App() {
     }
     setDetailStation(s)
     detailStationRef.current = s
-  }, [isMobile])
+    if (isMobile) setMobileSheetSnap('collapsed')
+  }, [isMobile, mobileSheetSnap])
 
   const handleCloseDetail = useCallback(() => {
     if (isMobile && detailHistoryPushed.current) {
@@ -567,6 +621,7 @@ function App() {
     }
     setDetailStation(null)
     detailStationRef.current = null
+    if (isMobile) setMobileSheetSnap(sheetSnapBeforeDetailRef.current)
     restoreListAfterDetailClose()
   }, [isMobile, restoreListAfterDetailClose, closeDetailFromOverlay])
 
@@ -824,6 +879,8 @@ function App() {
           latestStatUpdDt: getLatestStatUpdDt(rows),
           busiNm: formatListSummary(rows.map((r) => r.busiNm), 2),
           chgerTyLabel: formatListSummary(rows.map((r) => r.displayChgerLabel ?? r.chgerTyLabel), 2),
+          speedBadge: summarizeSpeedCategories(rows),
+          locationHint: pickShortLocationHint(rows, first),
           rows,
           adres: adres || (first.adres || '').trim(),
           rnAdres: rnAdres || (first.rnAdres || '').trim(),
@@ -833,6 +890,28 @@ function App() {
       })
       .sort((a, b) => a.distanceKm - b.distanceKm)
   }, [sortedItemsInScope])
+
+  /** 목록 시트: 정렬·빠른 필터(사용 가능만) 적용 후 표시 */
+  const stationsForMobileList = useMemo(() => {
+    let g = groupedItemsInScope
+    if (mobileListAvailOnly) g = g.filter((s) => (s.statCounts['2'] ?? 0) > 0)
+    const arr = [...g]
+    if (mobileListSort === 'name') {
+      arr.sort((a, b) => a.statNm.localeCompare(b.statNm, 'ko', { numeric: true }))
+    } else {
+      arr.sort((a, b) => a.distanceKm - b.distanceKm)
+    }
+    return arr
+  }, [groupedItemsInScope, mobileListAvailOnly, mobileListSort])
+
+  const hasAvailInGroupedScope = useMemo(
+    () => groupedItemsInScope.some((s) => (s.statCounts?.['2'] ?? 0) > 0),
+    [groupedItemsInScope]
+  )
+
+  useEffect(() => {
+    if (!hasAvailInGroupedScope && mobileListAvailOnly) setMobileListAvailOnly(false)
+  }, [hasAvailInGroupedScope, mobileListAvailOnly])
 
   /**
    * 모바일 목록이 비었을 때 메시지(원인별). filteredItems → itemsInScope → grouped 파이프라인 유지.
@@ -857,7 +936,7 @@ function App() {
       return {
         variant: 'no_in_view',
         title: '이 지도 범위에는 표시할 곳이 없습니다',
-        subtitle: '지도를 옮긴 뒤「이 지역 충전소 검색하기」로 영역을 맞춰 주세요.',
+        subtitle: '지도를 옮긴 뒤「이 지역 검색」으로 영역을 맞춰 주세요.',
       }
     }
     return null
@@ -948,7 +1027,7 @@ function App() {
   const detailHeaderSubtitle = useMemo(() => {
     if (!detailStation) return ''
     const st = (detailStation.latestStatUpdDt || detailStation.statUpdDt || '').trim()
-    if (st) return `충전기 상태 기준 ${st}`
+    if (st) return `공공데이터 목록 갱신 시각 ${st}`
     if (lastEvFetchAt) {
       try {
         const d = new Date(lastEvFetchAt)
@@ -1154,7 +1233,7 @@ function App() {
                       ? mapSelectedStation.statNm
                       : appliedMapBounds == null
                         ? '지도 영역 확인 중…'
-                        : `이 지역 ${groupedItemsInScope.length}곳`}
+                        : `검색 결과 ${stationsForMobileList.length}곳`}
                   </Typography>
                 </Box>
                 <IconButton
@@ -1186,50 +1265,118 @@ function App() {
               </Box>
             </Box>
           )}
-        >
-          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <StationListMobile
-              key={`scope-${appliedMapBounds ? [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng, appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng].join(',') : 'none'}`}
-              stations={groupedItemsInScope}
-              selectedId={mapSelectedStation?.id}
-              loadingBounds={appliedMapBounds == null}
-              loadingHint="지도에 적용할 검색 영역을 준비하는 중입니다."
-              onSelect={(s) => {
-                mapSelectedStationRef.current = s
-                setMapSelectedStation(s)
-                if (isMobile && detailStationRef.current && detailHistoryPushed.current) {
-                  try {
-                    window.history.back()
-                  } catch {
-                    overlayStackRef.current.pop()
-                    closeDetailFromOverlay()
-                  }
-                  return
-                }
-                setDetailStation(null)
-                detailStationRef.current = null
+          renderToolbar={() => (
+            <Box
+              role="toolbar"
+              aria-label="목록 정렬 및 빠른 필터"
+              sx={{
+                display: 'flex',
+                flexWrap: 'nowrap',
+                gap: 0.5,
+                overflowX: 'auto',
+                overflowY: 'hidden',
+                WebkitOverflowScrolling: 'touch',
+                scrollbarWidth: 'none',
+                '&::-webkit-scrollbar': { display: 'none' },
+                pb: 0.125,
               }}
-              onOpenDetail={openDetailPreserve}
-              emptyMessage={mobileListEmptyInfo?.title ?? '표시할 충전소가 없습니다'}
-              emptySubMessage={mobileListEmptyInfo?.subtitle}
-              emptyVariant={mobileListEmptyInfo?.variant ?? 'no_in_view'}
-            />
-            <Box sx={{ flexShrink: 0, marginTop: 0.5, paddingTop: 1, borderTop: `1px solid ${colors.gray[200]}`, display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-              <Typography variant="caption" sx={{ color: colors.gray[500], ...appMobileType.caption, display: 'block' }}>
-                생활안전지도 API
-              </Typography>
-              <Typography variant="caption" sx={{ color: colors.gray[500], ...appMobileType.caption, display: 'block' }}>
-                표시 {appliedMapBounds == null ? '—' : groupedItemsInScope.length}곳
-                {totalCount != null && totalCount !== items.length && ` · 전체 약 ${totalCount}건`}
-              </Typography>
-              <Typography
-                component="span"
-                sx={{ color: colors.gray[400], display: 'block', marginTop: 0.125, ...appMobileType.captionDense }}
-              >
-                © whereEV2
-              </Typography>
+            >
+              {[
+                { key: 'dist', label: '가까운 순', on: mobileListSort === 'distance', disabled: false, onClick: () => setMobileListSort('distance') },
+                { key: 'name', label: '이름순', on: mobileListSort === 'name', disabled: false, onClick: () => setMobileListSort('name') },
+                {
+                  key: 'fast',
+                  label: '급속',
+                  on: filterSpeed === '급속',
+                  disabled: false,
+                  onClick: () => setFilterSpeed((v) => (v === '급속' ? '' : '급속')),
+                },
+                {
+                  key: 'avail',
+                  label: '사용 가능만',
+                  on: mobileListAvailOnly,
+                  disabled: !hasAvailInGroupedScope,
+                  onClick: () => {
+                    if (!hasAvailInGroupedScope) return
+                    setMobileListAvailOnly((v) => !v)
+                  },
+                },
+              ].map((c) => (
+                <Chip
+                  key={c.key}
+                  label={c.label}
+                  size="small"
+                  disabled={c.disabled}
+                  onClick={c.disabled ? undefined : c.onClick}
+                  sx={{
+                    flexShrink: 0,
+                    height: 28,
+                    fontSize: '0.75rem',
+                    fontWeight: c.on ? 700 : 500,
+                    bgcolor: c.disabled ? colors.gray[100] : c.on ? colors.blue.primary : colors.white,
+                    color: c.disabled ? colors.gray[400] : c.on ? colors.white : colors.gray[700],
+                    border: `1px solid ${
+                      c.disabled ? colors.gray[200] : c.on ? colors.blue.primary : colors.gray[300]
+                    }`,
+                    opacity: c.disabled ? 0.85 : 1,
+                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    '& .MuiChip-label': { px: 1.1 },
+                    '&:hover': {
+                      bgcolor: c.disabled
+                        ? colors.gray[100]
+                        : c.on
+                          ? colors.blue.deep
+                          : colors.gray[50],
+                      borderColor: c.disabled
+                        ? colors.gray[200]
+                        : c.on
+                          ? colors.blue.deep
+                          : colors.gray[400],
+                    },
+                  }}
+                />
+              ))}
             </Box>
-          </Box>
+          )}
+        >
+          <StationListMobile
+            key={`scope-${appliedMapBounds ? [appliedMapBounds.southWest.lat, appliedMapBounds.southWest.lng, appliedMapBounds.northEast.lat, appliedMapBounds.northEast.lng].join(',') : 'none'}`}
+            stations={stationsForMobileList}
+            selectedId={mapSelectedStation?.id}
+            loadingBounds={appliedMapBounds == null}
+            loadingHint="지도에 적용할 검색 영역을 준비하는 중입니다."
+            emptyMessage={
+              groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                ? '이 조건에 맞는 충전소가 없습니다'
+                : (mobileListEmptyInfo?.title ?? '표시할 충전소가 없습니다')
+            }
+            emptySubMessage={
+              groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                ? '빠른 필터를 바꾸거나 전체 필터에서 조건을 조정해 보세요.'
+                : mobileListEmptyInfo?.subtitle
+            }
+            emptyVariant={
+              groupedItemsInScope.length > 0 && stationsForMobileList.length === 0
+                ? 'no_filter'
+                : (mobileListEmptyInfo?.variant ?? 'no_in_view')
+            }
+            onSelect={(s) => {
+              mapSelectedStationRef.current = s
+              setMapSelectedStation(s)
+              if (isMobile && detailStationRef.current && detailHistoryPushed.current) {
+                try {
+                  window.history.back()
+                } catch {
+                  overlayStackRef.current.pop()
+                  closeDetailFromOverlay()
+                }
+                return
+              }
+              setDetailStation(null)
+              detailStationRef.current = null
+            }}
+            onOpenDetail={openDetailPreserve}
+          />
         </MobileBottomSheet>
       )
     : (
@@ -1609,10 +1756,12 @@ function App() {
           <Box
             sx={{
               position: 'fixed',
-              left: 12,
-              right: 12,
-              paddingLeft: 'env(safe-area-inset-left, 0px)',
-              paddingRight: 'env(safe-area-inset-right, 0px)',
+              left: 0,
+              right: 0,
+              display: 'flex',
+              justifyContent: 'center',
+              paddingLeft: `max(12px, env(safe-area-inset-left, 0px))`,
+              paddingRight: `max(12px, env(safe-area-inset-right, 0px))`,
               bottom: `calc(${mobileSheetHeightPx}px + env(safe-area-inset-bottom, 0px) + 8px)`,
               zIndex: 1001,
               opacity: fabReveal ? 1 : 0,
@@ -1627,22 +1776,31 @@ function App() {
           >
             <Button
               variant="contained"
-              fullWidth
+              startIcon={<SearchIcon sx={{ fontSize: 20 }} />}
               onClick={() => setAppliedMapBounds(liveMapBoundsRef.current)}
               sx={{
-                py: 1,
-                borderRadius: `${radius.sm}px`,
-                boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
+                display: 'inline-flex',
+                width: 'auto',
+                minWidth: 0,
+                px: 2.75,
+                py: 1.125,
+                borderRadius: 9999,
+                boxShadow: '0 4px 16px rgba(37,99,235,0.35), 0 2px 8px rgba(0,0,0,0.12)',
                 bgcolor: colors.blue.primary,
-                fontWeight: 600,
+                fontWeight: 700,
                 fontSize: '0.8125rem',
                 textTransform: 'none',
-                transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
-                '&:hover': { bgcolor: colors.blue.deep, boxShadow: '0 2px 12px rgba(0,0,0,0.12)' },
+                whiteSpace: 'nowrap',
+                transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+                '& .MuiButton-startIcon': { ml: 0, mr: 0.5 },
+                '&:hover': {
+                  bgcolor: colors.blue.deep,
+                  boxShadow: '0 5px 18px rgba(37,99,235,0.4), 0 2px 10px rgba(0,0,0,0.14)',
+                },
                 '&:active': { transform: 'scale(0.98)' },
               }}
             >
-              이 지역 충전소 검색하기
+              이 지역 검색
             </Button>
           </Box>
         )}

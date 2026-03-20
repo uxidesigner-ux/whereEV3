@@ -37,6 +37,8 @@ export function MobileBottomSheet({
   /** 목록 스크롤 복원용 */
   listScrollRef,
   renderHeader,
+  /** 헤더(핸들+타이틀) 바로 아래, 스크롤 목록 위 — 정렬·필터 rail 등 */
+  renderToolbar,
   children,
 }) {
   const isControlled = snapProp !== undefined
@@ -188,6 +190,21 @@ export function MobileBottomSheet({
         >
           {renderHeader({ snap, cycleSnap })}
         </Box>
+        {renderToolbar ? (
+          <Box
+            sx={{
+              flexShrink: 0,
+              px: 2.5,
+              pt: 0.5,
+              pb: 1,
+              borderBottom: `1px solid ${colors.gray[200]}`,
+              bgcolor: colors.gray[50],
+              display: snap === 'collapsed' ? 'none' : 'block',
+            }}
+          >
+            {renderToolbar({ snap, cycleSnap })}
+          </Box>
+        ) : null}
         <Box
           ref={listScrollRef}
           tabIndex={-1}

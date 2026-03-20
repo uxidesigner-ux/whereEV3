@@ -1,9 +1,10 @@
 /**
  * 로컬 개발 전용: VITE_SAFEMAP_SERVICE_KEY 없을 때만 App에서 사용.
- * normalizeCharger 결과와 동일한 형태 + dataSource: 'dev-mock'.
- * 표시명은 실 API와 혼동되지 않게 하되, (샘플)/가짜 진행·잔여시간 등은 넣지 않는다.
+ * 기본 필드는 샘플 실데이터 형태 + dataSource: 'dev-mock'.
+ * 충전기 상태·세션은 `applyMvpChargerOverlay`로 API 경로와 동일하게 MVP 시드 목업이 붙는다.
  */
 import { getChgerTyLabel, getSpeedCategory, getDisplayChgerLabel } from '../api/safemapEv.js'
+import { applyMvpChargerOverlay } from '../data/chargerSessionMvp.js'
 
 /** 목업 행 식별(디버깅·분기용). UI에 표시하지 않음. */
 export const EV_DATA_SOURCE_DEV_MOCK = 'dev-mock'
@@ -21,7 +22,7 @@ function mk(partial) {
 }
 
 export function getDevMockEvChargers() {
-  return [
+  const rows = [
     mk({
       id: 'dev-ev-1',
       statId: 'dev-place-seoul-station',
@@ -137,4 +138,5 @@ export function getDevMockEvChargers() {
       sggCd: '11680',
     }),
   ]
+  return rows.map(applyMvpChargerOverlay)
 }

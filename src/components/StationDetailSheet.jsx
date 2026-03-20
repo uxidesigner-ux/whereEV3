@@ -117,7 +117,9 @@ export function StationDetailSheet({
       sx={{ zIndex: 1400 }}
       slotProps={{
         backdrop: { sx: { bgcolor: 'rgba(15,23,42,0.45)' } },
-        transition: { timeout: { enter: motion.duration.sheet, exit: motion.duration.exit } },
+        transition: {
+          timeout: { enter: motion.duration.detailEnter, exit: motion.duration.detailExit },
+        },
       }}
       PaperProps={{
         component: 'div',
@@ -135,7 +137,7 @@ export function StationDetailSheet({
           overflow: 'hidden',
           bgcolor: colors.white,
           boxShadow: '0 -4px 24px rgba(0,0,0,0.12)',
-          transition: `transform ${motion.duration.sheet}ms ${motion.easing.standard}`,
+          transition: `transform ${motion.duration.detailEnter}ms ${motion.easing.emphasized}`,
         },
       }}
     >
