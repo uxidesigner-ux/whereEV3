@@ -144,6 +144,7 @@ import {
   diagMapLayerRefChanges,
   diagEvLayerMountCount,
   diagIconResolveCountRef,
+  evMapDiagHarnessBootMarkerCount,
 } from './dev/evMapDiag.js'
 import { MapLeafletExperiments } from './dev/MapLeafletExperiments.jsx'
 
@@ -477,9 +478,15 @@ function App() {
   const [detailRefreshing, setDetailRefreshing] = useState(false)
   const canRefetchEv = !!(import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
   const evMapDiag = useMemo(() => parseEvMapDiag(), [])
+  const harnessBootMarkerCount = useMemo(
+    () => evMapDiagHarnessBootMarkerCount(evMapDiag),
+    [evMapDiag],
+  )
   /** 목록·필터는 즉시 `items`, 지도 그룹핑만 낮은 우선순위로 따라가 progressive churn 완화 */
   const itemsDeferredForMap = useDeferredValue(items)
-  const itemsForMapMarkers = evMapDiag.noDefer ? items : itemsDeferredForMap
+  /** 부트 오버레이가 떠 있는 동안은 지도용 입력을 지연 없이 유지(첫 마커·bounds 반영). 이후 deferred로 churn 완화 */
+  const itemsForMapMarkers =
+    evMapDiag.noDefer || bootOverlayOpen ? items : itemsDeferredForMap
   const [filterBusiNm, setFilterBusiNm] = useState('')
   const [filterSpeed, setFilterSpeed] = useState('') // '' | '급속' | '완속'
   const [filterCtprvnCd, setFilterCtprvnCd] = useState('')
@@ -2403,8 +2410,9 @@ function App() {
               center={leafletInitial.center}
               zoom={leafletInitial.zoom}
               itemsLength={items.length}
-              markerCount={mapLayerStations.length}
-              expectedMarkerIcons={mapLayerStations.length}
+              markerCount={harnessBootMarkerCount ?? mapLayerStations.length}
+              expectedMarkerIcons={harnessBootMarkerCount ?? mapLayerStations.length}
+              skipDomIconCountGate={import.meta.env.DEV && evMapDiag.anyLeafletHarness}
               /** 전부(최대 260) DOM 반영까지 기다리면 체감 지연이 커짐 — 첫 배치만 확인 */
               paintSatisfiedIconCap={40}
               markerIconsMaxWaitMs={2200}

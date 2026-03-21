@@ -24,6 +24,9 @@ const milestones = new Set()
 const layerLenLog = []
 let layerLogT0 = 0
 
+/** React Strict Mode 이중 마운트에서도 console.time 중복 없이 부트 구간만 잰다 */
+let bootWallClockStartMs = null
+
 export function resetMapMarkerTelemetry() {
   milestones.clear()
   layerLenLog.length = 0
@@ -35,7 +38,15 @@ export function resetMapMarkerTelemetry() {
 export function telemetryAppMount() {
   if (!import.meta.env.DEV) return
   resetMapMarkerTelemetry()
-  console.time('[whereEV3-map] boot→overlayOff')
+  if (bootWallClockStartMs == null && typeof performance !== 'undefined') {
+    bootWallClockStartMs = performance.now()
+    try {
+      performance.clearMarks('whereEV3-boot-start')
+      performance.mark('whereEV3-boot-start')
+    } catch {
+      /* ignore */
+    }
+  }
   console.info(`[whereEV3-map] +0ms app mount`)
 }
 
@@ -78,7 +89,22 @@ export function telemetryBootOverlayHidden() {
   const k = 'overlay'
   if (milestones.has(k)) return
   milestones.add(k)
-  console.timeEnd('[whereEV3-map] boot→overlayOff')
+  let bootMs = null
+  if (bootWallClockStartMs != null && typeof performance !== 'undefined') {
+    bootMs = performance.now() - bootWallClockStartMs
+    bootWallClockStartMs = null
+    try {
+      performance.clearMarks('whereEV3-boot-end')
+      performance.mark('whereEV3-boot-end')
+      performance.clearMeasures('whereEV3-boot')
+      performance.measure('whereEV3-boot', 'whereEV3-boot-start', 'whereEV3-boot-end')
+    } catch {
+      /* ignore */
+    }
+  }
+  console.info(
+    `[whereEV3-map] boot→overlayOff: ${bootMs != null ? bootMs.toFixed(2) : 'n/a'}ms`,
+  )
   console.info(`[whereEV3-map] +${rel()}ms boot overlay hidden`)
 }
 
@@ -90,7 +116,7 @@ export function logMapLayerStationsSummary() {
 /** DOM의 `.leaflet-marker-icon` 개수가 목표에 도달한 시각 기록 */
 export function startMarkerIconMilestones(getMap) {
   if (!import.meta.env.DEV || typeof window === 'undefined') return () => {}
-  const targets = [10, 20, 40]
+  const targets = [1, 5, 10, 20, 40]
   const hit = new Set()
   let rid = 0
   const tick = () => {

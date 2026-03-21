@@ -67,3 +67,15 @@ export function logDiag(label, msOrMsg, extra) {
     console.info(`[evDiag] ${label}`, msOrMsg, extra ?? '')
   }
 }
+
+/**
+ * Leaflet 하네스 모드에서 EvStationMapLayer는 stations=[]라 실제 DOM 마커 수와 mapLayerStations가 어긋난다.
+ * MapBootMarkerReady 기대치를 하네스가 그리는 `.leaflet-marker-icon` 개수에 맞춘다.
+ * @returns {null | number} null이면 앱의 mapLayerStations 길이를 그대로 쓴다.
+ */
+export function evMapDiagHarnessBootMarkerCount(diag) {
+  if (!diag?.anyLeafletHarness) return null
+  if (diag.hard1) return 1
+  if (diag.hard10def || diag.hard10custom) return 10
+  return 0
+}

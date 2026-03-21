@@ -22,6 +22,11 @@ export function MapBootMarkerReady({
   paintSatisfiedIconCap = 40,
   /** 폴링·안전 타임아웃 상한(ms) */
   markerIconsMaxWaitMs = 2500,
+  /**
+   * DEV Leaflet 하네스: EvStationMapLayer는 빈 stations라 DOM 마커 기대치가 데이터 파이프와 불일치할 수 있음.
+   * true면 moveend 이후 짧은 페인트만 보고 onReady (아이콘 개수 대기 생략).
+   */
+  skipDomIconCountGate = false,
   onReady,
 }) {
   const map = useMap()
@@ -33,6 +38,7 @@ export function MapBootMarkerReady({
   /** moveend까지 도달했는지(이후 markerCount로 로딩 종료 타이밍 조정) */
   const [bootMoveGeneration, setBootMoveGeneration] = useState(0)
   const finishedRef = useRef(false)
+  const prevBootMoveGenRef = useRef(0)
   const viewApplyGenRef = useRef(0)
 
   useEffect(() => {
@@ -102,6 +108,10 @@ export function MapBootMarkerReady({
 
   useEffect(() => {
     if (!active || bootMoveGeneration === 0) return undefined
+    if (bootMoveGeneration !== prevBootMoveGenRef.current) {
+      prevBootMoveGenRef.current = bootMoveGeneration
+      finishedRef.current = false
+    }
     if (finishedRef.current) return undefined
 
     let cancelled = false
@@ -132,6 +142,13 @@ export function MapBootMarkerReady({
     }
 
     if (itemsLength === 0) {
+      finishAfterPaint()
+      return () => {
+        cancelled = true
+      }
+    }
+
+    if (skipDomIconCountGate) {
       finishAfterPaint()
       return () => {
         cancelled = true
@@ -208,7 +225,17 @@ export function MapBootMarkerReady({
       cancelled = true
       window.clearTimeout(safety)
     }
-  }, [active, bootMoveGeneration, itemsLength, markerCount, expectedMarkerIcons, markerIconsMaxWaitMs, map, paintSatisfiedIconCap])
+  }, [
+    active,
+    bootMoveGeneration,
+    itemsLength,
+    markerCount,
+    expectedMarkerIcons,
+    markerIconsMaxWaitMs,
+    map,
+    paintSatisfiedIconCap,
+    skipDomIconCountGate,
+  ])
 
   return null
 }
