@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "node scripts/ensure-ev-summary-not-lfs-pointer.mjs",
     "build": "vite build",
     "build:fetch-summary": "node scripts/fetch-ev-summary-for-build.mjs",
     "build:deploy": "npm run build:fetch-summary && vite build",

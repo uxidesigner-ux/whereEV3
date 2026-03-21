@@ -77,6 +77,22 @@ export async function fetchEvStationsSummaryDataset(opts = {}) {
   if (!res.ok) {
     throw new Error(`충전소 요약 데이터를 불러오지 못했습니다. (${res.status})`)
   }
-  const json = await res.json()
+  const text = await res.text()
+  if (text.startsWith('version https://git-lfs.github.com/spec/v1')) {
+    throw new Error(
+      '요약 JSON 대신 Git LFS 포인터만 받았습니다. 배포 빌드에 git lfs pull이 필요하거나, 로컬에서 git lfs checkout public/data/ev-stations-summary.json 후 다시 빌드하세요.'
+    )
+  }
+  let json
+  try {
+    json = JSON.parse(text)
+  } catch (e) {
+    const hint = text.length < 200 ? text.slice(0, 120) : ''
+    throw new Error(
+      hint
+        ? `summary JSON 파싱 실패: ${e.message} (응답 앞부분: ${hint.replace(/\s+/g, ' ')})`
+        : `summary JSON 파싱 실패: ${e.message}`
+    )
+  }
   return parseEvStationsSummaryJson(json)
 }

@@ -1,4 +1,5 @@
 {
+  "buildCommand": "git lfs pull && npm run build",
   "headers": [
     {
       "source": "/(.*)",
