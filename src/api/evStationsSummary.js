@@ -81,31 +81,85 @@ export function parseEvStationsSummaryJson(json) {
   }
 }
 
+/** 게이트웨이/엣지 타임아웃 등 간헐 오류 — 짧은 대기 후 재시도 */
+const SUMMARY_RETRYABLE_STATUS = new Set([502, 503, 504])
+
+function summaryUrlWithoutQuery(url) {
+  const s = String(url || '')
+  const i = s.search(/[?#]/)
+  return i === -1 ? s : s.slice(0, i)
+}
+
 /**
- * @param {{ url?: string, signal?: AbortSignal }} [opts]
+ * @param {{ url?: string, signal?: AbortSignal, cache?: RequestCache, maxAttempts?: number }} [opts]
+ * - `maxAttempts`: 502/503/504 시 재시도 횟수(기본 2). 재시도 시 쿼리 제거·`no-store`로 엣지 캐시 꼬임 완화.
  */
 export async function fetchEvStationsSummaryDataset(opts = {}) {
-  const url = opts.url ?? EV_STATIONS_SUMMARY_PATH
-  const res = await fetch(url, { signal: opts.signal })
-  if (!res.ok) {
-    throw new Error(`충전소 요약 데이터를 불러오지 못했습니다. (${res.status})`)
+  const rawUrl = opts.url ?? resolveEvStationsSummaryUrl(import.meta.env.BASE_URL)
+  const baseNoQuery = summaryUrlWithoutQuery(rawUrl)
+  const signal = opts.signal
+  const maxAttempts = Math.min(4, Math.max(1, opts.maxAttempts ?? 2))
+  const firstCache = opts.cache ?? 'default'
+
+  let lastStatus = 0
+  let lastRes = null
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    if (attempt > 0) {
+      const delayMs = 450 + attempt * 200
+      await new Promise((r) => setTimeout(r, delayMs))
+      if (signal?.aborted) {
+        const e = new Error('aborted')
+        e.name = 'AbortError'
+        throw e
+      }
+    }
+
+    const useUrl = attempt === 0 ? rawUrl : baseNoQuery
+    const useCache = attempt > 0 ? 'no-store' : firstCache
+
+    const res = await fetch(useUrl, { signal, cache: useCache })
+    lastRes = res
+    lastStatus = res.status
+
+    if (res.ok) {
+      const text = await res.text()
+      if (text.startsWith('version https://git-lfs.github.com/spec/v1')) {
+        throw new Error(
+          '요약 JSON 대신 Git LFS 포인터만 받았습니다. Vercel이면 Project Settings → Git에서 Git LFS를 켜고 재배포하세요. 로컬이면 git lfs checkout public/data/ev-stations-summary.json 후 다시 빌드하세요.'
+        )
+      }
+      let json
+      try {
+        json = JSON.parse(text)
+      } catch (e) {
+        const hint = text.length < 200 ? text.slice(0, 120) : ''
+        throw new Error(
+          hint
+            ? `summary JSON 파싱 실패: ${e.message} (응답 앞부분: ${hint.replace(/\s+/g, ' ')})`
+            : `summary JSON 파싱 실패: ${e.message}`
+        )
+      }
+      return parseEvStationsSummaryJson(json)
+    }
+
+    const retryable = SUMMARY_RETRYABLE_STATUS.has(res.status)
+    if (retryable && attempt < maxAttempts - 1) {
+      try {
+        await res.arrayBuffer()
+      } catch {
+        /* 본문 소비 실패는 무시 */
+      }
+      continue
+    }
+    break
   }
-  const text = await res.text()
-  if (text.startsWith('version https://git-lfs.github.com/spec/v1')) {
+
+  const st = lastStatus || (lastRes ? lastRes.status : 0)
+  if (SUMMARY_RETRYABLE_STATUS.has(st)) {
     throw new Error(
-      '요약 JSON 대신 Git LFS 포인터만 받았습니다. Vercel이면 Project Settings → Git에서 Git LFS를 켜고 재배포하세요. 로컬이면 git lfs checkout public/data/ev-stations-summary.json 후 다시 빌드하세요.'
+      `충전소 요약 데이터를 불러오지 못했습니다. (서버가 잠시 응답하지 않습니다. ${st} — 대용량 JSON 요청이 타임아웃된 경우가 많습니다. 잠시 후 새로고침하거나 다시 시도해 주세요.)`,
     )
   }
-  let json
-  try {
-    json = JSON.parse(text)
-  } catch (e) {
-    const hint = text.length < 200 ? text.slice(0, 120) : ''
-    throw new Error(
-      hint
-        ? `summary JSON 파싱 실패: ${e.message} (응답 앞부분: ${hint.replace(/\s+/g, ' ')})`
-        : `summary JSON 파싱 실패: ${e.message}`
-    )
-  }
-  return parseEvStationsSummaryJson(json)
+  throw new Error(`충전소 요약 데이터를 불러오지 못했습니다. (${st})`)
 }

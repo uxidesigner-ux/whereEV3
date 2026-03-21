@@ -168,6 +168,24 @@ function easeBootProgress(setProgress, from, to, durationMs) {
   })
 }
 
+/** 부트 종료: 90%대→100% 자연스럽게 (ease-out cubic) */
+function easeBootProgressEaseOutCubic(setProgress, from, to, durationMs) {
+  return new Promise((resolve) => {
+    const t0 = performance.now()
+    const tick = (now) => {
+      const u = Math.min(1, (now - t0) / Math.max(1, durationMs))
+      const ease = 1 - (1 - u) ** 3
+      setProgress(from + (to - from) * ease)
+      if (u < 1) requestAnimationFrame(tick)
+      else {
+        setProgress(to)
+        resolve()
+      }
+    }
+    requestAnimationFrame(tick)
+  })
+}
+
 function getBootstrapGeolocationPosition() {
   return new Promise((resolve) => {
     const fallback = () =>
@@ -554,6 +572,9 @@ function App() {
   const [bootMarkerGateFailed, setBootMarkerGateFailed] = useState(false)
   const [bootMessageIndex, setBootMessageIndex] = useState(0)
   const [bootReduceMotion, setBootReduceMotion] = useState(false)
+  /** 첫 마커 이후 ~1s 마무리 연출 중(순환 문구 대신 단계 메시지) */
+  const [bootFinalizing, setBootFinalizing] = useState(false)
+  const bootReduceMotionRef = useRef(false)
   /** DEV proof: API 1페이지 샘플 좌표 → CircleMarker 직접 렌더 */
   const [mapProofApiDots, setMapProofApiDots] = useState([])
   const bootMapPaintedRef = useRef(false)
@@ -590,6 +611,10 @@ function App() {
     mq.addEventListener('change', apply)
     return () => mq.removeEventListener('change', apply)
   }, [])
+
+  useEffect(() => {
+    bootReduceMotionRef.current = bootReduceMotion
+  }, [bootReduceMotion])
   const harnessBootMarkerCount = useMemo(
     () => evMapDiagHarnessBootMarkerCount(evMapDiag),
     [evMapDiag],
@@ -1053,16 +1078,28 @@ function App() {
     viewportSummaryTelemetry('boot', 'marker-visible', {})
     setBootLinearIndeterminate(false)
     setBootProgress(88)
-    setBootStageMessage('지도에 마커를 확인했어요. 마무리하는 중이에요')
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        setBootProgress(100)
-        setBootStageMessage('준비했어요')
+    setBootStageMessage('지도에 마커를 확인했어요. 표시를 마무리하는 중이에요')
+    setBootFinalizing(true)
+
+    void (async () => {
+      const reduce = bootReduceMotionRef.current
+      try {
+        if (reduce) {
+          setBootProgress(100)
+          setBootStageMessage('준비했어요')
+          await new Promise((r) => setTimeout(r, 380))
+        } else {
+          await easeBootProgressEaseOutCubic(setBootProgress, 88, 100, 980)
+          setBootStageMessage('준비했어요')
+          await new Promise((r) => setTimeout(r, 160))
+        }
+      } finally {
         viewportSummaryTelemetry('boot', 'boot-overlay-off', {})
         setAwaitingInitialMapPaint(false)
         setBootOverlayOpen(false)
-      })
-    })
+        setBootFinalizing(false)
+      }
+    })()
   }, [])
 
   const onBootMapPaintTimeout = useCallback(() => {
@@ -1215,8 +1252,10 @@ function App() {
 
         if (reason === 'refresh') {
           const ds = await fetchEvStationsSummaryDataset({
-            url: `${summaryUrl}?cb=${Date.now()}`,
+            url: summaryUrl,
             signal,
+            cache: 'no-store',
+            maxAttempts: 2,
           })
           if (signal.aborted) {
             viewportSummaryMarkAbort()
@@ -1229,7 +1268,7 @@ function App() {
           }
         } else if (fullEvCatalogRef.current == null) {
           try {
-            const ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal })
+            const ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal, maxAttempts: 2 })
             if (signal.aborted) {
               viewportSummaryMarkAbort()
               return { ok: false }
@@ -1520,7 +1559,7 @@ function App() {
 
         let ds = null
         try {
-          ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal: ac.signal })
+          ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal: ac.signal, maxAttempts: 2 })
         } catch (e) {
           if (import.meta.env.DEV) {
             fullEvCatalogRef.current = getDevMockEvChargers()
@@ -2172,13 +2211,13 @@ function App() {
 
   /** 부트 로딩 중 안내 문구 순환(1.6~2.2s, reduced-motion 시 느리게) */
   useEffect(() => {
-    if (!bootOverlayOpen || bootMarkerGateFailed) return undefined
+    if (!bootOverlayOpen || bootMarkerGateFailed || bootFinalizing) return undefined
     const ms = bootReduceMotion ? 4200 : 1900
     const id = window.setInterval(() => {
       setBootMessageIndex((i) => (i + 1) % BOOT_LOADING_ROTATION_MESSAGES.length)
     }, ms)
     return () => window.clearInterval(id)
-  }, [bootOverlayOpen, bootMarkerGateFailed, bootReduceMotion])
+  }, [bootOverlayOpen, bootMarkerGateFailed, bootReduceMotion, bootFinalizing])
 
   /** 72% 마커 대기 구간이 길면 진행 바만 indeterminate로 전환(문구는 순환 유지) */
   useEffect(() => {
@@ -2972,7 +3011,7 @@ function App() {
                     </Typography>
                   ) : null}
                 </Box>
-                <Fade in timeout={bootReduceMotion ? 0 : 320} key={bootMessageIndex}>
+                {bootFinalizing ? (
                   <Typography
                     variant="body2"
                     sx={{
@@ -2984,12 +3023,31 @@ function App() {
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      color: 'rgba(255,255,255,0.78)',
+                      color: 'rgba(255,255,255,0.88)',
                     }}
                   >
-                    {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
+                    {bootStageMessage}
                   </Typography>
-                </Fade>
+                ) : (
+                  <Fade in timeout={bootReduceMotion ? 0 : 320} key={bootMessageIndex}>
+                    <Typography
+                      variant="body2"
+                      sx={{
+                        fontWeight: 600,
+                        lineHeight: 1.45,
+                        px: 0.5,
+                        mt: -0.125,
+                        minHeight: '2.75em',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: 'rgba(255,255,255,0.78)',
+                      }}
+                    >
+                      {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
+                    </Typography>
+                  </Fade>
+                )}
               </>
             )}
             {bootMarkerGateFailed ? (
