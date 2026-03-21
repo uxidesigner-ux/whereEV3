@@ -38,7 +38,6 @@ import {
   formatListSummary,
   summarizeSpeedCategories,
   pickShortLocationHint,
-  expandLiteralBounds,
 } from './utils/geo.js'
 import { groupChargerRowsByPlaceMapLite } from './utils/evStationGroup.js'
 
@@ -74,27 +73,6 @@ function buildPlaceGroupFromRows(rows, distanceKmPreserve) {
     speedBadge: summarizeSpeedCategories(rows),
     locationHint: pickShortLocationHint(rows, first),
   }
-}
-
-/**
- * API 정렬이 비지리적이어서 뷰포트·부트 반경 안에 충전소가 없을 때 — 지도에 실제로 보이는 중심 기준 가까운 행만 잘라 그룹.
- */
-function groupedNearestPlacesForMap(items, centerLat, centerLng, maxRows) {
-  if (!items.length || !Number.isFinite(centerLat) || !Number.isFinite(centerLng)) return []
-  const rows = items
-    .filter((r) => {
-      const la = Number(r.lat)
-      const ln = Number(r.lng)
-      return Number.isFinite(la) && Number.isFinite(ln)
-    })
-    .map((r) => ({
-      r,
-      d: haversineDistanceKm(Number(r.lat), Number(r.lng), centerLat, centerLng),
-    }))
-    .sort((a, b) => a.d - b.d)
-    .slice(0, Math.max(0, maxRows))
-    .map(({ r }) => r)
-  return groupChargerRowsByPlaceMapLite(rows)
 }
 
 function rowsMatchingDetailStation(prev, flatItems) {
@@ -145,7 +123,6 @@ import { MapMarkerDomTelemetry } from './dev/MapMarkerDomTelemetry.jsx'
 import {
   parseEvMapDiag,
   logDiag,
-  diagGroupedBaseComputeCount,
   diagMapLayerRefChanges,
   diagEvLayerMountCount,
   diagIconResolveCountRef,
@@ -159,6 +136,8 @@ import {
   viewportSummaryMarkApplied,
 } from './dev/viewportSummaryTelemetry.js'
 import { MapLeafletExperiments } from './dev/MapLeafletExperiments.jsx'
+import { MapMarkerProofLayers } from './components/MapMarkerProofLayers.jsx'
+import { searchAreaTimingMetrics, searchAreaTimingLog } from './dev/mapSearchAreaTiming.js'
 
 /**
  * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
@@ -220,8 +199,6 @@ function clusterGroupedMatchesBusiNm(s, needle) {
   return rows.some((r) => (r.busiNm || '').trim() === needle)
 }
 
-/** 부트 앵커(내 위치 또는 광화문) 주변 우선 표시용 — 반경 제한 없이 가까운 행부터 */
-const MAP_ANCHOR_NEAREST_MAX_ROWS = 640
 /** 모바일: LayerGroup만 쓸 때 한 번에 올릴 마커 상한(성능) */
 const MOBILE_MAP_MARKER_CAP = 260
 /** 적용 영역 안 raw 행이 많을 때 그룹핑 전 거리순 상한(프로그레시브 대량 items CPU 완화) */
@@ -566,6 +543,9 @@ function App() {
   const [awaitingInitialMapPaint, setAwaitingInitialMapPaint] = useState(false)
   const [bootProgress, setBootProgress] = useState(0)
   const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
+  const [bootLinearIndeterminate, setBootLinearIndeterminate] = useState(false)
+  /** DEV proof: API 1페이지 샘플 좌표 → CircleMarker 직접 렌더 */
+  const [mapProofApiDots, setMapProofApiDots] = useState([])
   const bootMapPaintedRef = useRef(false)
   /** 부트 summary bbox와 일치시키기: onBootMapPaintReady의 좁은 getBounds()로 applied를 덮어쓰지 않음 */
   const suppressBootMapBoundsSnapshotRef = useRef(false)
@@ -577,6 +557,8 @@ function App() {
   const [detailRefreshing, setDetailRefreshing] = useState(false)
   const canRefetchEv = !!(import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
   const evMapDiag = useMemo(() => parseEvMapDiag(), [])
+  const evMapDiagRef = useRef(evMapDiag)
+  evMapDiagRef.current = evMapDiag
   const harnessBootMarkerCount = useMemo(
     () => evMapDiagHarnessBootMarkerCount(evMapDiag),
     [evMapDiag],
@@ -972,6 +954,8 @@ function App() {
   const summaryFetchAbortRef = useRef(null)
   /** 완료 시점에 더 최신 요청이 있으면 setItems 등 무시 */
   const summaryFetchGenerationRef = useRef(0)
+  const itemsRenderSigRef = useRef('')
+  const searchAreaAwaitingMarkersRef = useRef(null)
   const runViewportSummaryFetchRef = useRef(
     /** @returns {Promise<{ ok: boolean, rows?: object[], rowCount?: number }>} */ async () => ({ ok: false }),
   )
@@ -980,12 +964,6 @@ function App() {
       summaryFetchAbortRef.current?.abort()
     },
     [],
-  )
-
-  /** 목록·지도 마커 공통: 적용된 화면 영역(「이 지역 검색」 또는 부트 완료 시 스냅) */
-  const appliedMapBoundsPadded = useMemo(
-    () => (appliedMapBounds ? expandLiteralBounds(appliedMapBounds, 0.42) : null),
-    [appliedMapBounds],
   )
 
   /** @param {null | { southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} boundsFromMap */
@@ -997,10 +975,18 @@ function App() {
       if (b) setAppliedMapBounds(b)
     }
     suppressBootMapBoundsSnapshotRef.current = false
-    setBootProgress(100)
-    setBootStageMessage('준비했어요')
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console -- 부트 단계 증명
+      console.info('[bootTiming] first-marker-visible-callback')
+    }
+    viewportSummaryTelemetry('boot', 'marker-visible', {})
+    setBootLinearIndeterminate(false)
+    setBootProgress(88)
+    setBootStageMessage('지도에 마커를 확인했어요. 마무리하는 중이에요')
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        setBootProgress(100)
+        setBootStageMessage('준비했어요')
         viewportSummaryTelemetry('boot', 'boot-overlay-off', {})
         setAwaitingInitialMapPaint(false)
         setBootOverlayOpen(false)
@@ -1019,7 +1005,13 @@ function App() {
    * @returns {Promise<{ ok: boolean, rows?: object[], rowCount?: number }>}
    */
   const runViewportSummaryFetch = useCallback(
-    async ({ reason, viewport, showLoading = false, signal: externalSignal }) => {
+    async ({
+      reason,
+      viewport,
+      showLoading = false,
+      signal: externalSignal,
+      timingSession = null,
+    }) => {
       if (!viewport) {
         viewportSummaryTelemetry(reason, 'skip-no-viewport', {})
         return { ok: false }
@@ -1027,6 +1019,10 @@ function App() {
       const gen = (summaryFetchGenerationRef.current += 1)
       viewportSummaryMarkFetchStart()
       viewportSummaryTelemetry(reason, 'fetch-start', { gen })
+      if (import.meta.env.DEV) {
+        searchAreaTimingMetrics.fetchesStarted += 1
+        if (timingSession) searchAreaTimingLog(timingSession, 'fetch-start', { gen, reason })
+      }
 
       let signal = externalSignal
       if (!signal) {
@@ -1039,38 +1035,73 @@ function App() {
       if (showLoading) {
         setMapSearchAreaLoading(true)
         viewportSummaryTelemetry(reason, 'loading-on', { gen })
+        if (import.meta.env.DEV && timingSession) searchAreaTimingLog(timingSession, 'loading-overlay-on', { gen })
       }
       setApiError(null)
       const t0 = performance.now()
 
       try {
         if (canRefetchEv) {
-          const preset = summaryPresetForReason(reason)
-          const { rows, pagesScanned } = await fetchEvChargersSummaryForBounds(viewport, {
-            ...preset,
+          const diag = evMapDiagRef.current
+          const devProof = import.meta.env.DEV && (diag.apiProof || diag.proof)
+          const { rows, pagesScanned, pipelineCounts } = await fetchEvChargersSummaryForBounds(viewport, {
+            ...summaryPresetForReason(reason),
             signal,
-            pipelineDebug: evMapDiag.pipeline,
+            pipelineDebug: diag.pipeline,
+            adapterProofVerbose: diag.adapterProof,
+            onFirstPageSample: devProof
+              ? ({ sample }) => {
+                  const dots = sample
+                    .filter((x) => x.n && Number.isFinite(x.n.lat) && Number.isFinite(x.n.lng))
+                    .slice(0, 20)
+                    .map((x) => ({ id: x.n.id, lat: x.n.lat, lng: x.n.lng }))
+                  setMapProofApiDots(dots)
+                }
+              : undefined,
           })
+          const fetchMs = Math.round(performance.now() - t0)
+          if (import.meta.env.DEV && (diag.pipeline || diag.countTrace) && pipelineCounts) {
+            // eslint-disable-next-line no-console -- count trace
+            console.info('[mapCountTrace] fetch', {
+              reason,
+              ...pipelineCounts,
+              apiRowsReturned: rows.length,
+              pagesScanned,
+            })
+          }
+          if (import.meta.env.DEV && timingSession) {
+            searchAreaTimingLog(timingSession, 'fetch-response-received', { gen, fetchMs, rows: rows.length })
+          }
           if (signal.aborted) {
             viewportSummaryMarkAbort()
+            if (import.meta.env.DEV) searchAreaTimingMetrics.aborts += 1
             viewportSummaryTelemetry(reason, 'fetch-aborted', { gen })
             return { ok: false }
           }
           if (summaryFetchGenerationRef.current !== gen) {
             viewportSummaryMarkStale()
+            if (import.meta.env.DEV) searchAreaTimingMetrics.staleDrops += 1
             viewportSummaryTelemetry(reason, 'stale-drop', { gen, current: summaryFetchGenerationRef.current })
             return { ok: false }
           }
           setItems(rows)
+          const sig = `${rows.length}:${rows[0]?.id ?? ''}`
+          if (import.meta.env.DEV && itemsRenderSigRef.current !== sig) {
+            itemsRenderSigRef.current = sig
+            searchAreaTimingMetrics.renderSourceChanges += 1
+          }
           setTotalCount(rows.length)
           setLastEvFetchAt(new Date().toISOString())
           clearDetailRowsCache()
           viewportSummaryMarkApplied()
+          if (import.meta.env.DEV && timingSession) {
+            searchAreaTimingLog(timingSession, 'adapter-done-render-source-set', { gen, rowCount: rows.length })
+          }
           viewportSummaryTelemetry(reason, 'state-applied', {
             gen,
             n: rows.length,
             pages: pagesScanned,
-            ms: Math.round(performance.now() - t0),
+            ms: fetchMs,
           })
           return { ok: true, rows, rowCount: rows.length }
         }
@@ -1084,11 +1115,12 @@ function App() {
         if (showLoading) {
           setMapSearchAreaLoading(false)
           viewportSummaryTelemetry(reason, 'loading-off', { gen })
+          if (import.meta.env.DEV && timingSession) searchAreaTimingLog(timingSession, 'loading-overlay-off', { gen })
         }
       }
       return { ok: false }
     },
-    [canRefetchEv, evMapDiag.pipeline],
+    [canRefetchEv],
   )
 
   runViewportSummaryFetchRef.current = runViewportSummaryFetch
@@ -1109,10 +1141,27 @@ function App() {
   /** 「이 지역 검색」: viewport summary 재조회 + 적용 영역 동기화 */
   const applySearchAreaFromMap = useCallback(async () => {
     const b = liveMapBoundsRef.current
-    if (!b || mapSearchAreaLoading) return
+    if (!b) return
+    if (mapSearchAreaLoading) {
+      if (import.meta.env.DEV) searchAreaTimingMetrics.duplicateClickIgnored += 1
+      return
+    }
+    const timingSession = import.meta.env.DEV ? { t0: performance.now() } : null
+    if (import.meta.env.DEV) {
+      searchAreaTimingMetrics.buttonClicks += 1
+      searchAreaTimingLog(timingSession, 'search-area-button-click')
+    }
     viewportSummaryTelemetry('search-area', 'button-click', {})
     if (canRefetchEv) {
-      await runViewportSummaryFetch({ reason: 'search-area', viewport: b, showLoading: true })
+      if (import.meta.env.DEV) {
+        searchAreaAwaitingMarkersRef.current = { t0: performance.now() }
+      }
+      await runViewportSummaryFetch({
+        reason: 'search-area',
+        viewport: b,
+        showLoading: true,
+        timingSession,
+      })
     } else if (import.meta.env.DEV) {
       const mock = getDevMockEvChargers()
       setItems(filterDevMockRowsToBounds(mock, b))
@@ -1126,6 +1175,11 @@ function App() {
     setMapSelectedStation(null)
     setDetailStation(null)
     detailStationRef.current = null
+    if (import.meta.env.DEV && timingSession) {
+      searchAreaTimingLog(timingSession, 'search-area-flow-end', {
+        metrics: { ...searchAreaTimingMetrics },
+      })
+    }
   }, [openMobileListSheetToHalf, canRefetchEv, runViewportSummaryFetch, mapSearchAreaLoading])
 
   const handleChipViewportJumpComplete = useCallback(
@@ -1218,13 +1272,13 @@ function App() {
       setBootStageMessage('시작하는 중')
 
       setBootStageMessage('현재 위치를 확인하고 있어요')
-      const pLoc = easeBootProgress(setBootProgress, 0, 22, 640)
+      const pLoc = easeBootProgress(setBootProgress, 0, 32, 640)
       const pos = await getBootstrapGeolocationPosition()
       await pLoc
       if (cancelled) return
       telemetryLocationResolved(pos.usedGeo)
 
-      setBootProgress(25)
+      setBootProgress(40)
       setBootStageMessage(
         pos.usedGeo
           ? '내 위치를 확인했어요. 주변 충전소 정보를 불러오고 있어요'
@@ -1238,7 +1292,7 @@ function App() {
       const initialViewportB = squareBoundsLiteralAroundCenter(pos.lat, pos.lng, 32)
 
       if (!key) {
-        await easeBootProgress(setBootProgress, 25, 72, 480)
+        await easeBootProgress(setBootProgress, 40, 58, 420)
         if (cancelled) return
         if (import.meta.env.DEV) {
           viewportSummaryTelemetry('boot', 'mock-no-api-key', {})
@@ -1259,32 +1313,39 @@ function App() {
           setItems([])
           setTotalCount(null)
         }
-        setBootStageMessage('지도와 충전소 마커를 표시하는 중이에요')
-        await easeBootProgress(setBootProgress, 72, 82, 520)
+        setBootLinearIndeterminate(false)
+        setBootProgress(72)
+        setBootStageMessage('충전소 마커를 지도에 올리는 중이에요. 첫 마커가 보이면 완료돼요')
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- 부트 단계 증명
+          console.info('[bootTiming] enter-72-marker-ready-wait', { phase: 'no-api-key' })
+        }
         if (cancelled) return
         setAwaitingInitialMapPaint(true)
+        viewportSummaryTelemetry('boot', 'awaiting-map-paint', {})
         return
       }
 
       setApiError(null)
       setItems([])
-      viewportSummaryTelemetry('boot', 'fetch-and-min-splash', {})
-      const minSplash = easeBootProgress(setBootProgress, 25, 72, 420)
+      viewportSummaryTelemetry('boot', 'fetch-with-progress', {})
+      const bootT0 = performance.now()
+      const progressTimer = window.setInterval(() => {
+        setBootProgress((p) => (p >= 71 ? p : p + 1))
+      }, 400)
       let fetchResult = { ok: false }
       try {
-        const [, result] = await Promise.all([
-          minSplash,
-          runViewportSummaryFetchRef.current({
+        fetchResult =
+          (await runViewportSummaryFetchRef.current({
             reason: 'boot',
             viewport: initialViewportB,
             showLoading: false,
             signal: ac.signal,
-          }),
-        ])
-        fetchResult = result || { ok: false }
+          })) || { ok: false }
       } catch (err) {
         if (!cancelled) setApiError(err.message || '데이터를 불러오지 못했습니다.')
       }
+      window.clearInterval(progressTimer)
       if (cancelled || ac.signal.aborted) return
 
       if (fetchResult.ok) {
@@ -1292,8 +1353,16 @@ function App() {
         setAppliedMapBounds(initialViewportB)
       }
 
-      setBootStageMessage('지도와 충전소 마커를 표시하는 중이에요')
-      await easeBootProgress(setBootProgress, 72, 82, 280)
+      setBootLinearIndeterminate(false)
+      setBootProgress((p) => Math.max(p, 72))
+      setBootStageMessage('충전소 마커를 지도에 올리는 중이에요. 첫 마커가 보이면 완료돼요')
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console -- 부트 단계 증명
+        console.info('[bootTiming] enter-72-marker-ready-wait', {
+          phase: 'after-fetch',
+          fetchMs: Math.round(performance.now() - bootT0),
+        })
+      }
       if (cancelled) return
       setAwaitingInitialMapPaint(true)
       viewportSummaryTelemetry('boot', 'awaiting-map-paint', {})
@@ -1688,74 +1757,34 @@ function App() {
     return { lat: la, lng: ln }
   }, [appliedMapBounds, liveMapBounds, leafletInitial.center])
 
-  /**
-   * 지도 앵커: 위치 성공 시 `leafletInitial`=내 좌표, 실패 시 광화문. 항상 이 점에 가까운 충전소를 먼저 그린다.
-   */
-  const mapAnchorStations = useMemo(() => {
-    const [la, ln] = leafletInitial.center
-    if (!Number.isFinite(la) || !Number.isFinite(ln) || itemsForMapMarkers.length === 0) return []
-    return groupedNearestPlacesForMap(itemsForMapMarkers, la, ln, MAP_ANCHOR_NEAREST_MAX_ROWS)
-  }, [itemsForMapMarkers, leafletInitial.center])
+  /** 지도 전용 파이프라인: 목록/시트 bounds 필터와 분리(마커 누락 방지) */
+  const mapSummaryStationsRaw = itemsForMapMarkers
+  const mapSummaryStationsAdapted = useMemo(
+    () =>
+      mapSummaryStationsRaw.filter((r) => {
+        const la = Number(r.lat)
+        const ln = Number(r.lng)
+        return Number.isFinite(la) && Number.isFinite(ln)
+      }),
+    [mapSummaryStationsRaw],
+  )
 
-  /**
-   * 지도 마커(선택 제외): 적용 영역 + 그룹핑 입력 행 상한 — `items` 대량 증가 시 CPU 제한.
-   * 선택 병합은 아래 별도 메모로 분리해 탭 시 전체 그룹 재계산을 피함.
-   */
-  const groupedAllStationsForMapBase = useMemo(() => {
-    if (!appliedMapBoundsPadded) return []
-    let validItems = itemsForMapMarkers.filter((r) => {
-      const la = Number(r.lat)
-      const ln = Number(r.lng)
-      return Number.isFinite(la) && Number.isFinite(ln)
-    })
-    const b = L.latLngBounds(
-      [appliedMapBoundsPadded.southWest.lat, appliedMapBoundsPadded.southWest.lng],
-      [appliedMapBoundsPadded.northEast.lat, appliedMapBoundsPadded.northEast.lng],
-    )
-    validItems = validItems.filter((r) => b.contains([r.lat, r.lng]))
-    if (validItems.length > MAP_GROUP_INPUT_ROW_CAP) {
-      const centerLat = (appliedMapBoundsPadded.southWest.lat + appliedMapBoundsPadded.northEast.lat) / 2
-      const centerLng = (appliedMapBoundsPadded.southWest.lng + appliedMapBoundsPadded.northEast.lng) / 2
-      validItems = [...validItems]
-        .map((r) => ({ r, d: haversineDistanceKm(r.lat, r.lng, centerLat, centerLng) }))
+  const mapRenderableStations = useMemo(() => {
+    let rows = mapSummaryStationsAdapted
+    if (rows.length > MAP_GROUP_INPUT_ROW_CAP) {
+      const { lat, lng } = mapViewCenterForMarkers
+      rows = [...rows]
+        .map((r) => ({ r, d: haversineDistanceKm(r.lat, r.lng, lat, lng) }))
         .sort((a, b) => a.d - b.d)
         .slice(0, MAP_GROUP_INPUT_ROW_CAP)
         .map(({ r }) => r)
     }
-    const grouped = groupChargerRowsByPlaceMapLite(validItems)
-    if (import.meta.env.DEV && evMapDiag.track) {
-      diagGroupedBaseComputeCount.current += 1
-      logDiag(
-        `groupedAllStationsForMapBase compute #${diagGroupedBaseComputeCount.current}`,
-        `places=${grouped.length} rowsIn=${validItems.length} itemsMap=${itemsForMapMarkers.length}`,
-      )
-    }
-    return grouped
-  }, [itemsForMapMarkers, appliedMapBoundsPadded, evMapDiag.track])
+    return groupChargerRowsByPlaceMapLite(rows)
+  }, [mapSummaryStationsAdapted, mapViewCenterForMarkers])
 
-  const groupedAllStationsForMap = useMemo(() => {
-    const grouped = groupedAllStationsForMapBase
-    const sel = mapSelectedStation
-    if (!sel) return grouped
-    if (grouped.some((s) => s.id === sel.id)) return grouped
-    return [sel, ...grouped]
-  }, [groupedAllStationsForMapBase, mapSelectedStation])
-
-  /**
-   * 지도 마커 소스: 평소는 적용 영역만. 부트 중 applied 아직 없으면 앵커 근처만 임시 표시.
-   */
-  const mapStations = useMemo(() => {
-    const viewportGrouped = groupedAllStationsForMap
-    if (awaitingInitialMapPaint) {
-      if (viewportGrouped.length > 0) return viewportGrouped
-      return mapAnchorStations
-    }
-    return viewportGrouped
-  }, [awaitingInitialMapPaint, groupedAllStationsForMap, mapAnchorStations])
-
-  const mapLayerStationsComputed = useMemo(() => {
+  const mapRenderedMarkers = useMemo(() => {
     const cap = MOBILE_MAP_MARKER_CAP
-    const src = mapStations
+    const src = mapRenderableStations
     if (src.length <= cap) return src
     const { lat, lng } = mapViewCenterForMarkers
     return [...src]
@@ -1763,7 +1792,16 @@ function App() {
       .sort((a, b) => a.d - b.d)
       .slice(0, cap)
       .map(({ s }) => s)
-  }, [mapStations, mapViewCenterForMarkers])
+  }, [mapRenderableStations, mapViewCenterForMarkers])
+
+  const mapRenderedMarkersWithSelection = useMemo(() => {
+    const sel = mapSelectedStation
+    if (!sel) return mapRenderedMarkers
+    if (mapRenderedMarkers.some((s) => s.id === sel.id)) return mapRenderedMarkers
+    return [sel, ...mapRenderedMarkers]
+  }, [mapRenderedMarkers, mapSelectedStation])
+
+  const mapLayerStationsComputed = mapRenderedMarkersWithSelection
 
   const freezeSnapRef = useRef(/** @type {null | unknown[]} */ (null))
   const freezeUntilRef = useRef(0)
@@ -1851,7 +1889,6 @@ function App() {
       logMapLayerStationsSummary()
       if (import.meta.env.DEV && evMapDiag.track) {
         logDiag('diag@overlayOff', {
-          groupedBaseComputes: diagGroupedBaseComputeCount.current,
           mapLayerRefChanges: diagMapLayerRefChanges.current,
           evLayerMounts: diagEvLayerMountCount.current,
           iconResolves: diagIconResolveCountRef.current,
@@ -1872,10 +1909,10 @@ function App() {
         items: items.length,
         filteredItems: filteredItems.length,
         itemsInScope: itemsInScope.length,
-        mapStations: mapStations.length,
+        mapSummaryStationsAdapted: mapSummaryStationsAdapted.length,
+        mapRenderableStations: mapRenderableStations.length,
+        mapRenderedMarkers: mapRenderedMarkers.length,
         mapLayerStations: mapLayerStations.length,
-        mapAnchorStations: mapAnchorStations.length,
-        groupedAllStationsForMap: groupedAllStationsForMap.length,
         appliedMapBounds: !!appliedMapBounds,
       })
     }
@@ -1885,23 +1922,81 @@ function App() {
     items.length,
     filteredItems.length,
     itemsInScope.length,
-    mapStations.length,
+    mapSummaryStationsAdapted.length,
+    mapRenderableStations.length,
+    mapRenderedMarkers.length,
     mapLayerStations.length,
-    mapAnchorStations.length,
-    groupedAllStationsForMap.length,
     appliedMapBounds,
   ])
 
-  /** 지도·마커 부트 대기 중 로딩 문구 순환 */
+  /** 72%: 마커 준비 대기 — 오래 걸리면 문구·indeterminate로 “멈춤” 완화 */
   useEffect(() => {
     if (!bootOverlayOpen || !awaitingInitialMapPaint) return undefined
+    if (bootProgress < 72 || bootProgress >= 88) return undefined
+    const id = window.setTimeout(() => {
+      setBootStageMessage('충전소 정보를 불러오는 중입니다. 네트워크가 느리면 조금 더 걸릴 수 있어요.')
+      setBootLinearIndeterminate(true)
+    }, 10000)
+    return () => window.clearTimeout(id)
+  }, [bootOverlayOpen, awaitingInitialMapPaint, bootProgress])
+
+  /** 지도·마커 부트 대기: 기본은 고정 문구, 지연 시에만 순환 */
+  useEffect(() => {
+    if (!bootOverlayOpen || !awaitingInitialMapPaint) return undefined
+    if (bootProgress >= 88) return undefined
+    if (!bootLinearIndeterminate) {
+      setBootStageMessage(
+        '충전소 마커를 지도에 올리는 중이에요. 첫 마커(또는 묶음 아이콘)이 보이면 곧 완료돼요',
+      )
+      return undefined
+    }
     let idx = 0
     const id = window.setInterval(() => {
       idx = (idx + 1) % BOOT_MAP_WAIT_MESSAGES.length
       setBootStageMessage(BOOT_MAP_WAIT_MESSAGES[idx])
     }, 2400)
     return () => window.clearInterval(id)
-  }, [bootOverlayOpen, awaitingInitialMapPaint])
+  }, [bootOverlayOpen, awaitingInitialMapPaint, bootProgress, bootLinearIndeterminate])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !evMapDiag.countTrace) return
+    // eslint-disable-next-line no-console -- 단계별 count 증명
+    console.info('[mapCountTrace] render-pipeline', {
+      rawRows: mapSummaryStationsRaw.length,
+      adaptedRows: mapSummaryStationsAdapted.length,
+      validCoords: mapSummaryStationsAdapted.length,
+      preFilterRenderCandidates: mapRenderableStations.length,
+      postBoundsVisible: '(map path: bounds filter bypass)',
+      clusterInput: mapRenderableStations.length,
+      finalRenderedMarkers: mapLayerStations.length,
+    })
+  }, [
+    evMapDiag.countTrace,
+    mapSummaryStationsRaw.length,
+    mapSummaryStationsAdapted.length,
+    mapRenderableStations.length,
+    mapLayerStations.length,
+  ])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const pending = searchAreaAwaitingMarkersRef.current
+    if (!pending) return
+    if (mapLayerStations.length > 0) {
+      searchAreaTimingLog(pending, 'first-marker-visible', { n: mapLayerStations.length })
+      searchAreaAwaitingMarkersRef.current = null
+    }
+  }, [mapLayerStations.length, items.length])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    if (mapSearchAreaLoading) return
+    const pending = searchAreaAwaitingMarkersRef.current
+    if (pending && mapLayerStations.length === 0) {
+      searchAreaTimingLog(pending, 'search-area-loading-off-zero-markers', {})
+      searchAreaAwaitingMarkersRef.current = null
+    }
+  }, [mapSearchAreaLoading, mapLayerStations.length])
 
   /** 현재 화면 bounds가 적용 영역과 다를 때만「이 지역 검색」노출 (이동·줌 반영) */
   const showSearchAreaButton = useMemo(() => {
@@ -2492,8 +2587,8 @@ function App() {
               {bootStageMessage}
             </Typography>
             <LinearProgress
-              variant="determinate"
-              value={bootPct}
+              variant={bootLinearIndeterminate ? 'indeterminate' : 'determinate'}
+              value={bootLinearIndeterminate ? undefined : bootPct}
               sx={{
                 width: '100%',
                 maxWidth: 288,
@@ -2504,7 +2599,7 @@ function App() {
               }}
             />
             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-              {bootPct}%
+              {bootLinearIndeterminate ? '진행 중…' : `${bootPct}%`}
             </Typography>
           </GlassPanel>
         </Box>
@@ -2721,6 +2816,12 @@ function App() {
               markerIconsMaxWaitMs={2200}
               onReady={onBootMapPaintReady}
             />
+            {import.meta.env.DEV && (evMapDiag.proof || evMapDiag.apiProof) ? (
+              <MapMarkerProofLayers
+                showHardcoded={evMapDiag.proof}
+                apiFirst20={evMapDiag.apiProof ? mapProofApiDots : []}
+              />
+            ) : null}
             <MapMobileSearchViewportFitter
               enabled
               fitNonce={searchViewportFitNonce}

@@ -13,6 +13,10 @@
  * - noDefer            : (레거시) 지도용 items는 항상 즉시 반영 — 플래그는 무시됨
  * - pipeline           : fetchEvChargersSummaryForBounds 단계별 raw/normalize/bounds 카운트 콘솔
  * - raw20              : summary items 중 좌표 유효한 최대 20개를 클러스터 없이 빨간 CircleMarker로 표시(진단)
+ * - proof              : 광화문 고정 Marker 1 + CircleMarker 5 (렌더 경로 증명)
+ * - apiProof           : 1페이지 샘플 최대 20건을 녹색 CircleMarker로 즉시 표시(bounds/클러스터 파이프 우회)
+ * - adapterProof       : 1페이지 앞쪽 행에 대해 raw x/y → adapted lat/lng 등 콘솔 로그
+ * - countTrace         : raw→adapted→그룹→레이어 단계별 count 콘솔
  */
 
 export function parseEvMapDiag() {
@@ -30,6 +34,10 @@ export function parseEvMapDiag() {
       noDefer: false,
       pipeline: false,
       raw20: false,
+      proof: false,
+      apiProof: false,
+      adapterProof: false,
+      countTrace: false,
       anyLeafletHarness: false,
     }
   }
@@ -52,6 +60,10 @@ export function parseEvMapDiag() {
     noDefer: flags.has('noDefer'),
     pipeline: flags.has('pipeline'),
     raw20: flags.has('raw20'),
+    proof: flags.has('proof'),
+    apiProof: flags.has('apiProof'),
+    adapterProof: flags.has('adapterProof'),
+    countTrace: flags.has('countTrace'),
     anyLeafletHarness,
   }
 }

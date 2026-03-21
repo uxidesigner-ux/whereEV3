@@ -10,6 +10,7 @@ import {
   normalizeCharger,
   extractListFromResponse,
 } from './safemapEv.js'
+import { isLatLngRoughlyKorea } from '../utils/coordTransform.js'
 
 /**
  * 클라이언트 bbox 필터 전용이라 페이지를 많이 돌수록 느려짐.
@@ -51,8 +52,10 @@ export function literalBoundsContains(bounds, lat, lng) {
  *   maxRowsInBounds?: number
  *   signal?: AbortSignal
  *   pipelineDebug?: boolean
+ *   onFirstPageSample?: (p: { rawCount: number, sample: { raw: object, n: object | null }[] }) => void
+ *   adapterProofVerbose?: boolean
  * }} [opts]
- * @returns {Promise<{ rows: object[], pagesScanned: number, truncated: boolean, totalReported: number | null }>}
+ * @returns {Promise<{ rows: object[], pagesScanned: number, truncated: boolean, totalReported: number | null, pipelineCounts?: object }>}
  */
 export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) {
   const numOfRows = opts.numOfRows ?? 500
@@ -72,11 +75,23 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
 
   for (let page = 1; page <= maxPages; page += 1) {
     if (signal?.aborted) {
-      return { rows: inBounds, pagesScanned, truncated: true, totalReported }
+      return {
+        rows: inBounds,
+        pagesScanned,
+        truncated: true,
+        totalReported,
+        pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+      }
     }
     const data = await fetchEvChargersPage({ pageNo: page, numOfRows })
     if (signal?.aborted) {
-      return { rows: inBounds, pagesScanned, truncated: true, totalReported }
+      return {
+        rows: inBounds,
+        pagesScanned,
+        truncated: true,
+        totalReported,
+        pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+      }
     }
     const totalCountFromApi = data.response?.body?.totalCount ?? data.body?.totalCount ?? data.totalCount
     if (totalCountFromApi != null) totalReported = Number(totalCountFromApi)
@@ -88,9 +103,32 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
     let pageInBounds = 0
     let pageNormNull = 0
 
+    const firstPageSampleBuf =
+      page === 1 && typeof opts.onFirstPageSample === 'function' ? [] : null
+    const adapterProofVerbose = opts.adapterProofVerbose === true && import.meta.env.DEV
+
     for (let i = 0; i < list.length; i += 1) {
       rawItemCount += 1
-      const n = normalizeCharger(list[i], inBounds.length + i)
+      const rawRow = list[i]
+      const n = normalizeCharger(rawRow, inBounds.length + i)
+      if (firstPageSampleBuf && firstPageSampleBuf.length < 20) {
+        firstPageSampleBuf.push({ raw: rawRow, n })
+      }
+      if (adapterProofVerbose && page === 1 && i < 5) {
+        const rx = rawRow?.x ?? rawRow?.XPOINT ?? rawRow?.locationX
+        const ry = rawRow?.y ?? rawRow?.YPOINT ?? rawRow?.locationY
+        // eslint-disable-next-line no-console -- 강제 증명용
+        console.info('[adapterProof]', {
+          stationId: n?.id ?? rawRow?.statId ?? rawRow?.STATID ?? i,
+          rawX: rx,
+          rawY: ry,
+          adaptedLat: n?.lat,
+          adaptedLng: n?.lng,
+          latLngValid: !!(n && Number.isFinite(n.lat) && Number.isFinite(n.lng)),
+          korea: n && Number.isFinite(n.lat) && Number.isFinite(n.lng) ? isLatLngRoughlyKorea(n.lat, n.lng) : false,
+          finalRenderCoords: n && Number.isFinite(n.lat) && Number.isFinite(n.lng) ? [n.lat, n.lng] : null,
+        })
+      }
       if (!n) {
         pageNormNull += 1
         totalNormNull += 1
@@ -116,8 +154,18 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
             sampleLatLng: { lat: n.lat, lng: n.lng },
           })
         }
-        return { rows: inBounds, pagesScanned, truncated, totalReported }
+        return {
+          rows: inBounds,
+          pagesScanned,
+          truncated,
+          totalReported,
+          pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+        }
       }
+    }
+
+    if (page === 1 && typeof opts.onFirstPageSample === 'function' && firstPageSampleBuf) {
+      opts.onFirstPageSample({ rawCount: list.length, sample: firstPageSampleBuf })
     }
 
     if (pipelineDebug) {
@@ -153,7 +201,13 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
     })
   }
 
-  return { rows: inBounds, pagesScanned, truncated, totalReported }
+  return {
+    rows: inBounds,
+    pagesScanned,
+    truncated,
+    totalReported,
+    pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+  }
 }
 
 /**

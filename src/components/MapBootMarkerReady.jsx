@@ -157,8 +157,8 @@ export function MapBootMarkerReady({
 
     const targetIcons = Math.max(0, expectedMarkerIcons || markerCount)
     const maxWait = Math.max(400, markerIconsMaxWaitMs)
-    const cap = Math.max(1, Math.floor(paintSatisfiedIconCap))
-    const iconsRequired = targetIcons <= 0 ? 0 : Math.min(targetIcons, cap)
+    /** MarkerClusterGroup은 대개 클러스터 아이콘 소수만 DOM에 둠 → 40개 아이콘 대기는 영원히 만족 안 됨. 첫 가시 아이콘 1개면 충분 */
+    const iconsRequired = targetIcons <= 0 ? 0 : 1
 
     const countMarkerIcons = () => {
       try {
