@@ -11,6 +11,8 @@
  * - nobounds1500       : MapBoundsTracker가 마운트 후 1.5초간 setState 생략
  * - track              : 그룹핑·레이어 ref churn 로그
  * - noDefer            : (레거시) 지도용 items는 항상 즉시 반영 — 플래그는 무시됨
+ * - pipeline           : fetchEvChargersSummaryForBounds 단계별 raw/normalize/bounds 카운트 콘솔
+ * - raw20              : summary items 중 좌표 유효한 최대 20개를 클러스터 없이 빨간 CircleMarker로 표시(진단)
  */
 
 export function parseEvMapDiag() {
@@ -26,6 +28,8 @@ export function parseEvMapDiag() {
       nobounds1500: false,
       track: false,
       noDefer: false,
+      pipeline: false,
+      raw20: false,
       anyLeafletHarness: false,
     }
   }
@@ -46,6 +50,8 @@ export function parseEvMapDiag() {
     nobounds1500: flags.has('nobounds1500'),
     track: flags.has('track'),
     noDefer: flags.has('noDefer'),
+    pipeline: flags.has('pipeline'),
+    raw20: flags.has('raw20'),
     anyLeafletHarness,
   }
 }

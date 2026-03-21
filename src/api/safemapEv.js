@@ -3,7 +3,7 @@
  * 문서: https://www.safemap.go.kr/opna/data/dataViewRenew.do?objtId=118
  */
 
-import { webMercatorToLatLng } from '../utils/coordTransform.js'
+import { safemapApiRowToLatLng } from '../utils/coordTransform.js'
 import { applyMvpChargerOverlay } from '../data/chargerSessionMvp.js'
 
 const SAFEMAP_BASE =
@@ -202,7 +202,7 @@ export function parseExplicitChargePercentPair(row) {
 
 /**
  * API 원본 항목을 앱에서 쓰는 형태로 정규화.
- * x,y는 Web Mercator일 수 있으므로 WGS84(lat,lng)로 변환 후 반환.
+ * 좌표는 `safemapApiRowToLatLng`(x/y 투영·WGS84 필드 혼재)로 단일 정규화.
  */
 function get(obj, ...keys) {
   for (const k of keys) {
@@ -213,14 +213,14 @@ function get(obj, ...keys) {
 
 export function normalizeCharger(item, index) {
   if (!item || typeof item !== 'object') return null
-  const rawX = item.x ?? item.X
-  const rawY = item.y ?? item.Y
-  const converted = webMercatorToLatLng(rawX, rawY)
+  const converted = safemapApiRowToLatLng(item)
   if (!converted) {
+    const rawX = item.x ?? item.X
+    const rawY = item.y ?? item.Y
     console.warn(
       '[Safemap EV] 좌표 변환 실패, 마커 제외:',
       get(item, 'stat_nm', 'statNm', 'stat_id', 'statId') || index,
-      { x: rawX, y: rawY }
+      { x: rawX, y: rawY, keys: import.meta.env.DEV ? Object.keys(item).slice(0, 24) : undefined },
     )
     return null
   }

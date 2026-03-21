@@ -526,6 +526,38 @@ function MapChipViewportJump({ request, onComplete }) {
   return null
 }
 
+/** `?evDiag=raw20` — 클러스터·bounds 그룹핑 우회 없이 items 좌표만 빨간 점으로 확인 */
+function EvMapDiagnosticRawDots({ rows }) {
+  const slice = useMemo(() => {
+    const out = []
+    for (const r of rows || []) {
+      if (out.length >= 20) break
+      const la = Number(r.lat)
+      const ln = Number(r.lng)
+      if (Number.isFinite(la) && Number.isFinite(ln)) out.push({ la, ln, id: r?.id, i: out.length })
+    }
+    return out
+  }, [rows])
+  if (!slice.length) return null
+  return (
+    <>
+      {slice.map((p) => (
+        <CircleMarker
+          key={`ev-raw20-${String(p.id ?? p.i)}`}
+          center={[p.la, p.ln]}
+          radius={7}
+          pathOptions={{
+            color: '#b91c1c',
+            fillColor: '#fecaca',
+            fillOpacity: 0.95,
+            weight: 2,
+          }}
+        />
+      ))}
+    </>
+  )
+}
+
 function App() {
   const { tokens, colors, resolvedMode, togglePreference } = useEvTheme()
   const [items, setItems] = useState([])
@@ -1017,6 +1049,7 @@ function App() {
           const { rows, pagesScanned } = await fetchEvChargersSummaryForBounds(viewport, {
             ...preset,
             signal,
+            pipelineDebug: evMapDiag.pipeline,
           })
           if (signal.aborted) {
             viewportSummaryMarkAbort()
@@ -1055,7 +1088,7 @@ function App() {
       }
       return { ok: false }
     },
-    [canRefetchEv],
+    [canRefetchEv, evMapDiag.pipeline],
   )
 
   runViewportSummaryFetchRef.current = runViewportSummaryFetch
@@ -1202,7 +1235,7 @@ function App() {
       if (pos.usedGeo) setUserLocation({ lat: pos.lat, lng: pos.lng })
       else setUserLocation(null)
 
-      const initialViewportB = squareBoundsLiteralAroundCenter(pos.lat, pos.lng, 14)
+      const initialViewportB = squareBoundsLiteralAroundCenter(pos.lat, pos.lng, 32)
 
       if (!key) {
         await easeBootProgress(setBootProgress, 25, 72, 480)
@@ -2716,6 +2749,7 @@ function App() {
               diagnosticLightMarkers={import.meta.env.DEV && evMapDiag.light}
               diagnosticTrack={import.meta.env.DEV && evMapDiag.track}
             />
+            {import.meta.env.DEV && evMapDiag.raw20 ? <EvMapDiagnosticRawDots rows={items} /> : null}
             <MapGeolocationSync
               geoNonce={geoNonce}
               setUserLocation={setUserLocation}
