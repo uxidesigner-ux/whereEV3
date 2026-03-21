@@ -1,7 +1,16 @@
 {
   "headers": [
     {
-      "source": "/(.*)",
+      "source": "/",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; base-uri 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://www.safemap.go.kr https://*.basemaps.cartocdn.com https://*.openstreetmap.org; frame-ancestors 'none'; object-src 'none'"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
       "headers": [
         {
           "key": "Content-Security-Policy",

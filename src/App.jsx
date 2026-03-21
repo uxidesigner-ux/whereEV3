@@ -27,7 +27,7 @@ import {
   formatStatSummary,
 } from './api/safemapEv.js'
 import { filterNormalizedRowsToBounds } from './api/evViewportSummary.js'
-import { fetchEvStationsSummaryDataset } from './api/evStationsSummary.js'
+import { fetchEvStationsSummaryDataset, resolveEvStationsSummaryUrl } from './api/evStationsSummary.js'
 import { fetchDetailRowsForStatId, clearDetailRowsCache } from './api/evPlaceDetail.js'
 import { getDevMockEvChargers } from './dev/mockEvChargers.js'
 import {
@@ -1148,7 +1148,7 @@ function App() {
       const t0 = performance.now()
 
       try {
-        const summaryUrl = `${import.meta.env.BASE_URL}data/ev-stations-summary.json`
+        const summaryUrl = resolveEvStationsSummaryUrl(import.meta.env.BASE_URL)
         const diag = evMapDiagRef.current
         const devProof = import.meta.env.DEV && (diag.apiProof || diag.proof)
 
@@ -1448,7 +1448,7 @@ function App() {
       const initialViewportB = squareBoundsLiteralAroundCenter(pos.lat, pos.lng, 32)
       bootViewportForRetryRef.current = initialViewportB
 
-      const summaryUrl = `${import.meta.env.BASE_URL}data/ev-stations-summary.json`
+      const summaryUrl = resolveEvStationsSummaryUrl(import.meta.env.BASE_URL)
       const bootT0 = performance.now()
 
       const enterMarkerWait = (boundsLiteral) => {

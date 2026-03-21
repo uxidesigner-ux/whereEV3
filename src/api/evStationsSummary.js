@@ -7,6 +7,19 @@ import { placeKey } from '../utils/geo.js'
 
 export const EV_STATIONS_SUMMARY_PATH = '/data/ev-stations-summary.json'
 
+/**
+ * 요약 JSON URL. `VITE_EV_STATIONS_SUMMARY_URL`이 있으면 그 절대 URL을 쓴다 (외부 정적 호스팅 등).
+ * 그때는 `vercel.json` CSP의 `connect-src`에 해당 호스트를 추가해야 fetch가 막히지 않는다.
+ * @param {string} [baseUrl] Vite `import.meta.env.BASE_URL`
+ */
+export function resolveEvStationsSummaryUrl(baseUrl = import.meta.env.BASE_URL || '/') {
+  const custom = String(import.meta.env.VITE_EV_STATIONS_SUMMARY_URL || '').trim()
+  if (custom) return custom
+  const base = String(baseUrl || '/')
+  const normalized = base.endsWith('/') ? base : `${base}/`
+  return `${normalized}data/ev-stations-summary.json`
+}
+
 /** @param {object} row */
 function stripPriorMvpOverlay(row) {
   if (!row || typeof row !== 'object') return row
