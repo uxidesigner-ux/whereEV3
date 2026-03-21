@@ -293,15 +293,17 @@ function MapCenterTracker({ setMapCenter }) {
   return null
 }
 
-function MapBoundsTracker({ setMapBounds }) {
+function MapBoundsTracker({ setMapBounds, syncRef }) {
   const map = useMap()
   useEffect(() => {
     const update = () => {
       const b = map.getBounds()
-      setMapBounds({
+      const literal = {
         southWest: { lat: b.getSouthWest().lat, lng: b.getSouthWest().lng },
         northEast: { lat: b.getNorthEast().lat, lng: b.getNorthEast().lng },
-      })
+      }
+      if (syncRef) syncRef.current = literal
+      setMapBounds(literal)
     }
     update()
     /** 패닝·줌 시 즉시 갱신 — 마커는 `appliedMapBounds` 기준이라 여기 값만으로는 갱신되지 않음 */
@@ -311,7 +313,7 @@ function MapBoundsTracker({ setMapBounds }) {
       map.off('moveend', update)
       map.off('zoomend', update)
     }
-  }, [map, setMapBounds])
+  }, [map, setMapBounds, syncRef])
   return null
 }
 
@@ -757,10 +759,11 @@ function App() {
     [appliedMapBounds],
   )
 
-  const onBootMapPaintReady = useCallback(() => {
+  /** @param {null | { southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} boundsFromMap */
+  const onBootMapPaintReady = useCallback((boundsFromMap) => {
     if (bootMapPaintedRef.current) return
     bootMapPaintedRef.current = true
-    const b = liveMapBoundsRef.current
+    const b = boundsFromMap ?? liveMapBoundsRef.current
     if (b) setAppliedMapBounds(b)
     setBootProgress(100)
     setBootStageMessage('준비했어요')
@@ -2158,7 +2161,7 @@ function App() {
             zoomControl={false}
           >
             <MapCenterTracker setMapCenter={setMapCenter} />
-            <MapBoundsTracker setMapBounds={setLiveMapBounds} />
+            <MapBoundsTracker setMapBounds={setLiveMapBounds} syncRef={liveMapBoundsRef} />
             <MapBootMarkerReady
               active={awaitingInitialMapPaint}
               center={leafletInitial.center}
@@ -2166,7 +2169,9 @@ function App() {
               itemsLength={items.length}
               markerCount={mapLayerStations.length}
               expectedMarkerIcons={mapLayerStations.length}
-              markerIconsMaxWaitMs={90000}
+              /** 전부(최대 260) DOM 반영까지 기다리면 체감 지연이 커짐 — 첫 배치만 확인 */
+              paintSatisfiedIconCap={40}
+              markerIconsMaxWaitMs={2200}
               onReady={onBootMapPaintReady}
             />
             <MapMobileSearchViewportFitter

@@ -4,7 +4,8 @@ import { computeBootLeafletView, mapBootstrapWidthPx } from '../utils/mapInitial
 
 /**
  * 1) 부트 시 map.setView (MapContainer는 props 갱신을 따르지 않음)
- * 2) moveend 후 마커 데이터가 뷰에 반영될 때까지 대기한 뒤 onReady
+ * 2) moveend 후 첫 배치 마커가 markerPane에 올라오면 onReady (전량 대기 금지 — 체감 지연 방지)
+ * 3) onReady( boundsLiteral | null ) — Leaflet getBounds() 스냅샷으로 applied 영역 동기화
  */
 export function MapBootMarkerReady({
   active,
@@ -12,10 +13,15 @@ export function MapBootMarkerReady({
   zoom,
   itemsLength,
   markerCount,
-  /** 지도에 그려야 할 마커 수와 동일할 때까지 DOM의 `.leaflet-marker-icon` 개수를 센다 (LayerGroup 부트) */
+  /** 지도에 그려야 할 마커 수(상한) */
   expectedMarkerIcons = 0,
-  /** 아이콘 개수가 채워질 때까지 최대 대기(ms). 넘기면 그때까지 찍힌 상태로 진행 */
-  markerIconsMaxWaitMs = 90000,
+  /**
+   * DOM에서 이 개수만큼 `.leaflet-marker-icon`이 생기면 부트 완료로 본다.
+   * target보다 작은 값이면 나머지 마커는 오버레이 종료 후 이어서 페인트.
+   */
+  paintSatisfiedIconCap = 40,
+  /** 폴링·안전 타임아웃 상한(ms) */
+  markerIconsMaxWaitMs = 2500,
   onReady,
 }) {
   const map = useMap()
@@ -80,7 +86,7 @@ export function MapBootMarkerReady({
         if (cancelled || gen !== viewApplyGenRef.current) return
         if (map && typeof map.off === 'function') map.off('moveend', onMoveEnd)
         onMoveEnd()
-      }, 240)
+      }, 80)
     }
 
     const raf = requestAnimationFrame(() => {
@@ -99,10 +105,21 @@ export function MapBootMarkerReady({
     if (finishedRef.current) return undefined
 
     let cancelled = false
+    const readBoundsLiteral = () => {
+      try {
+        const bb = map.getBounds()
+        return {
+          southWest: { lat: bb.getSouthWest().lat, lng: bb.getSouthWest().lng },
+          northEast: { lat: bb.getNorthEast().lat, lng: bb.getNorthEast().lng },
+        }
+      } catch {
+        return null
+      }
+    }
     const finish = () => {
       if (cancelled || finishedRef.current) return
       finishedRef.current = true
-      onReadyRef.current()
+      onReadyRef.current(readBoundsLiteral())
     }
 
     /** 데이터가 있으면 마커가 1개 이상 준비된 뒤(다음 프레임 페인트 후)에만 오버레이 종료 */
@@ -122,7 +139,9 @@ export function MapBootMarkerReady({
     }
 
     const targetIcons = Math.max(0, expectedMarkerIcons || markerCount)
-    const maxWait = Math.max(5000, markerIconsMaxWaitMs)
+    const maxWait = Math.max(400, markerIconsMaxWaitMs)
+    const cap = Math.max(1, Math.floor(paintSatisfiedIconCap))
+    const iconsRequired = targetIcons <= 0 ? 0 : Math.min(targetIcons, cap)
 
     const countMarkerIcons = () => {
       try {
@@ -134,9 +153,9 @@ export function MapBootMarkerReady({
       }
     }
 
-    const allMarkerIconsPainted = () => targetIcons > 0 && countMarkerIcons() >= targetIcons
+    const enoughIconsPainted = () => iconsRequired > 0 && countMarkerIcons() >= iconsRequired
 
-    if (markerCount > 0 && targetIcons > 0) {
+    if (markerCount > 0 && iconsRequired > 0) {
       let pollTimer = null
       let maxTimer = null
       const clearTimers = () => {
@@ -156,14 +175,14 @@ export function MapBootMarkerReady({
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (cancelled) return
-          if (allMarkerIconsPainted()) {
+          if (enoughIconsPainted()) {
             scheduleFinish()
             return
           }
           pollTimer = window.setInterval(() => {
             if (cancelled) return
-            if (allMarkerIconsPainted()) scheduleFinish()
-          }, 48)
+            if (enoughIconsPainted()) scheduleFinish()
+          }, 32)
           maxTimer = window.setTimeout(() => {
             if (!cancelled) scheduleFinish()
           }, maxWait)
@@ -189,7 +208,7 @@ export function MapBootMarkerReady({
       cancelled = true
       window.clearTimeout(safety)
     }
-  }, [active, bootMoveGeneration, itemsLength, markerCount, expectedMarkerIcons, markerIconsMaxWaitMs, map])
+  }, [active, bootMoveGeneration, itemsLength, markerCount, expectedMarkerIcons, markerIconsMaxWaitMs, map, paintSatisfiedIconCap])
 
   return null
 }
