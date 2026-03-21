@@ -2,25 +2,30 @@
  * 부트 / 「이 지역 검색」 파이프라인 계측
  * - DEV에서는 항상 로그
  * - 프로덕션: ?evPipeline=1 (콘솔 + EvPipelineDebugPanel)
+ * @see ../utils/evPipelineUrl.js — URL 플래그 단일 출처
  */
 
+import { evPipelineUrlEnabled } from '../utils/evPipelineUrl.js'
 import { mergeEvPipelineDebug } from './evPipelineDebugStore.js'
+
+/** 번들·문서용: 프로덕 빌드에서 문자열이 제거되지 않도록 참조 가능 */
+export const EV_PIPELINE_LOG_LABELS = Object.freeze({
+  fetchDone: '[evPipeline] ① fetch-done',
+  adapterSamples: '[evPipeline] adapter-samples',
+  reactPipeline: '[evPipeline] ② react-pipeline',
+  firstMarker: '[evPipeline] ③ first-marker-visible',
+})
 
 export function isEvPipelineLogEnabled() {
   if (import.meta.env.DEV) return true
-  if (typeof window === 'undefined') return false
-  try {
-    return new URLSearchParams(window.location.search).get('evPipeline') === '1'
-  } catch {
-    return false
-  }
+  return evPipelineUrlEnabled()
 }
 
 /** ① API 페이지 스캔 종료 직후 (네트워크+서버 응답 구간) */
 export function logEvPipelineFetchDone(payload) {
   if (!isEvPipelineLogEnabled()) return
   // eslint-disable-next-line no-console
-  console.info('[evPipeline] ① fetch-done', payload)
+  console.info(EV_PIPELINE_LOG_LABELS.fetchDone, payload)
   mergeEvPipelineDebug({
     evPhase: payload.phase,
     fetchMs: payload.fetchMs,
@@ -37,7 +42,7 @@ export function logEvPipelineFetchDone(payload) {
 export function logEvPipelineAdapterSamples(payload) {
   if (!isEvPipelineLogEnabled()) return
   // eslint-disable-next-line no-console
-  console.info('[evPipeline] adapter-samples', payload)
+  console.info(EV_PIPELINE_LOG_LABELS.adapterSamples, payload)
   mergeEvPipelineDebug({
     adapterSamplesPhase: payload.phase,
     adapterSamples: payload.samples,
@@ -48,7 +53,7 @@ export function logEvPipelineAdapterSamples(payload) {
 export function logEvPipelineReactPipeline(payload) {
   if (!isEvPipelineLogEnabled()) return
   // eslint-disable-next-line no-console
-  console.info('[evPipeline] ② react-pipeline', payload)
+  console.info(EV_PIPELINE_LOG_LABELS.reactPipeline, payload)
   mergeEvPipelineDebug({
     evPhase: payload.phase,
     fetchMs: payload.fetchMsSnapshot,
@@ -66,7 +71,7 @@ export function logEvPipelineReactPipeline(payload) {
 export function logEvPipelineFirstMarker(payload) {
   if (!isEvPipelineLogEnabled()) return
   // eslint-disable-next-line no-console
-  console.info('[evPipeline] ③ first-marker-visible', payload)
+  console.info(EV_PIPELINE_LOG_LABELS.firstMarker, payload)
   mergeEvPipelineDebug({
     evPhase: payload.phase,
     fetchMs: payload.fetchMs,

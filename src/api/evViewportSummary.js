@@ -15,11 +15,22 @@ import { isEvPipelineLogEnabled } from '../dev/evPipelinePerfLog.js'
 
 /**
  * 클라이언트 bbox 필터 전용이라 페이지를 많이 돌수록 느려짐.
- * 모바일 first paint·IF_0042 호출량 우선으로 상한을 낮춤(뷰포트 밖 충전소 누락 가능 → docs/DATA-SOURCES.md).
+ * 모바일 first paint·IF_0042 호출량 우선(뷰포트 밖·순서 뒤쪽 누락 가능 → docs/DATA-SOURCES.md).
+ * stopWhenInBoundsGte: 지도 캡(~260)·그룹화 전제로 “첫 화면에 쓸 만큼” 모이면 다음 페이지 스캔 생략.
  */
 export const VIEWPORT_SUMMARY_FETCH_PRESETS = {
-  boot: { maxPages: 4, maxRowsInBounds: 900, numOfRows: 500 },
-  interactive: { maxPages: 3, maxRowsInBounds: 550, numOfRows: 500 },
+  boot: {
+    maxPages: 3,
+    maxRowsInBounds: 400,
+    numOfRows: 400,
+    stopWhenInBoundsGte: 180,
+  },
+  interactive: {
+    maxPages: 2,
+    maxRowsInBounds: 280,
+    numOfRows: 400,
+    stopWhenInBoundsGte: 120,
+  },
 }
 
 /**
@@ -55,6 +66,7 @@ export function literalBoundsContains(bounds, lat, lng) {
  *   onFirstPageSample?: (p: { rawCount: number, sample: { raw: object, n: object | null }[] }) => void
  *   adapterProofVerbose?: boolean
  *   collectAdapterSamples?: boolean
+ *   stopWhenInBoundsGte?: number
  * }} [opts]
  * @returns {Promise<{ rows: object[], pagesScanned: number, truncated: boolean, totalReported: number | null, pipelineCounts?: object, adapterSamples?: object[] }>}
  */
@@ -62,6 +74,10 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
   const numOfRows = opts.numOfRows ?? 500
   const maxPages = opts.maxPages ?? 18
   const maxRowsInBounds = opts.maxRowsInBounds ?? 4000
+  const stopWhenInBoundsGte =
+    typeof opts.stopWhenInBoundsGte === 'number' && opts.stopWhenInBoundsGte > 0
+      ? opts.stopWhenInBoundsGte
+      : null
   const signal = opts.signal
   const pipelineDebug =
     opts.pipelineDebug === true && (import.meta.env.DEV || isEvPipelineLogEnabled())
@@ -162,6 +178,26 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
       seenId.add(n.id)
       inBounds.push(n)
       pageInBounds += 1
+      if (stopWhenInBoundsGte != null && inBounds.length >= stopWhenInBoundsGte) {
+        truncated = true
+        if (pipelineDebug) {
+          // eslint-disable-next-line no-console -- 파이프라인 계측
+          console.info('[evPipeline] early-stop-sufficient-in-bounds', {
+            page,
+            rowsInBounds: inBounds.length,
+            stopWhenInBoundsGte,
+            rawItemCount,
+          })
+        }
+        return {
+          rows: inBounds,
+          pagesScanned,
+          truncated,
+          totalReported,
+          pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+          ...(adapterSamples ? { adapterSamples } : {}),
+        }
+      }
       if (inBounds.length >= maxRowsInBounds) {
         truncated = true
         if (pipelineDebug) {

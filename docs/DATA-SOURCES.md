@@ -62,7 +62,7 @@ UI는 **기본 row(실데이터 필드) + 표시용 `stat` + `getChargerSessionF
 - **`fetchEvChargers`:** 한 번에 끝까지 순회(새로고침·상세 동기 등에 사용).
 - **`fetchEvChargersProgressive`:** 첫 페이지 적재 직후 UI `loading` 해제 → 이후 페이지는 백그라운드에서 `setItems` 누적. 언마운트 시 `AbortSignal`로 이후 요청 중단.
 - **지도 클러스터:** 현재 **디바운스된 지도 bounds + 패딩** 안에 있는 충전소만 마커로 올려 연산량을 줄임(서버는 여전히 전국 페이지를 받되, 클라이언트 표시는 뷰포트 중심).
-- **`fetchEvChargersSummaryForBounds` + `VIEWPORT_SUMMARY_FETCH_PRESETS`:** 모바일·IF_0042 부담을 줄이기 위해 **부트 최대 약 4페이지·뷰포트 내 행 상한 ~900**, **interactive(이 지역 검색 등) 최대 약 3페이지·~550행** 수준으로 제한한다. API가 bbox를 지원하지 않는 한 뷰포트 밖·순서상 뒤쪽 데이터는 누락될 수 있다.
+- **`fetchEvChargersSummaryForBounds` + `VIEWPORT_SUMMARY_FETCH_PRESETS`:** IF_0042 호출·bbox 스캔을 줄이기 위해 **부트 최대 3페이지·`numOfRows` 400·뷰포트 내 행 상한 400·`stopWhenInBoundsGte` 180**에서 조기 종료 가능, **interactive 최대 2페이지·상한 280·조기 종료 120**이다. API가 bbox를 지원하지 않는 한 뷰포트 밖·순서상 뒤쪽 데이터는 누락될 수 있다.
 - **프로덕 계측:** `?evPipeline=1` — 콘솔 `[evPipeline] ①②③`·`adapter-samples` 및 화면 하단 `EvPipelineDebugPanel`.
 - **DEV 계측:** 콘솔 `[evViewportSummary]` 로그 및 `viewportSummaryMetrics`(abort/stale/적용 횟수) — `src/dev/viewportSummaryTelemetry.js`.
 - **좌표:** Safemap 목록의 `x`/`y`는 Web Mercator(EPSG:3857) 미터 값인 경우가 많다. `safemapApiRowToLatLng`(`src/utils/coordTransform.js`)에서 WGS84 `lat`/`lng`로만 정규화한 뒤 `normalizeCharger`가 지도·bounds에 넘긴다. `?evDiag=pipeline`으로 페이지별 raw/normalize/bounds 통과 개수, `?evDiag=raw20`으로 `items` 좌표를 클러스터 없이 빨간 점으로 확인할 수 있다.

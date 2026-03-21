@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
-import { Box, Typography } from '@mui/material'
+import { Box, Typography, useTheme } from '@mui/material'
 import { subscribeEvPipelineDebug, getEvPipelineDebugSnapshot } from './evPipelineDebugStore.js'
-import { isEvPipelineLogEnabled } from './evPipelinePerfLog.js'
+import { isEvPipelineLogEnabled, EV_PIPELINE_LOG_LABELS } from './evPipelinePerfLog.js'
 
 function fmt(v) {
   if (v === null || v === undefined) return '—'
@@ -19,6 +19,7 @@ function fmt(v) {
  * ?evPipeline=1 전용: 지도 위 고정 하단 패널 (실측 숫자)
  */
 export function EvPipelineDebugPanel() {
+  const theme = useTheme()
   const snap = useSyncExternalStore(
     subscribeEvPipelineDebug,
     getEvPipelineDebugSnapshot,
@@ -26,6 +27,11 @@ export function EvPipelineDebugPanel() {
   )
 
   if (!isEvPipelineLogEnabled()) return null
+
+  const isDark = theme.palette.mode === 'dark'
+  const panelBg = isDark ? 'rgba(15,23,42,0.94)' : 'rgba(248,250,252,0.96)'
+  const panelFg = isDark ? theme.palette.grey[100] : theme.palette.text.primary
+  const panelBorder = isDark ? 'rgba(148,163,184,0.35)' : 'rgba(15,23,42,0.12)'
 
   const rows = [
     ['phase', snap.evPhase],
@@ -58,16 +64,23 @@ export function EvPipelineDebugPanel() {
         overflow: 'auto',
         px: 1,
         py: 0.75,
-        bgcolor: 'rgba(15,23,42,0.92)',
-        color: 'rgba(226,232,240,0.95)',
-        borderTop: '1px solid rgba(148,163,184,0.35)',
+        bgcolor: panelBg,
+        color: panelFg,
+        borderTop: `1px solid ${panelBorder}`,
         fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
         fontSize: 10,
         lineHeight: 1.35,
         pointerEvents: 'auto',
         WebkitOverflowScrolling: 'touch',
+        backdropFilter: 'blur(10px)',
       }}
     >
+      <span style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} aria-hidden="true">
+        {EV_PIPELINE_LOG_LABELS.fetchDone}
+        {EV_PIPELINE_LOG_LABELS.reactPipeline}
+        {EV_PIPELINE_LOG_LABELS.firstMarker}
+        {EV_PIPELINE_LOG_LABELS.adapterSamples}
+      </span>
       <Typography component="div" sx={{ fontSize: 10, fontWeight: 700, mb: 0.25, color: 'inherit' }}>
         evPipeline (?evPipeline=1)
       </Typography>
