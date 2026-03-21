@@ -21,13 +21,15 @@ import Refresh from '@mui/icons-material/Refresh'
 import { MapContainer, Circle, CircleMarker, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import {
-  fetchEvChargers,
-  fetchEvChargersFirstPageBatch,
-  fetchEvChargersProgressiveContinue,
   aggregateStatCounts,
   getLatestStatUpdDt,
   formatStatSummary,
 } from './api/safemapEv.js'
+import {
+  fetchEvChargersSummaryForBounds,
+  filterDevMockRowsToBounds,
+} from './api/evViewportSummary.js'
+import { fetchDetailRowsForStatId, clearDetailRowsCache } from './api/evPlaceDetail.js'
 import { getDevMockEvChargers } from './dev/mockEvChargers.js'
 import {
   haversineDistanceKm,
@@ -124,6 +126,7 @@ import { MobileMapQuickSearchChipsRail } from './components/MobileMapQuickSearch
 import { EvStationMapLayer } from './components/EvStationMapLayer.jsx'
 import { MapBootMarkerReady } from './components/MapBootMarkerReady.jsx'
 import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
+import { MapSearchAreaLoadingOverlay } from './components/MapSearchAreaLoadingOverlay.jsx'
 import { StationDetailFooterActions } from './components/StationDetailContent.jsx'
 import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
 import { MobileDetailSheetBody } from './components/MobileDetailSheetBody.jsx'
@@ -689,7 +692,33 @@ function App() {
     setDetailStation(s)
     detailStationRef.current = s
     setMobileSheetSnap('half')
-  }, [mobileSheetSnap])
+
+    const statId = s.rows?.[0]?.statId
+    if (canRefetchEv && statId) {
+      void (async () => {
+        const openId = s.id
+        try {
+          const rows = await fetchDetailRowsForStatId({
+            statId: String(statId),
+            seedRows: s.rows || [],
+            maxPages: 24,
+          })
+          const preserveKm = s.distanceKm != null && !Number.isNaN(s.distanceKm) ? s.distanceKm : undefined
+          const next = buildPlaceGroupFromRows(rows, preserveKm)
+          if (detailStationRef.current?.id !== openId) return
+          setDetailStation(next)
+          detailStationRef.current = next
+          const sel = mapSelectedStationRef.current
+          if (sel?.id === openId) {
+            setMapSelectedStation(next)
+            mapSelectedStationRef.current = next
+          }
+        } catch {
+          /* summary만으로 유지 */
+        }
+      })()
+    }
+  }, [mobileSheetSnap, canRefetchEv])
 
   const openDetailPreserveRef = useRef(null)
   openDetailPreserveRef.current = openDetailPreserve
@@ -837,6 +866,21 @@ function App() {
     liveMapBoundsRef.current = liveMapBounds
   }, [liveMapBounds])
 
+  const appliedMapBoundsRef = useRef(null)
+  useEffect(() => {
+    appliedMapBoundsRef.current = appliedMapBounds
+  }, [appliedMapBounds])
+
+  /** 「이 지역 검색」summary 전용 로딩(초기 부트 오버레이와 분리) */
+  const [mapSearchAreaLoading, setMapSearchAreaLoading] = useState(false)
+  const summaryFetchAbortRef = useRef(null)
+  useEffect(
+    () => () => {
+      summaryFetchAbortRef.current?.abort()
+    },
+    [],
+  )
+
   /** 목록·지도 마커 공통: 적용된 화면 영역(「이 지역 검색」 또는 부트 완료 시 스냅) */
   const appliedMapBoundsPadded = useMemo(
     () => (appliedMapBounds ? expandLiteralBounds(appliedMapBounds, 0.42) : null),
@@ -859,9 +903,59 @@ function App() {
     })
   }, [])
 
-  /** 「이 지역 검색」: 현재 보고 있는 지도 영역으로만 마커·목록 갱신 */
-  const applySearchAreaFromMap = useCallback(() => {
-    setAppliedMapBounds(liveMapBoundsRef.current)
+  const runViewportSummaryFetch = useCallback(
+    /**
+     * viewport 기준 summary(페이지 순회 + 클라이언트 bbox 필터). applied bounds는 호출측에서 맞춤.
+     * @param {{ southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} boundsLiteral
+     */
+    async (boundsLiteral, { overlay = false } = {}) => {
+      if (!boundsLiteral || !canRefetchEv) return
+      summaryFetchAbortRef.current?.abort()
+      const ac = new AbortController()
+      summaryFetchAbortRef.current = ac
+      if (overlay) setMapSearchAreaLoading(true)
+      setApiError(null)
+      try {
+        const { rows } = await fetchEvChargersSummaryForBounds(boundsLiteral, { signal: ac.signal })
+        if (ac.signal.aborted) return
+        setItems(rows)
+        setTotalCount(rows.length)
+        setLastEvFetchAt(new Date().toISOString())
+        clearDetailRowsCache()
+      } catch (err) {
+        if (ac.signal.aborted) return
+        setApiError(err.message || '데이터를 불러오지 못했습니다.')
+      } finally {
+        if (overlay) setMapSearchAreaLoading(false)
+      }
+    },
+    [canRefetchEv],
+  )
+
+  const onSearchViewportBoundsApplied = useCallback(
+    (boundsLiteral) => {
+      if (!boundsLiteral) return
+      if (canRefetchEv) {
+        void runViewportSummaryFetch(boundsLiteral, { overlay: false })
+      } else if (import.meta.env.DEV) {
+        const mock = getDevMockEvChargers()
+        setItems(filterDevMockRowsToBounds(mock, boundsLiteral))
+      }
+    },
+    [canRefetchEv, runViewportSummaryFetch],
+  )
+
+  /** 「이 지역 검색」: viewport summary 재조회 + 적용 영역 동기화 */
+  const applySearchAreaFromMap = useCallback(async () => {
+    const b = liveMapBoundsRef.current
+    if (!b || mapSearchAreaLoading) return
+    if (canRefetchEv) {
+      await runViewportSummaryFetch(b, { overlay: true })
+    } else if (import.meta.env.DEV) {
+      const mock = getDevMockEvChargers()
+      setItems(filterDevMockRowsToBounds(mock, b))
+    }
+    setAppliedMapBounds(b)
     setClusterBrowseGrouped(null)
     setConfirmedMobileSearchQuery('')
     setMobileSearchGeo(null)
@@ -870,7 +964,7 @@ function App() {
     setMapSelectedStation(null)
     setDetailStation(null)
     detailStationRef.current = null
-  }, [openMobileListSheetToHalf])
+  }, [openMobileListSheetToHalf, canRefetchEv, runViewportSummaryFetch, mapSearchAreaLoading])
 
   const handleClusterStationsTap = useCallback(({ stations }) => {
     if (!Array.isArray(stations) || stations.length === 0) return
@@ -909,17 +1003,20 @@ function App() {
       if (pos.usedGeo) setUserLocation({ lat: pos.lat, lng: pos.lng })
       else setUserLocation(null)
 
+      const initialViewportB = squareBoundsLiteralAroundCenter(pos.lat, pos.lng, 14)
+
       if (!key) {
         await easeBootProgress(setBootProgress, 25, 72, 480)
         if (cancelled) return
         if (import.meta.env.DEV) {
           const mock = getDevMockEvChargers()
+          const scoped = filterDevMockRowsToBounds(mock, initialViewportB)
           setApiError(null)
-          setItems(mock)
-          setTotalCount(mock.length)
+          setItems(scoped)
+          setTotalCount(scoped.length)
           setLastEvFetchAt(new Date().toISOString())
           console.info(
-            `[whereEV3] API 키 없음 — 로컬 대체 충전소 데이터 ${mock.length}건(dev-mock). 실제 Safemap 데이터는 .env.local의 VITE_SAFEMAP_SERVICE_KEY 설정 후 재시작하세요. (docs/DATA-SOURCES.md)`
+            `[whereEV3] API 키 없음 — viewport 요약용 mock ${scoped.length}건(전체 ${mock.length}건 중). 실제 Safemap은 .env.local의 VITE_SAFEMAP_SERVICE_KEY 설정 후 재시작하세요. (docs/DATA-SOURCES.md)`
           )
         } else {
           setApiError('VITE_SAFEMAP_SERVICE_KEY를 .env 또는 .env.local에 설정해 주세요.')
@@ -936,42 +1033,24 @@ function App() {
       setApiError(null)
       setItems([])
       const pFetch = easeBootProgress(setBootProgress, 25, 72, 3200)
-      let first = /** @type {Awaited<ReturnType<typeof fetchEvChargersFirstPageBatch>> | null} */ (null)
       try {
-        first = await fetchEvChargersFirstPageBatch({ numOfRows: 500, signal: ac.signal })
+        const { rows } = await fetchEvChargersSummaryForBounds(initialViewportB, { signal: ac.signal })
+        if (!cancelled && !ac.signal.aborted) {
+          setItems(rows)
+          setTotalCount(rows.length)
+          setLastEvFetchAt(new Date().toISOString())
+          clearDetailRowsCache()
+        }
       } catch (err) {
         if (!cancelled) setApiError(err.message || '데이터를 불러오지 못했습니다.')
       }
       await pFetch
       if (cancelled) return
 
-      if (first && !first.aborted) {
-        setItems(first.batch)
-        setTotalCount(first.totalCount != null ? first.totalCount : first.batch.length)
-      }
-
       setBootStageMessage('지도와 충전소 마커를 표시하는 중이에요')
       await easeBootProgress(setBootProgress, 72, 82, 560)
       if (cancelled) return
       setAwaitingInitialMapPaint(true)
-
-      if (first && !first.aborted && !first.isLast) {
-        fetchEvChargersProgressiveContinue({
-          startPage: 2,
-          initialGlobalIndex: first.loadedCount,
-          numOfRows: 500,
-          maxPages: 200,
-          signal: ac.signal,
-          seedTotalCount: first.totalCount,
-          onPage: async ({ batch, isLast }) => {
-            if (cancelled) return
-            if (batch.length) setItems((prev) => [...prev, ...batch])
-            if (isLast && !cancelled) setLastEvFetchAt(new Date().toISOString())
-          },
-        }).catch(() => {})
-      } else if (first && !first.aborted && first.isLast) {
-        setLastEvFetchAt(new Date().toISOString())
-      }
     })()
 
     return () => {
@@ -982,13 +1061,20 @@ function App() {
 
   const refreshEvData = useCallback(async () => {
     if (!canRefetchEv) return
+    const b = appliedMapBoundsRef.current || liveMapBoundsRef.current
+    if (!b) return
     setDetailRefreshing(true)
     setApiError(null)
+    summaryFetchAbortRef.current?.abort()
+    const ac = new AbortController()
+    summaryFetchAbortRef.current = ac
     try {
-      const { items: list, totalCount: total } = await fetchEvChargers({ pageNo: 1, numOfRows: 500, maxPages: 200 })
+      const { rows: list } = await fetchEvChargersSummaryForBounds(b, { signal: ac.signal })
+      if (ac.signal.aborted) return
       setItems(list)
-      if (total != null) setTotalCount(total)
+      setTotalCount(list.length)
       setLastEvFetchAt(new Date().toISOString())
+      clearDetailRowsCache()
       const prev = detailStationRef.current
       if (prev) {
         const matched = rowsMatchingDetailStation(prev, list)
@@ -1077,7 +1163,13 @@ function App() {
     })
     if (picked.matches.length === 0) {
       const padKm = Math.min(Number.isFinite(picked.radiusKm) ? picked.radiusKm : 8, 8)
-      setAppliedMapBounds(squareBoundsLiteralAroundCenter(center.lat, center.lng, Math.max(padKm, 1)))
+      const b = squareBoundsLiteralAroundCenter(center.lat, center.lng, Math.max(padKm, 1))
+      setAppliedMapBounds(b)
+      if (canRefetchEv) {
+        void runViewportSummaryFetch(b, { overlay: false })
+      } else if (import.meta.env.DEV) {
+        setItems(filterDevMockRowsToBounds(getDevMockEvChargers(), b))
+      }
     } else {
       setSearchViewportFitNonce((n) => n + 1)
     }
@@ -2425,11 +2517,12 @@ function App() {
               filteredItems={filteredItemsForScope}
               setAppliedMapBounds={setAppliedMapBounds}
               ignoreRegionKeywordBounds
+              onBoundsAppliedFromSearch={onSearchViewportBoundsApplied}
             />
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer
               stations={evMapDiag.anyLeafletHarness ? [] : mapLayerStations}
-              variant="lite"
+              variant="full"
               onDetailClickById={onMapMarkerPickId}
               onClusterTap={handleClusterStationsTap}
               selectedId={mapSelectedStation?.id}
@@ -2440,7 +2533,7 @@ function App() {
               uiColors={colors}
               mapTileUrl={tokens.map.tileUrl}
               mapTileAttribution={tokens.map.tileAttribution}
-              markerClusterChunked={false}
+              markerClusterChunked
               removeOutsideVisibleBounds={false}
               diagnosticLightMarkers={import.meta.env.DEV && evMapDiag.light}
               diagnosticTrack={import.meta.env.DEV && evMapDiag.track}
@@ -2477,6 +2570,26 @@ function App() {
               </>
             )}
           </MapContainer>
+          <MapSearchAreaLoadingOverlay
+            open={mapSearchAreaLoading}
+            style={
+              resolvedMode === 'dark'
+                ? {
+                    '--ev-search-area-dim': 'rgba(0,0,0,0.45)',
+                    '--ev-search-area-panel-bg': 'rgba(30,41,59,0.92)',
+                    '--ev-search-area-panel-border': 'rgba(255,255,255,0.1)',
+                    '--ev-search-area-panel-shadow': '0 12px 40px rgba(0,0,0,0.5)',
+                    '--ev-search-area-bolt': colors.blue.primary,
+                  }
+                : {
+                    '--ev-search-area-dim': 'rgba(255,255,255,0.3)',
+                    '--ev-search-area-panel-bg': 'rgba(255,255,255,0.94)',
+                    '--ev-search-area-panel-border': 'rgba(15,23,42,0.08)',
+                    '--ev-search-area-panel-shadow': '0 10px 36px rgba(15,23,42,0.12)',
+                    '--ev-search-area-bolt': colors.blue.primary,
+                  }
+            }
+          />
           {(locationError || locationLoading) && (
             <Box
               sx={{
@@ -2660,7 +2773,8 @@ function App() {
               <Button
                 variant="contained"
                 startIcon={<SearchIcon sx={{ fontSize: 20 }} />}
-                onClick={applySearchAreaFromMap}
+                onClick={() => void applySearchAreaFromMap()}
+                disabled={mapSearchAreaLoading}
                 sx={{
                   display: 'inline-flex',
                   width: 'auto',

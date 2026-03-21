@@ -157,7 +157,8 @@ export function EvStationMapLayer({
     [colors.blue.primary, resolvedMode],
   )
 
-  const useLiteMarkers = Boolean(isMobile && onDetailClickById)
+  /** lite: 개별 경량 마커만. full: MarkerClusterGroup + 숫자 클러스터(모바일도 동일). */
+  const useLiteMarkers = Boolean(isMobile && onDetailClickById && variant === 'lite')
 
   const liteDefaultIcon = diagnosticLightMarkers ? LEAFLET_LIGHT_MARKER_ICON : defaultMarkerIcon
   const liteSelectedIcon = diagnosticLightMarkers ? LEAFLET_LIGHT_MARKER_ICON : selectedMarkerIcon
@@ -214,10 +215,11 @@ export function EvStationMapLayer({
           icon={iconFor(s.id)}
           zIndexOffset={selectedId === s.id ? 700 : 0}
           eventHandlers={
-            isMobile && onDetailClick
+            isMobile && (onDetailClick || onDetailClickById)
               ? {
                   click: () => {
-                    onDetailClick(s)
+                    if (onDetailClick) onDetailClick(s)
+                    else if (onDetailClickById) onDetailClickById(s.id)
                   },
                 }
               : undefined
@@ -304,7 +306,17 @@ export function EvStationMapLayer({
         </Marker>
       )
     })
-  }, [useLiteMarkers, stations, iconFor, selectedId, isMobile, onDetailClick, muiThemeLocal.typography.fontFamily, uiColors])
+  }, [
+    useLiteMarkers,
+    stations,
+    iconFor,
+    selectedId,
+    isMobile,
+    onDetailClick,
+    onDetailClickById,
+    muiThemeLocal.typography.fontFamily,
+    uiColors,
+  ])
 
   const markerNodes = useLiteMarkers ? markerNodesLite : markerNodesDesktop
 

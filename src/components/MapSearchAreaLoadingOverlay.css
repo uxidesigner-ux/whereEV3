@@ -1,0 +1,125 @@
+/* 이 지역 검색 전용 — 지도 위 로딩. 라이트/다크는 부모가 CSS 변수 주입 */
+
+.ev-map-search-loading-root {
+  position: absolute;
+  inset: 0;
+  z-index: 450;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: var(--ev-search-area-dim, rgba(15, 23, 42, 0.22));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.ev-map-search-loading-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  max-width: min(320px, 88vw);
+  text-align: center;
+  background: var(--ev-search-area-panel-bg, rgba(255, 255, 255, 0.92));
+  border: 1px solid var(--ev-search-area-panel-border, rgba(0, 0, 0, 0.08));
+  box-shadow: var(--ev-search-area-panel-shadow, 0 8px 32px rgba(0, 0, 0, 0.12));
+}
+
+.ev-map-search-lightnings {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  height: 40px;
+  width: 120px;
+}
+
+.ev-map-search-bolt {
+  position: absolute;
+  color: var(--ev-search-area-bolt, #2563eb);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+  will-change: transform, opacity;
+}
+
+.ev-map-search-bolt--1 {
+  left: 50%;
+  margin-left: -14px;
+  font-size: 28px !important;
+  animation: ev-search-bolt-drop-1 0.85s ease-in-out infinite;
+}
+
+.ev-map-search-bolt--2 {
+  left: 50%;
+  margin-left: -38px;
+  font-size: 22px !important;
+  animation: ev-search-bolt-drop-2 0.85s ease-in-out infinite;
+}
+
+.ev-map-search-bolt--3 {
+  left: 50%;
+  margin-left: 10px;
+  font-size: 19px !important;
+  animation: ev-search-bolt-drop-3 0.85s ease-in-out infinite;
+}
+
+@keyframes ev-search-bolt-drop-1 {
+  0% {
+    transform: translateY(-14px) scale(0.88);
+    opacity: 0.35;
+  }
+  35% {
+    transform: translateY(2px) scale(1);
+    opacity: 1;
+  }
+  70%,
+  100% {
+    transform: translateY(8px) scale(0.92);
+    opacity: 0.5;
+  }
+}
+
+@keyframes ev-search-bolt-drop-2 {
+  0%,
+  8% {
+    transform: translateY(-12px) scale(0.85);
+    opacity: 0.25;
+  }
+  40% {
+    transform: translateY(2px) scale(1);
+    opacity: 1;
+  }
+  75%,
+  100% {
+    transform: translateY(8px) scale(0.9);
+    opacity: 0.45;
+  }
+}
+
+@keyframes ev-search-bolt-drop-3 {
+  0%,
+  14% {
+    transform: translateY(-10px) scale(0.82);
+    opacity: 0.2;
+  }
+  45% {
+    transform: translateY(1px) scale(1);
+    opacity: 0.95;
+  }
+  78%,
+  100% {
+    transform: translateY(7px) scale(0.88);
+    opacity: 0.4;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ev-map-search-bolt--1,
+  .ev-map-search-bolt--2,
+  .ev-map-search-bolt--3 {
+    animation: none;
+    transform: translateY(0);
+    opacity: 0.9;
+  }
+}

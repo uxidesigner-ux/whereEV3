@@ -35,6 +35,8 @@ export function MapMobileSearchViewportFitter({
   filteredItems,
   setAppliedMapBounds,
   ignoreRegionKeywordBounds = false,
+  /** moveend 후 적용 bounds가 반영된 직후 (검색 뷰포트 summary fetch 등) */
+  onBoundsAppliedFromSearch,
 }) {
   const map = useMap()
   const lastProcessedNonceRef = useRef(0)
@@ -77,7 +79,11 @@ export function MapMobileSearchViewportFitter({
     const applyAppliedFromMap = () => {
       const b = map.getBounds()
       if (!b || !b.isValid()) return
-      setAppliedMapBounds(boundsLiteralFromLeaflet(b))
+      const lit = boundsLiteralFromLeaflet(b)
+      setAppliedMapBounds(lit)
+      if (typeof onBoundsAppliedFromSearch === 'function') {
+        onBoundsAppliedFromSearch(lit)
+      }
     }
 
     map.once('moveend', applyAppliedFromMap)
@@ -101,7 +107,7 @@ export function MapMobileSearchViewportFitter({
     return () => {
       map.off('moveend', applyAppliedFromMap)
     }
-  }, [enabled, fitNonce, map, setAppliedMapBounds])
+  }, [enabled, fitNonce, map, setAppliedMapBounds, onBoundsAppliedFromSearch])
 
   return null
 }

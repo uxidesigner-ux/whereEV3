@@ -320,7 +320,7 @@ export async function fetchEvChargersPage({ pageNo = 1, numOfRows = 100 } = {}) 
 /**
  * 응답에서 목록 배열 추출 (JSON 구조에 따라 유연하게)
  */
-function extractListFromResponse(data) {
+export function extractListFromResponse(data) {
   if (!data) return []
   const body = data.response?.body ?? data.body ?? data
   const items = body.items ?? body.item ?? (Array.isArray(body) ? body : [])
