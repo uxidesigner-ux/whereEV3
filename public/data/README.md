@@ -9,4 +9,6 @@
 - **빌드**: `npm run build`만 하면 Vite가 `public/`을 그대로 복사해 `/data/ev-stations-summary.json`으로 서빙된다.
 - **선택**: 외부 URL에서만 받아 빌드하려면 `EV_SUMMARY_DOWNLOAD_URL` + `npm run build:deploy` (`scripts/fetch-ev-summary-for-build.mjs`).
 
+**Vercel:** 대시보드에서 Git LFS를 켜야 배포 빌드에 실 JSON이 포함된다. ([Git settings](https://vercel.com/docs/project-configuration/git-settings))
+
 자세한 절차: `docs/EV-SUMMARY-OPS.md`

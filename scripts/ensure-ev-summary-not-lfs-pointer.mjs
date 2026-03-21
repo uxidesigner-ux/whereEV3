@@ -28,6 +28,15 @@ let buf = readFileSync(path)
 if (!isPointer(buf)) process.exit(0)
 
 console.error('[ensure-ev-summary] ev-stations-summary.json is a Git LFS pointer, not real JSON.')
+if (process.env.VERCEL) {
+  console.error(
+    '[ensure-ev-summary] Vercel: Project Settings → Git → "Git Large File Storage (LFS)" 를 켜고 다시 배포하세요. ' +
+      '(빌드에 git lfs pull 을 넣으면 missing protocol 오류가 날 수 있어 제거함.)'
+  )
+  console.error('  https://vercel.com/docs/project-configuration/git-settings')
+  process.exit(1)
+}
+
 const r = spawnSync('git', ['lfs', 'checkout', 'public/data/ev-stations-summary.json'], {
   cwd: root,
   stdio: 'inherit',

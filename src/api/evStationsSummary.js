@@ -80,7 +80,7 @@ export async function fetchEvStationsSummaryDataset(opts = {}) {
   const text = await res.text()
   if (text.startsWith('version https://git-lfs.github.com/spec/v1')) {
     throw new Error(
-      '요약 JSON 대신 Git LFS 포인터만 받았습니다. 배포 빌드에 git lfs pull이 필요하거나, 로컬에서 git lfs checkout public/data/ev-stations-summary.json 후 다시 빌드하세요.'
+      '요약 JSON 대신 Git LFS 포인터만 받았습니다. Vercel이면 Project Settings → Git에서 Git LFS를 켜고 재배포하세요. 로컬이면 git lfs checkout public/data/ev-stations-summary.json 후 다시 빌드하세요.'
     )
   }
   let json

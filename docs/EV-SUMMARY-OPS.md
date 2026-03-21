@@ -8,8 +8,9 @@
 | 항목 | 내용 |
 |------|------|
 | **저장소** | `public/data/ev-stations-summary.json`을 **커밋**해 앱과 함께 배포한다. |
-| **용량** | 전국 스냅샷은 수백 MB일 수 있어 **Git LFS**로 추적한다 (`.gitattributes`). [Git LFS 설치](https://git-lfs.com) 후 **`git lfs install`을 반드시 실행**한 뒤 `git add`한다. LFS 없이 커밋하면 일반 Git blob이 되어 GitHub가 **100MB 초과**로 푸시를 거절한다. macOS: `brew install git-lfs` → `git lfs install`. Vercel 등은 Git LFS 지원 여부를 배포 문서에서 확인. |
-| **프론트 빌드** | 별도 URL 불필요. **`npm run build`** 시 `prebuild`로 LFS 포인터 여부를 검사·`git lfs checkout` 시도한다. **Vercel**은 `vercel.json`의 `buildCommand`: `git lfs pull && npm run build`로 체크아웃 후 실파일이 `dist`에 들어가게 한다. |
+| **용량** | 전국 스냅샷은 수백 MB일 수 있어 **Git LFS**로 추적한다 (`.gitattributes`). [Git LFS 설치](https://git-lfs.com) 후 **`git lfs install`을 반드시 실행**한 뒤 `git add`한다. LFS 없이 커밋하면 일반 Git blob이 되어 GitHub가 **100MB 초과**로 푸시를 거절한다. macOS: `brew install git-lfs` → `git lfs install`. |
+| **프론트 빌드** | 별도 URL 불필요. **`npm run build`** 시 `prebuild`로 LFS 포인터 여부를 검사·로컬에서는 `git lfs checkout` 시도한다. |
+| **Vercel** | [Project Settings → Git](https://vercel.com/docs/project-configuration/git-settings)에서 **Git Large File Storage (LFS)** 를 **켜야** 클론 시 실파일이 내려온다. 끄면 포인터만 있어 런타임 JSON 오류가 난다. 빌드 커맨드에 `git lfs pull` 을 넣지 말 것 — Vercel 환경에서 `missing protocol: ""` 로 실패할 수 있다. |
 | **갱신** | 로컬에서 `npm run build:ev-summary` 후 JSON을 커밋하거나, CI `ev-summary` 아티팩트를 받아 덮어쓴 뒤 커밋. |
 | **선택** | 외부 URL만 쓰고 싶다면 예전처럼 `EV_SUMMARY_DOWNLOAD_URL` + `npm run build:deploy` + `scripts/fetch-ev-summary-for-build.mjs` 경로도 유지 가능. |
 
