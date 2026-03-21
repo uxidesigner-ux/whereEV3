@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { useMap } from 'react-leaflet'
 import { computeBootLeafletView, mapBootstrapWidthPx } from '../utils/mapInitialView.js'
+import { countMapFirstPaintSignals } from '../utils/mapPaintSignals.js'
 
 /**
  * 1) 부트 시 map.setView (MapContainer는 props 갱신을 따르지 않음)
- * 2) moveend 후 첫 배치 마커가 markerPane에 올라오면 onReady (전량 대기 금지 — 체감 지연 방지)
- * 3) onReady( boundsLiteral | null ) — Leaflet getBounds() 스냅샷으로 applied 영역 동기화
+ * 2) moveend 후 실제 지도 위 첫 페인트(마커 아이콘 또는 부트 CircleMarker) 확인 시 onReady
+ * 3) 기대 마커가 있는데 DOM에 안 뜨면 onTimeout (로딩만 닫지 않음 — 부모에서 처리)
  */
 export function MapBootMarkerReady({
   active,
@@ -16,24 +17,25 @@ export function MapBootMarkerReady({
   /** 지도에 그려야 할 마커 수(상한) */
   expectedMarkerIcons = 0,
   /**
-   * DOM에서 이 개수만큼 `.leaflet-marker-icon`이 생기면 부트 완료로 본다.
-   * target보다 작은 값이면 나머지 마커는 오버레이 종료 후 이어서 페인트.
-   */
-  paintSatisfiedIconCap = 40,
-  /** 폴링·안전 타임아웃 상한(ms) */
-  markerIconsMaxWaitMs = 2500,
-  /**
    * DEV Leaflet 하네스: EvStationMapLayer는 빈 stations라 DOM 마커 기대치가 데이터 파이프와 불일치할 수 있음.
    * true면 moveend 이후 짧은 페인트만 보고 onReady (아이콘 개수 대기 생략).
    */
   skipDomIconCountGate = false,
+  /** 기대 페인트가 있을 때 DOM 신호가 안 잡히면 호출 (로딩 종료용 onReady는 호출하지 않음) */
+  onTimeout,
+  /** DOM에서 첫 페인트까지 최대 대기(ms) */
+  firstPaintMaxWaitMs = 12000,
   onReady,
 }) {
   const map = useMap()
   const onReadyRef = useRef(onReady)
+  const onTimeoutRef = useRef(onTimeout)
   useEffect(() => {
     onReadyRef.current = onReady
   }, [onReady])
+  useEffect(() => {
+    onTimeoutRef.current = onTimeout
+  }, [onTimeout])
 
   /** moveend까지 도달했는지(이후 markerCount로 로딩 종료 타이밍 조정) */
   const [bootMoveGeneration, setBootMoveGeneration] = useState(0)
@@ -126,21 +128,24 @@ export function MapBootMarkerReady({
         return null
       }
     }
-    const finish = () => {
+    const finishSuccess = () => {
       if (cancelled || finishedRef.current) return
       finishedRef.current = true
       onReadyRef.current(readBoundsLiteral())
     }
 
-    /** 데이터가 있으면 마커가 1개 이상 준비된 뒤(다음 프레임 페인트 후)에만 오버레이 종료 */
     const finishAfterPaint = () => {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
-          if (!cancelled) finish()
+          if (!cancelled) finishSuccess()
         })
       })
     }
 
+    const signalCount = () => countMapFirstPaintSignals(map)
+    const hasPaint = () => signalCount() >= 1
+
+    /** 표시할 충전소가 없음 — 지도만 준비되면 종료 */
     if (itemsLength === 0) {
       finishAfterPaint()
       return () => {
@@ -156,23 +161,21 @@ export function MapBootMarkerReady({
     }
 
     const targetIcons = Math.max(0, expectedMarkerIcons || markerCount)
-    const maxWait = Math.max(400, markerIconsMaxWaitMs)
-    /** MarkerClusterGroup은 대개 클러스터 아이콘 소수만 DOM에 둠 → 40개 아이콘 대기는 영원히 만족 안 됨. 첫 가시 아이콘 1개면 충분 */
-    const iconsRequired = targetIcons <= 0 ? 0 : 1
+    const maxWait = Math.max(800, firstPaintMaxWaitMs)
 
-    const countMarkerIcons = () => {
-      try {
-        const pane = map.getPane?.('markerPane')
-        if (!pane) return 0
-        return pane.querySelectorAll('.leaflet-marker-icon').length
-      } catch {
-        return 0
+    /** 데이터는 있는데 레이어 소스 0건 — 파이프 문제. 무한 대기 금지 */
+    if (itemsLength > 0 && markerCount === 0) {
+      const t = window.setTimeout(() => {
+        if (!cancelled && !finishedRef.current) onTimeoutRef.current?.()
+      }, maxWait)
+      return () => {
+        cancelled = true
+        window.clearTimeout(t)
       }
     }
 
-    const enoughIconsPainted = () => iconsRequired > 0 && countMarkerIcons() >= iconsRequired
-
-    if (markerCount > 0 && iconsRequired > 0) {
+    /** 마커가 있어야 함: 반드시 DOM 페인트 1개 이상 확인 후에만 성공 종료 */
+    if (markerCount > 0 && targetIcons > 0) {
       let pollTimer = null
       let maxTimer = null
       const clearTimers = () => {
@@ -185,23 +188,26 @@ export function MapBootMarkerReady({
           maxTimer = null
         }
       }
-      const scheduleFinish = () => {
+      const scheduleSuccess = () => {
         clearTimers()
         finishAfterPaint()
       }
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (cancelled) return
-          if (enoughIconsPainted()) {
-            scheduleFinish()
+          if (hasPaint()) {
+            scheduleSuccess()
             return
           }
           pollTimer = window.setInterval(() => {
             if (cancelled) return
-            if (enoughIconsPainted()) scheduleFinish()
-          }, 32)
+            if (hasPaint()) scheduleSuccess()
+          }, 48)
           maxTimer = window.setTimeout(() => {
-            if (!cancelled) scheduleFinish()
+            if (cancelled) return
+            clearTimers()
+            if (hasPaint()) finishAfterPaint()
+            else onTimeoutRef.current?.()
           }, maxWait)
         })
       })
@@ -211,16 +217,9 @@ export function MapBootMarkerReady({
       }
     }
 
-    /** 데이터는 있는데 지도 소스가 아직 0건 — 늦게 붙는 경우 대비해 길게 대기 */
-    if (itemsLength > 0 && markerCount === 0) {
-      const t = window.setTimeout(() => finishAfterPaint(), maxWait)
-      return () => {
-        cancelled = true
-        window.clearTimeout(t)
-      }
-    }
-
-    const safety = window.setTimeout(() => finish(), maxWait)
+    const safety = window.setTimeout(() => {
+      if (!cancelled && !finishedRef.current) onTimeoutRef.current?.()
+    }, maxWait)
     return () => {
       cancelled = true
       window.clearTimeout(safety)
@@ -231,10 +230,9 @@ export function MapBootMarkerReady({
     itemsLength,
     markerCount,
     expectedMarkerIcons,
-    markerIconsMaxWaitMs,
     map,
-    paintSatisfiedIconCap,
     skipDomIconCountGate,
+    firstPaintMaxWaitMs,
   ])
 
   return null

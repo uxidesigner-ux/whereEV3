@@ -9,6 +9,7 @@ import {
   IconButton,
   Chip,
   Button,
+  Fade,
 } from '@mui/material'
 import SearchIcon from '@mui/icons-material/Search'
 import MapOutlined from '@mui/icons-material/MapOutlined'
@@ -104,6 +105,7 @@ import { StationListMobile } from './components/StationListMobile.jsx'
 import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
 import { MobileMapQuickSearchChipsRail } from './components/MobileMapQuickSearchChipsRail.jsx'
 import { EvStationMapLayer } from './components/EvStationMapLayer.jsx'
+import { EvStationBootCirclePaint } from './components/EvStationBootCirclePaint.jsx'
 import { MapBootMarkerReady } from './components/MapBootMarkerReady.jsx'
 import { MapMobileSearchViewportFitter } from './components/MapMobileSearchViewportFitter.jsx'
 import { MapSearchAreaLoadingOverlay } from './components/MapSearchAreaLoadingOverlay.jsx'
@@ -138,6 +140,15 @@ import {
 import { MapLeafletExperiments } from './dev/MapLeafletExperiments.jsx'
 import { MapMarkerProofLayers } from './components/MapMarkerProofLayers.jsx'
 import { searchAreaTimingMetrics, searchAreaTimingLog } from './dev/mapSearchAreaTiming.js'
+import {
+  isEvPipelineLogEnabled,
+  logEvPipelineFetchDone,
+  logEvPipelineAdapterSamples,
+  logEvPipelineReactPipeline,
+  logEvPipelineFirstMarker,
+  evPipelineSlowHint,
+} from './dev/evPipelinePerfLog.js'
+import { EvPipelineDebugPanel } from './dev/EvPipelineDebugPanel.jsx'
 
 /**
  * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
@@ -204,16 +215,16 @@ const MOBILE_MAP_MARKER_CAP = 260
 /** 적용 영역 안 raw 행이 많을 때 그룹핑 전 거리순 상한(프로그레시브 대량 items CPU 완화) */
 const MAP_GROUP_INPUT_ROW_CAP = 2000
 
-/** 부트 중 지도·마커 대기 시 로딩 문구 순환 */
-const BOOT_MAP_WAIT_MESSAGES = [
-  '지도 위에 충전소 마커를 그리는 중이에요',
-  '가까운 충전소를 찾아 표시하고 있어요',
-  '지도와 마커 위치를 맞추는 중이에요',
-  '충전소 아이콘을 하나씩 올리고 있어요',
-  '잠시만요, 곧 지도에서 확인하실 수 있어요',
-  '내 주변(또는 시작 위치) 기준으로 불러오는 중이에요',
-  '네트워크와 화면이 준비될 때까지 기다려 주세요',
-  '거의 다 됐어요, 마커를 확인하는 중이에요',
+/** 부트 오버레이 안내 문구 순환(1.6~2.2초 간격은 App에서 prefers-reduced-motion 반영) */
+const BOOT_LOADING_ROTATION_MESSAGES = [
+  '내 주변 충전소를 찾고 있어요',
+  '충전 가능한 위치를 불러오는 중이에요',
+  '가까운 충전소 정보를 정리하고 있어요',
+  '지도를 준비하고 있어요',
+  '사용 가능한 충전소를 확인하고 있어요',
+  '충전기 상태를 불러오는 중이에요',
+  '주변 정보를 빠르게 모으고 있어요',
+  '조금만 기다리면 충전소가 보여요',
 ]
 
 /** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
@@ -544,9 +555,20 @@ function App() {
   const [bootProgress, setBootProgress] = useState(0)
   const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
   const [bootLinearIndeterminate, setBootLinearIndeterminate] = useState(false)
+  /** 부트 마커 DOM 게이트 실패 시 오버레이에 재시도 노출 */
+  const [bootMarkerGateFailed, setBootMarkerGateFailed] = useState(false)
+  const [bootMessageIndex, setBootMessageIndex] = useState(0)
+  const [bootReduceMotion, setBootReduceMotion] = useState(false)
   /** DEV proof: API 1페이지 샘플 좌표 → CircleMarker 직접 렌더 */
   const [mapProofApiDots, setMapProofApiDots] = useState([])
   const bootMapPaintedRef = useRef(false)
+  const bootViewportForRetryRef = useRef(
+    /** @type {null | { southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} */ (
+      null
+    ),
+  )
+  const itemsRef = useRef(items)
+  const mapLayerStationsLenRef = useRef(0)
   /** 부트 summary bbox와 일치시키기: onBootMapPaintReady의 좁은 getBounds()로 applied를 덮어쓰지 않음 */
   const suppressBootMapBoundsSnapshotRef = useRef(false)
   const [leafletInitial, setLeafletInitial] = useState(() =>
@@ -559,6 +581,18 @@ function App() {
   const evMapDiag = useMemo(() => parseEvMapDiag(), [])
   const evMapDiagRef = useRef(evMapDiag)
   evMapDiagRef.current = evMapDiag
+
+  useEffect(() => {
+    itemsRef.current = items
+  }, [items])
+
+  useEffect(() => {
+    const mq = window.matchMedia('(prefers-reduced-motion: reduce)')
+    const apply = () => setBootReduceMotion(mq.matches)
+    apply()
+    mq.addEventListener('change', apply)
+    return () => mq.removeEventListener('change', apply)
+  }, [])
   const harnessBootMarkerCount = useMemo(
     () => evMapDiagHarnessBootMarkerCount(evMapDiag),
     [evMapDiag],
@@ -956,6 +990,21 @@ function App() {
   const summaryFetchGenerationRef = useRef(0)
   const itemsRenderSigRef = useRef('')
   const searchAreaAwaitingMarkersRef = useRef(null)
+  /** evPipeline: fetch 직후 스냅샷 → 첫 마커 로그와 병합 */
+  const lastEvPipelineFetchRef = useRef(
+    /** @type {null | { phase: string, fetchEndT: number, fetchMs: number, rawRowsScanned: number | null, normalizeOk: number | null, normalizeNull: number | null, boundsInsideRows: number, pagesScanned: number, gen: number }} */ (
+      null
+    ),
+  )
+  const pipelineReactLogPendingRef = useRef(false)
+  const bootMarkerWaitT0Ref = useRef(/** @type {number | null} */ (null))
+  const searchAreaClickT0Ref = useRef(/** @type {number | null} */ (null))
+  const mapPipelineCountsRef = useRef({
+    adapted: 0,
+    grouped: 0,
+    afterCap: 0,
+    final: 0,
+  })
   const runViewportSummaryFetchRef = useRef(
     /** @returns {Promise<{ ok: boolean, rows?: object[], rowCount?: number }>} */ async () => ({ ok: false }),
   )
@@ -975,9 +1024,34 @@ function App() {
       if (b) setAppliedMapBounds(b)
     }
     suppressBootMapBoundsSnapshotRef.current = false
+    setBootMarkerGateFailed(false)
+    const now = performance.now()
+    const f = lastEvPipelineFetchRef.current
+    const mw = bootMarkerWaitT0Ref.current
+    const fetchEndToFirstPaintMs =
+      f?.fetchEndT != null ? Math.round(now - f.fetchEndT) : null
+    logEvPipelineFirstMarker({
+      phase: 'boot',
+      fetchMs: f?.fetchMs ?? null,
+      rawRowsScanned: f?.rawRowsScanned ?? null,
+      normalizeOk: f?.normalizeOk ?? null,
+      boundsInsideRows: itemsRef.current?.length ?? 0,
+      adaptedValidCoords: mapPipelineCountsRef.current.adapted,
+      groupedPlaces: mapPipelineCountsRef.current.grouped,
+      renderableAfterCap: mapPipelineCountsRef.current.afterCap,
+      finalRenderedMarkers: mapLayerStationsLenRef.current,
+      markerWaitMs: mw != null ? Math.round(now - mw) : null,
+      fetchEndToFirstPaintMs,
+      clickToFirstPaintMs: null,
+      slowHint: evPipelineSlowHint(f?.fetchMs ?? 0, fetchEndToFirstPaintMs),
+    })
     if (import.meta.env.DEV) {
       // eslint-disable-next-line no-console -- 부트 단계 증명
-      console.info('[bootTiming] first-marker-visible-callback')
+      console.info('[bootMarkerPipeline] first-marker-visible', {
+        ts: now,
+        mapLayerCount: mapLayerStationsLenRef.current,
+        itemsCount: itemsRef.current?.length ?? 0,
+      })
     }
     viewportSummaryTelemetry('boot', 'marker-visible', {})
     setBootLinearIndeterminate(false)
@@ -993,6 +1067,47 @@ function App() {
       })
     })
   }, [])
+
+  const onBootMapPaintTimeout = useCallback(() => {
+    viewportSummaryTelemetry('boot', 'marker-wait-timeout', {})
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console -- 부트 단계 증명
+      console.warn('[bootMarkerPipeline] marker-wait-timeout', {
+        items: itemsRef.current?.length ?? 0,
+        mapLayerStations: mapLayerStationsLenRef.current,
+      })
+    }
+    setBootMarkerGateFailed(true)
+    setBootLinearIndeterminate(false)
+    setBootProgress(72)
+    setBootStageMessage(
+      '지도에 마커를 표시하는 데 시간이 걸리고 있어요. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.',
+    )
+    setAwaitingInitialMapPaint(false)
+  }, [])
+
+  const handleBootMarkerRetry = useCallback(async () => {
+    bootMapPaintedRef.current = false
+    setBootMarkerGateFailed(false)
+    setBootLinearIndeterminate(false)
+    setBootProgress(72)
+    bootMarkerWaitT0Ref.current = performance.now()
+    setAwaitingInitialMapPaint(true)
+    const v = bootViewportForRetryRef.current
+    if (canRefetchEv && v) {
+      await runViewportSummaryFetchRef.current({
+        reason: 'boot',
+        viewport: v,
+        showLoading: false,
+      })
+    } else if (import.meta.env.DEV && v) {
+      const mock = getDevMockEvChargers()
+      const scoped = filterDevMockRowsToBounds(mock, v)
+      setItems(scoped)
+      setTotalCount(scoped.length)
+    }
+    viewportSummaryTelemetry('boot', 'marker-retry', {})
+  }, [canRefetchEv])
 
   /**
    * viewport summary 단일 진입점 (boot / 이 지역 검색 / 칩 / 검색 fit / 새로고침).
@@ -1044,11 +1159,14 @@ function App() {
         if (canRefetchEv) {
           const diag = evMapDiagRef.current
           const devProof = import.meta.env.DEV && (diag.apiProof || diag.proof)
-          const { rows, pagesScanned, pipelineCounts } = await fetchEvChargersSummaryForBounds(viewport, {
+          const { rows, pagesScanned, pipelineCounts, adapterSamples } = await fetchEvChargersSummaryForBounds(
+            viewport,
+            {
             ...summaryPresetForReason(reason),
             signal,
-            pipelineDebug: diag.pipeline,
+            pipelineDebug: diag.pipeline || isEvPipelineLogEnabled(),
             adapterProofVerbose: diag.adapterProof,
+            collectAdapterSamples: isEvPipelineLogEnabled() && (reason === 'boot' || reason === 'search-area'),
             onFirstPageSample: devProof
               ? ({ sample }) => {
                   const dots = sample
@@ -1058,7 +1176,8 @@ function App() {
                   setMapProofApiDots(dots)
                 }
               : undefined,
-          })
+          },
+          )
           const fetchMs = Math.round(performance.now() - t0)
           if (import.meta.env.DEV && (diag.pipeline || diag.countTrace) && pipelineCounts) {
             // eslint-disable-next-line no-console -- count trace
@@ -1096,6 +1215,35 @@ function App() {
           viewportSummaryMarkApplied()
           if (import.meta.env.DEV && timingSession) {
             searchAreaTimingLog(timingSession, 'adapter-done-render-source-set', { gen, rowCount: rows.length })
+          }
+          const fetchEndT = performance.now()
+          if (isEvPipelineLogEnabled() && (reason === 'boot' || reason === 'search-area')) {
+            lastEvPipelineFetchRef.current = {
+              phase: reason,
+              fetchEndT,
+              fetchMs,
+              rawRowsScanned: pipelineCounts?.rawItemCount ?? null,
+              normalizeOk: pipelineCounts?.totalNormalized ?? null,
+              normalizeNull: pipelineCounts?.totalNormNull ?? null,
+              boundsInsideRows: rows.length,
+              pagesScanned,
+              gen,
+            }
+            logEvPipelineFetchDone({
+              phase: reason,
+              fetchMs,
+              rawRowsScanned: pipelineCounts?.rawItemCount ?? null,
+              normalizeOk: pipelineCounts?.totalNormalized ?? null,
+              normalizeNull: pipelineCounts?.totalNormNull ?? null,
+              boundsInsideRows: rows.length,
+              pagesScanned,
+              note:
+                'rawRowsScanned는 페이지 순회 중 수신한 raw 행 누적(bounds 밖·중복 id 제외 전). boundsInsideRows는 최종 앱 상태(items) 길이.',
+            })
+            if (adapterSamples?.length) {
+              logEvPipelineAdapterSamples({ phase: reason, samples: adapterSamples })
+            }
+            pipelineReactLogPendingRef.current = true
           }
           viewportSummaryTelemetry(reason, 'state-applied', {
             gen,
@@ -1146,14 +1294,18 @@ function App() {
       if (import.meta.env.DEV) searchAreaTimingMetrics.duplicateClickIgnored += 1
       return
     }
-    const timingSession = import.meta.env.DEV ? { t0: performance.now() } : null
+    const clickT0 = performance.now()
+    if (isEvPipelineLogEnabled()) {
+      searchAreaClickT0Ref.current = clickT0
+    }
+    const timingSession = import.meta.env.DEV ? { t0: clickT0 } : null
     if (import.meta.env.DEV) {
       searchAreaTimingMetrics.buttonClicks += 1
       searchAreaTimingLog(timingSession, 'search-area-button-click')
     }
     viewportSummaryTelemetry('search-area', 'button-click', {})
     if (canRefetchEv) {
-      if (import.meta.env.DEV) {
+      if (import.meta.env.DEV || isEvPipelineLogEnabled()) {
         searchAreaAwaitingMarkersRef.current = { t0: performance.now() }
       }
       await runViewportSummaryFetch({
@@ -1164,7 +1316,37 @@ function App() {
       })
     } else if (import.meta.env.DEV) {
       const mock = getDevMockEvChargers()
-      setItems(filterDevMockRowsToBounds(mock, b))
+      const scoped = filterDevMockRowsToBounds(mock, b)
+      setItems(scoped)
+      setTotalCount(scoped.length)
+      if (isEvPipelineLogEnabled()) {
+        const fetchEndT = performance.now()
+        lastEvPipelineFetchRef.current = {
+          phase: 'search-area',
+          fetchEndT,
+          fetchMs: 0,
+          rawRowsScanned: mock.length,
+          normalizeOk: scoped.length,
+          normalizeNull: null,
+          boundsInsideRows: scoped.length,
+          pagesScanned: 0,
+          gen: summaryFetchGenerationRef.current,
+        }
+        logEvPipelineFetchDone({
+          phase: 'search-area',
+          fetchMs: 0,
+          rawRowsScanned: mock.length,
+          normalizeOk: scoped.length,
+          normalizeNull: null,
+          boundsInsideRows: scoped.length,
+          pagesScanned: 0,
+          note: 'DEV mock 이 지역 검색(API 키 없음)',
+        })
+        pipelineReactLogPendingRef.current = true
+      }
+      if (import.meta.env.DEV || isEvPipelineLogEnabled()) {
+        searchAreaAwaitingMarkersRef.current = { t0: performance.now() }
+      }
     }
     setAppliedMapBounds(b)
     setClusterBrowseGrouped(null)
@@ -1290,6 +1472,7 @@ function App() {
       else setUserLocation(null)
 
       const initialViewportB = squareBoundsLiteralAroundCenter(pos.lat, pos.lng, 32)
+      bootViewportForRetryRef.current = initialViewportB
 
       if (!key) {
         await easeBootProgress(setBootProgress, 40, 58, 420)
@@ -1305,6 +1488,31 @@ function App() {
           setTotalCount(scoped.length)
           setLastEvFetchAt(new Date().toISOString())
           viewportSummaryTelemetry('boot', 'mock-applied', { n: scoped.length })
+          if (isEvPipelineLogEnabled()) {
+            const fetchEndT = performance.now()
+            lastEvPipelineFetchRef.current = {
+              phase: 'boot',
+              fetchEndT,
+              fetchMs: 0,
+              rawRowsScanned: mock.length,
+              normalizeOk: scoped.length,
+              normalizeNull: null,
+              boundsInsideRows: scoped.length,
+              pagesScanned: 0,
+              gen: summaryFetchGenerationRef.current,
+            }
+            logEvPipelineFetchDone({
+              phase: 'boot',
+              fetchMs: 0,
+              rawRowsScanned: mock.length,
+              normalizeOk: scoped.length,
+              normalizeNull: null,
+              boundsInsideRows: scoped.length,
+              pagesScanned: 0,
+              note: 'DEV mock 부트: rawRowsScanned=mock 전체 길이',
+            })
+            pipelineReactLogPendingRef.current = true
+          }
           console.info(
             `[whereEV3] API 키 없음 — viewport 요약용 mock ${scoped.length}건(전체 ${mock.length}건 중). 실제 Safemap은 .env.local의 VITE_SAFEMAP_SERVICE_KEY 설정 후 재시작하세요. (docs/DATA-SOURCES.md)`
           )
@@ -1321,6 +1529,7 @@ function App() {
           console.info('[bootTiming] enter-72-marker-ready-wait', { phase: 'no-api-key' })
         }
         if (cancelled) return
+        bootMarkerWaitT0Ref.current = performance.now()
         setAwaitingInitialMapPaint(true)
         viewportSummaryTelemetry('boot', 'awaiting-map-paint', {})
         return
@@ -1364,6 +1573,7 @@ function App() {
         })
       }
       if (cancelled) return
+      bootMarkerWaitT0Ref.current = performance.now()
       setAwaitingInitialMapPaint(true)
       viewportSummaryTelemetry('boot', 'awaiting-map-paint', {})
     })()
@@ -1840,6 +2050,44 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적 트리거
   }, [mapLayerStationsComputed, evMapDiag.freeze1500, freezeReleaseTick])
 
+  useEffect(() => {
+    mapLayerStationsLenRef.current = mapLayerStations.length
+  }, [mapLayerStations.length])
+
+  useEffect(() => {
+    if (!pipelineReactLogPendingRef.current) return
+    pipelineReactLogPendingRef.current = false
+    const f = lastEvPipelineFetchRef.current
+    if (!f || (f.phase !== 'boot' && f.phase !== 'search-area')) return
+    const now = performance.now()
+    mapPipelineCountsRef.current = {
+      adapted: mapSummaryStationsAdapted.length,
+      grouped: mapRenderableStations.length,
+      afterCap: mapRenderedMarkers.length,
+      final: mapLayerStations.length,
+    }
+    logEvPipelineReactPipeline({
+      phase: f.phase,
+      msSinceFetchEnd: Math.round(now - f.fetchEndT),
+      fetchMsSnapshot: f.fetchMs,
+      rawRowsScanned: f.rawRowsScanned,
+      normalizeOk: f.normalizeOk,
+      boundsInsideRows: items.length,
+      adaptedValidCoords: mapSummaryStationsAdapted.length,
+      groupedPlaces: mapRenderableStations.length,
+      renderableAfterCap: mapRenderedMarkers.length,
+      finalRenderedMarkers: mapLayerStations.length,
+      note:
+        'fetch 끝~이 로그: React 메모(그룹·거리캡)·커밋. finalRenderedMarkers===0이면 좌표/그룹/캡·부트 게이트를 의심.',
+    })
+  }, [
+    items.length,
+    mapSummaryStationsAdapted.length,
+    mapRenderableStations.length,
+    mapRenderedMarkers.length,
+    mapLayerStations.length,
+  ])
+
   const prevMapLayerArrRef = useRef(/** @type {unknown[] | null} */ (null))
   const prevMapLayerIds20Ref = useRef('')
   useEffect(() => {
@@ -1929,34 +2177,57 @@ function App() {
     appliedMapBounds,
   ])
 
-  /** 72%: 마커 준비 대기 — 오래 걸리면 문구·indeterminate로 “멈춤” 완화 */
+  /** 오버레이가 열릴 때마다 순환 문구 인덱스 리셋 */
+  const prevBootOverlayOpenRef = useRef(false)
+  useEffect(() => {
+    if (bootOverlayOpen && !prevBootOverlayOpenRef.current) setBootMessageIndex(0)
+    prevBootOverlayOpenRef.current = bootOverlayOpen
+  }, [bootOverlayOpen])
+
+  /** 부트 로딩 중 안내 문구 순환(1.6~2.2s, reduced-motion 시 느리게) */
+  useEffect(() => {
+    if (!bootOverlayOpen || bootMarkerGateFailed) return undefined
+    const ms = bootReduceMotion ? 4200 : 1900
+    const id = window.setInterval(() => {
+      setBootMessageIndex((i) => (i + 1) % BOOT_LOADING_ROTATION_MESSAGES.length)
+    }, ms)
+    return () => window.clearInterval(id)
+  }, [bootOverlayOpen, bootMarkerGateFailed, bootReduceMotion])
+
+  /** 72% 마커 대기 구간이 길면 진행 바만 indeterminate로 전환(문구는 순환 유지) */
   useEffect(() => {
     if (!bootOverlayOpen || !awaitingInitialMapPaint) return undefined
     if (bootProgress < 72 || bootProgress >= 88) return undefined
-    const id = window.setTimeout(() => {
-      setBootStageMessage('충전소 정보를 불러오는 중입니다. 네트워크가 느리면 조금 더 걸릴 수 있어요.')
-      setBootLinearIndeterminate(true)
-    }, 10000)
+    const id = window.setTimeout(() => setBootLinearIndeterminate(true), 10000)
     return () => window.clearTimeout(id)
   }, [bootOverlayOpen, awaitingInitialMapPaint, bootProgress])
 
-  /** 지도·마커 부트 대기: 기본은 고정 문구, 지연 시에만 순환 */
+  const bootMarkerWaitEnterLoggedRef = useRef(false)
   useEffect(() => {
-    if (!bootOverlayOpen || !awaitingInitialMapPaint) return undefined
-    if (bootProgress >= 88) return undefined
-    if (!bootLinearIndeterminate) {
-      setBootStageMessage(
-        '충전소 마커를 지도에 올리는 중이에요. 첫 마커(또는 묶음 아이콘)이 보이면 곧 완료돼요',
-      )
-      return undefined
+    if (!awaitingInitialMapPaint) {
+      bootMarkerWaitEnterLoggedRef.current = false
+      return
     }
-    let idx = 0
-    const id = window.setInterval(() => {
-      idx = (idx + 1) % BOOT_MAP_WAIT_MESSAGES.length
-      setBootStageMessage(BOOT_MAP_WAIT_MESSAGES[idx])
-    }, 2400)
-    return () => window.clearInterval(id)
-  }, [bootOverlayOpen, awaitingInitialMapPaint, bootProgress, bootLinearIndeterminate])
+    if (bootMarkerWaitEnterLoggedRef.current) return
+    bootMarkerWaitEnterLoggedRef.current = true
+    const t0 = performance.now()
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console -- 부트 마커 파이프라인 계측
+      console.info('[bootMarkerPipeline] marker-wait-enter', {
+        t0,
+        rawRows: items.length,
+        adaptedValidCoords: mapSummaryStationsAdapted.length,
+        renderCandidates: mapRenderableStations.length,
+        finalMarkerCount: mapLayerStations.length,
+      })
+    }
+  }, [
+    awaitingInitialMapPaint,
+    items.length,
+    mapSummaryStationsAdapted.length,
+    mapRenderableStations.length,
+    mapLayerStations.length,
+  ])
 
   useEffect(() => {
     if (!import.meta.env.DEV || !evMapDiag.countTrace) return
@@ -1979,14 +2250,45 @@ function App() {
   ])
 
   useEffect(() => {
-    if (!import.meta.env.DEV) return
     const pending = searchAreaAwaitingMarkersRef.current
     if (!pending) return
-    if (mapLayerStations.length > 0) {
+    if (mapLayerStations.length === 0) return
+    if (import.meta.env.DEV) {
       searchAreaTimingLog(pending, 'first-marker-visible', { n: mapLayerStations.length })
-      searchAreaAwaitingMarkersRef.current = null
     }
-  }, [mapLayerStations.length, items.length])
+    if (isEvPipelineLogEnabled()) {
+      const now = performance.now()
+      const f = lastEvPipelineFetchRef.current
+      const clickT = searchAreaClickT0Ref.current
+      const fetchEndToFirstPaintMs =
+        f?.phase === 'search-area' && f.fetchEndT != null ? Math.round(now - f.fetchEndT) : null
+      logEvPipelineFirstMarker({
+        phase: 'search-area',
+        fetchMs: f?.phase === 'search-area' ? f.fetchMs : null,
+        rawRowsScanned: f?.phase === 'search-area' ? f.rawRowsScanned : null,
+        normalizeOk: f?.phase === 'search-area' ? f.normalizeOk : null,
+        boundsInsideRows: items.length,
+        adaptedValidCoords: mapSummaryStationsAdapted.length,
+        groupedPlaces: mapRenderableStations.length,
+        renderableAfterCap: mapRenderedMarkers.length,
+        finalRenderedMarkers: mapLayerStations.length,
+        markerWaitMs: null,
+        fetchEndToFirstPaintMs,
+        clickToFirstPaintMs: clickT != null ? Math.round(now - clickT) : null,
+        slowHint: evPipelineSlowHint(
+          f?.phase === 'search-area' ? f.fetchMs ?? 0 : 0,
+          fetchEndToFirstPaintMs,
+        ),
+      })
+    }
+    searchAreaAwaitingMarkersRef.current = null
+  }, [
+    mapLayerStations.length,
+    items.length,
+    mapSummaryStationsAdapted.length,
+    mapRenderableStations.length,
+    mapRenderedMarkers.length,
+  ])
 
   useEffect(() => {
     if (!import.meta.env.DEV) return
@@ -2583,12 +2885,36 @@ function App() {
               gap: 2,
             }}
           >
-            <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, lineHeight: 1.45, px: 0.75 }}>
-              {bootStageMessage}
-            </Typography>
+            {bootMarkerGateFailed ? (
+              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, lineHeight: 1.45, px: 0.75 }}>
+                {bootStageMessage}
+              </Typography>
+            ) : (
+              <Fade
+                in
+                timeout={bootReduceMotion ? 0 : 320}
+                key={bootMessageIndex}
+              >
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{
+                    fontWeight: 600,
+                    lineHeight: 1.45,
+                    px: 0.75,
+                    minHeight: '3.2em',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
+                </Typography>
+              </Fade>
+            )}
             <LinearProgress
-              variant={bootLinearIndeterminate ? 'indeterminate' : 'determinate'}
-              value={bootLinearIndeterminate ? undefined : bootPct}
+              variant={bootLinearIndeterminate || bootMarkerGateFailed ? 'indeterminate' : 'determinate'}
+              value={bootLinearIndeterminate || bootMarkerGateFailed ? undefined : bootPct}
               sx={{
                 width: '100%',
                 maxWidth: 288,
@@ -2599,8 +2925,34 @@ function App() {
               }}
             />
             <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-              {bootLinearIndeterminate ? '진행 중…' : `${bootPct}%`}
+              {bootLinearIndeterminate || bootMarkerGateFailed ? '진행 중…' : `${bootPct}%`}
             </Typography>
+            {bootMarkerGateFailed ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', maxWidth: 280, mt: 0.5 }}>
+                <Button
+                  type="button"
+                  variant="contained"
+                  size="medium"
+                  onClick={() => void handleBootMarkerRetry()}
+                  sx={{ borderRadius: 999, textTransform: 'none', fontWeight: 700 }}
+                >
+                  다시 시도
+                </Button>
+                <Button
+                  type="button"
+                  variant="text"
+                  size="small"
+                  onClick={() => {
+                    setBootMarkerGateFailed(false)
+                    setBootOverlayOpen(false)
+                    bootMapPaintedRef.current = true
+                  }}
+                  sx={{ textTransform: 'none', fontWeight: 600 }}
+                >
+                  닫고 지도만 보기
+                </Button>
+              </Box>
+            ) : null}
           </GlassPanel>
         </Box>
       ) : null}
@@ -2811,9 +3163,8 @@ function App() {
               markerCount={harnessBootMarkerCount ?? mapLayerStations.length}
               expectedMarkerIcons={harnessBootMarkerCount ?? mapLayerStations.length}
               skipDomIconCountGate={import.meta.env.DEV && evMapDiag.anyLeafletHarness}
-              /** 전부(최대 260) DOM 반영까지 기다리면 체감 지연이 커짐 — 첫 배치만 확인 */
-              paintSatisfiedIconCap={40}
-              markerIconsMaxWaitMs={2200}
+              firstPaintMaxWaitMs={12000}
+              onTimeout={evMapDiag.anyLeafletHarness ? undefined : onBootMapPaintTimeout}
               onReady={onBootMapPaintReady}
             />
             {import.meta.env.DEV && (evMapDiag.proof || evMapDiag.apiProof) ? (
@@ -2833,7 +3184,9 @@ function App() {
             />
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer
-              stations={evMapDiag.anyLeafletHarness ? [] : mapLayerStations}
+              stations={
+                evMapDiag.anyLeafletHarness ? [] : awaitingInitialMapPaint ? [] : mapLayerStations
+              }
               variant="full"
               onDetailClickById={onMapMarkerPickId}
               onClusterTap={handleClusterStationsTap}
@@ -2849,6 +3202,11 @@ function App() {
               removeOutsideVisibleBounds={false}
               diagnosticLightMarkers={import.meta.env.DEV && evMapDiag.light}
               diagnosticTrack={import.meta.env.DEV && evMapDiag.track}
+            />
+            <EvStationBootCirclePaint
+              active={awaitingInitialMapPaint && !evMapDiag.anyLeafletHarness}
+              stations={mapLayerStations}
+              max={120}
             />
             {import.meta.env.DEV && evMapDiag.raw20 ? <EvMapDiagnosticRawDots rows={items} /> : null}
             <MapGeolocationSync
@@ -3128,6 +3486,8 @@ function App() {
             )}
           </Box>
         ) : null}
+
+        <EvPipelineDebugPanel />
 
         {panelEl}
 

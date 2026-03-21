@@ -8,7 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
-    "diag:metrics": "node scripts/collect-evdiag-metrics.mjs"
+    "diag:metrics": "node scripts/collect-evdiag-metrics.mjs",
+    "evpipeline:capture-real": "node scripts/real-evpipeline-capture.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

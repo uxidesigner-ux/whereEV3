@@ -11,15 +11,15 @@ import {
   extractListFromResponse,
 } from './safemapEv.js'
 import { isLatLngRoughlyKorea } from '../utils/coordTransform.js'
+import { isEvPipelineLogEnabled } from '../dev/evPipelinePerfLog.js'
 
 /**
  * 클라이언트 bbox 필터 전용이라 페이지를 많이 돌수록 느려짐.
- * - boot/refresh: 조금 더 많이 스캔
- * - search-area / 칩 / 검색 fit 등 사용자 입력: 상한을 낮춰 체감 속도 우선(누락 가능성은 docs에 명시)
+ * 모바일 first paint·IF_0042 호출량 우선으로 상한을 낮춤(뷰포트 밖 충전소 누락 가능 → docs/DATA-SOURCES.md).
  */
 export const VIEWPORT_SUMMARY_FETCH_PRESETS = {
-  boot: { maxPages: 14, maxRowsInBounds: 3500, numOfRows: 500 },
-  interactive: { maxPages: 8, maxRowsInBounds: 2200, numOfRows: 500 },
+  boot: { maxPages: 4, maxRowsInBounds: 900, numOfRows: 500 },
+  interactive: { maxPages: 3, maxRowsInBounds: 550, numOfRows: 500 },
 }
 
 /**
@@ -54,15 +54,18 @@ export function literalBoundsContains(bounds, lat, lng) {
  *   pipelineDebug?: boolean
  *   onFirstPageSample?: (p: { rawCount: number, sample: { raw: object, n: object | null }[] }) => void
  *   adapterProofVerbose?: boolean
+ *   collectAdapterSamples?: boolean
  * }} [opts]
- * @returns {Promise<{ rows: object[], pagesScanned: number, truncated: boolean, totalReported: number | null, pipelineCounts?: object }>}
+ * @returns {Promise<{ rows: object[], pagesScanned: number, truncated: boolean, totalReported: number | null, pipelineCounts?: object, adapterSamples?: object[] }>}
  */
 export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) {
   const numOfRows = opts.numOfRows ?? 500
   const maxPages = opts.maxPages ?? 18
   const maxRowsInBounds = opts.maxRowsInBounds ?? 4000
   const signal = opts.signal
-  const pipelineDebug = opts.pipelineDebug === true && import.meta.env.DEV
+  const pipelineDebug =
+    opts.pipelineDebug === true && (import.meta.env.DEV || isEvPipelineLogEnabled())
+  const adapterSamples = opts.collectAdapterSamples === true ? [] : null
 
   const inBounds = []
   const seenId = new Set()
@@ -81,6 +84,7 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
         truncated: true,
         totalReported,
         pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+        ...(adapterSamples ? { adapterSamples } : {}),
       }
     }
     const data = await fetchEvChargersPage({ pageNo: page, numOfRows })
@@ -91,6 +95,7 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
         truncated: true,
         totalReported,
         pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+        ...(adapterSamples ? { adapterSamples } : {}),
       }
     }
     const totalCountFromApi = data.response?.body?.totalCount ?? data.body?.totalCount ?? data.totalCount
@@ -111,6 +116,22 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
       rawItemCount += 1
       const rawRow = list[i]
       const n = normalizeCharger(rawRow, inBounds.length + i)
+      if (adapterSamples && page === 1 && adapterSamples.length < 5) {
+        const rx = rawRow?.x ?? rawRow?.XPOINT ?? rawRow?.locationX
+        const ry = rawRow?.y ?? rawRow?.YPOINT ?? rawRow?.locationY
+        const valid = !!(n && Number.isFinite(n.lat) && Number.isFinite(n.lng))
+        const lat = valid ? n.lat : null
+        const lng = valid ? n.lng : null
+        adapterSamples.push({
+          rawX: rx,
+          rawY: ry,
+          adaptedLat: lat,
+          adaptedLng: lng,
+          valid,
+          korea: valid ? isLatLngRoughlyKorea(lat, lng) : false,
+          boundsInside: valid ? literalBoundsContains(boundsLiteral, lat, lng) : false,
+        })
+      }
       if (firstPageSampleBuf && firstPageSampleBuf.length < 20) {
         firstPageSampleBuf.push({ raw: rawRow, n })
       }
@@ -160,6 +181,7 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
           truncated,
           totalReported,
           pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+          ...(adapterSamples ? { adapterSamples } : {}),
         }
       }
     }
@@ -207,6 +229,7 @@ export async function fetchEvChargersSummaryForBounds(boundsLiteral, opts = {}) 
     truncated,
     totalReported,
     pipelineCounts: { rawItemCount, totalNormalized, totalNormNull, rowsInBounds: inBounds.length },
+    ...(adapterSamples ? { adapterSamples } : {}),
   }
 }
 
