@@ -118,12 +118,13 @@ export const motion = {
 export const appMobileType = {
   detailSheetTitle: {
     fontSize: { xs: '1.3125rem', md: '1.125rem' },
-    lineHeight: { xs: 1.3, md: 1.35 },
+    lineHeight: { xs: 1.28, md: 1.35 },
     fontWeight: 700,
+    letterSpacing: '-0.02em',
   },
   detailSheetSubtitle: {
-    fontSize: { xs: '0.75rem', md: '0.7rem' },
-    lineHeight: { xs: 1.4, md: 1.35 },
+    fontSize: { xs: '0.8125rem', md: '0.75rem' },
+    lineHeight: { xs: 1.45, md: 1.4 },
     fontWeight: 500,
   },
   listSheetTitle: {
@@ -170,9 +171,10 @@ export const appMobileType = {
     fontWeight: 500,
   },
   chargerCardTitle: {
-    fontSize: { xs: '1rem', md: '0.75rem' },
-    lineHeight: { xs: 1.3, md: 1.35 },
-    fontWeight: 800,
+    fontSize: { xs: '0.9375rem', md: '0.75rem' },
+    lineHeight: { xs: 1.35, md: 1.35 },
+    fontWeight: 600,
+    letterSpacing: '-0.015em',
   },
   railHeading: {
     fontSize: { xs: '0.8125rem', md: '0.72rem' },
@@ -184,9 +186,9 @@ export const appMobileType = {
     fontSize: '0.8125rem',
   },
   statusChip: {
-    height: 28,
-    fontSize: '0.75rem',
-    fontWeight: 700,
+    height: 26,
+    fontSize: '0.71875rem',
+    fontWeight: 600,
   },
   caption: {
     fontSize: { xs: '0.75rem', md: '0.65rem' },

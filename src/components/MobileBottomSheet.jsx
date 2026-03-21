@@ -442,9 +442,9 @@ export function MobileBottomSheet({
             sx={{
               flexShrink: 0,
               px: 2.5,
-              pt: 0.75,
-              pb: 'max(8px, env(safe-area-inset-bottom, 0px))',
-              borderTop: `1px solid ${colors.gray[200]}`,
+              pt: 1,
+              pb: 'max(10px, env(safe-area-inset-bottom, 0px))',
+              borderTop: `1px solid ${tokens.border.subtle}`,
               bgcolor: tokens.bg.paper,
             }}
           >

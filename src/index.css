@@ -485,3 +485,26 @@ code {
     animation: none !important;
   }
 }
+
+/* 부트 세그먼트 바: indeterminate 시 순차 웨이브(가벼운 opacity) */
+@keyframes ev-boot-seg-wave {
+  0%,
+  100% {
+    opacity: 0.38;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.ev-boot-seg__cell--wave {
+  animation: ev-boot-seg-wave 1.35s ease-in-out infinite;
+  will-change: opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ev-boot-seg__cell--wave {
+    animation: none !important;
+    opacity: 0.9 !important;
+  }
+}

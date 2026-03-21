@@ -4,7 +4,6 @@ import {
   Box,
   Typography,
   CircularProgress,
-  LinearProgress,
   Alert,
   IconButton,
   Chip,
@@ -25,6 +24,7 @@ import {
   aggregateStatCounts,
   getLatestStatUpdDt,
   formatStatSummary,
+  formatAddressBlockLines,
 } from './api/safemapEv.js'
 import { filterNormalizedRowsToBounds } from './api/evViewportSummary.js'
 import { fetchEvStationsSummaryDataset, resolveEvStationsSummaryUrl } from './api/evStationsSummary.js'
@@ -36,6 +36,7 @@ import {
   formatListSummary,
   summarizeSpeedCategories,
   pickShortLocationHint,
+  formatDistanceKm,
 } from './utils/geo.js'
 import { groupChargerRowsByPlaceMapLite } from './utils/evStationGroup.js'
 
@@ -146,6 +147,7 @@ import {
 } from './dev/evPipelinePerfLog.js'
 import { EvPipelineDebugPanel } from './dev/EvPipelineDebugPanel.jsx'
 import { BootEvCarAnimation } from './components/BootEvCarAnimation.jsx'
+import { BootSegmentedProgress } from './components/BootSegmentedProgress.jsx'
 
 /**
  * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
@@ -2334,6 +2336,17 @@ function App() {
     return ''
   }, [detailStation, lastEvFetchAt])
 
+  /** 헤더 2행: 거리·주소(가독 secondary) — 갱신 시각과 분리 */
+  const detailHeaderLocationLine = useMemo(() => {
+    if (!detailStation) return ''
+    const parts = []
+    const dist = formatDistanceKm(detailStation.distanceKm)
+    if (dist) parts.push(dist)
+    const addrLines = formatAddressBlockLines(detailStation)
+    if (addrLines[0]) parts.push(addrLines[0])
+    return parts.join(' · ')
+  }, [detailStation])
+
   const chargerSummaryUpdatedInHeader = useMemo(
     () => !!(detailStation && (detailStation.latestStatUpdDt || detailStation.statUpdDt)),
     [detailStation]
@@ -2367,15 +2380,15 @@ function App() {
             if (d) {
               if (snap === 'full') {
                 return (
-                  <Box sx={{ bgcolor: tokens.bg.subtle, borderBottom: `1px solid ${colors.gray[200]}` }}>
+                  <Box sx={{ bgcolor: tokens.bg.subtle, borderBottom: `1px solid ${tokens.border.subtle}` }}>
                     <Box
                       sx={{
                         display: 'flex',
                         flexDirection: 'row',
-                        alignItems: 'center',
+                        alignItems: 'flex-start',
                         gap: 1,
                         px: MOBILE_DETAIL_HEADER_GUTTER,
-                        py: 1,
+                        py: 1.125,
                         minHeight: MOBILE_DETAIL_FULL_HEADER_MIN_H,
                         boxSizing: 'border-box',
                       }}
@@ -2385,7 +2398,7 @@ function App() {
                         aria-label="뒤로"
                         size="small"
                         sx={{
-                          color: colors.gray[700],
+                          color: tokens.text.secondary,
                           flexShrink: 0,
                           width: 40,
                           height: 40,
@@ -2393,28 +2406,50 @@ function App() {
                           minHeight: 40,
                           p: 0,
                           borderRadius: radius.md,
+                          mt: 0.125,
                         }}
                       >
-                        <ArrowBack sx={{ fontSize: 24 }} />
+                        <ArrowBack sx={{ fontSize: 22 }} />
                       </IconButton>
-                      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', py: 0.25 }}>
+                      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', py: 0.125 }}>
                         <Typography
                           id="ev-mobile-detail-title"
                           variant="h6"
                           component="h2"
                           sx={{
-                            color: colors.gray[900],
+                            color: tokens.text.primary,
                             ...appMobileType.detailSheetTitle,
-                            lineHeight: 1.35,
-                            fontWeight: 700,
                           }}
                         >
                           {d.statNm}
                         </Typography>
+                        {detailHeaderLocationLine ? (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              display: 'block',
+                              mt: 0.5,
+                              color: tokens.text.secondary,
+                              lineHeight: 1.45,
+                              fontWeight: 500,
+                              fontSize: '0.8125rem',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {detailHeaderLocationLine}
+                          </Typography>
+                        ) : null}
                         {detailHeaderSubtitle ? (
                           <Typography
                             variant="caption"
-                            sx={{ display: 'block', mt: 0.25, color: colors.gray[500], ...appMobileType.detailSheetSubtitle, lineHeight: 1.35 }}
+                            sx={{
+                              display: 'block',
+                              mt: detailHeaderLocationLine ? 0.35 : 0.5,
+                              color: tokens.text.tertiary,
+                              fontSize: '0.75rem',
+                              lineHeight: 1.4,
+                              fontWeight: 500,
+                            }}
                           >
                             {detailHeaderSubtitle}
                           </Typography>
@@ -2426,7 +2461,7 @@ function App() {
                         aria-label="충전소 요약 데이터 새로고침"
                         size="small"
                         sx={{
-                          color: colors.gray[600],
+                          color: tokens.text.secondary,
                           flexShrink: 0,
                           width: 40,
                           height: 40,
@@ -2434,6 +2469,7 @@ function App() {
                           minHeight: 40,
                           p: 0,
                           borderRadius: radius.md,
+                          mt: 0.125,
                         }}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
@@ -2450,7 +2486,7 @@ function App() {
               /* half: 뒤로가기 없음 — full에서만 노출. 헤더 전체를 드래그해 half→full */
               return (
                 <Box
-                  sx={{ bgcolor: tokens.bg.subtle, borderBottom: `1px solid ${colors.gray[200]}` }}
+                  sx={{ bgcolor: tokens.bg.subtle, borderBottom: `1px solid ${tokens.border.subtle}` }}
                   data-ev-list-header-mode="detail"
                 >
                   <Box
@@ -2459,31 +2495,53 @@ function App() {
                       touchAction: 'none',
                       cursor: 'grab',
                       pt: 1,
-                      pb: 0.75,
+                      pb: 1.25,
                       '&:active': { cursor: 'grabbing' },
                     }}
                   >
-                    <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto' }} aria-hidden />
+                    <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: tokens.border.strong, mx: 'auto', opacity: 0.55 }} aria-hidden />
                     <Box
                       sx={{
                         display: 'flex',
                         alignItems: 'flex-start',
                         gap: 1,
                         px: MOBILE_DETAIL_HEADER_GUTTER,
-                        pt: 0.75,
-                        pb: 0,
+                        pt: 0.875,
+                        pb: 0.25,
                       }}
                     >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography
-                          variant="subtitle1"
-                          component="h2"
-                          sx={{ fontWeight: 700, color: colors.gray[900], fontSize: '1.0625rem', lineHeight: 1.35 }}
-                        >
+                        <Typography variant="h6" component="h2" sx={{ color: tokens.text.primary, ...appMobileType.detailSheetTitle }}>
                           {d.statNm}
                         </Typography>
+                        {detailHeaderLocationLine ? (
+                          <Typography
+                            variant="body2"
+                            sx={{
+                              display: 'block',
+                              mt: 0.45,
+                              color: tokens.text.secondary,
+                              lineHeight: 1.45,
+                              fontWeight: 500,
+                              fontSize: '0.8125rem',
+                              wordBreak: 'break-word',
+                            }}
+                          >
+                            {detailHeaderLocationLine}
+                          </Typography>
+                        ) : null}
                         {detailHeaderSubtitle ? (
-                          <Typography variant="caption" sx={{ display: 'block', mt: 0.25, color: colors.gray[500], lineHeight: 1.35 }}>
+                          <Typography
+                            variant="caption"
+                            sx={{
+                              display: 'block',
+                              mt: detailHeaderLocationLine ? 0.35 : 0.45,
+                              color: tokens.text.tertiary,
+                              fontSize: '0.75rem',
+                              lineHeight: 1.4,
+                              fontWeight: 500,
+                            }}
+                          >
                             {detailHeaderSubtitle}
                           </Typography>
                         ) : null}
@@ -2494,7 +2552,7 @@ function App() {
                         aria-label="충전소 요약 데이터 새로고침"
                         size="small"
                         sx={{
-                          color: colors.gray[600],
+                          color: tokens.text.secondary,
                           flexShrink: 0,
                           width: 40,
                           height: 40,
@@ -2877,50 +2935,11 @@ function App() {
             ) : (
               <>
                 <BootEvCarAnimation reduceMotion={bootReduceMotion} />
-                {bootLinearIndeterminate ? (
-                  <Typography
-                    component="div"
-                    color="text.secondary"
-                    sx={{
-                      fontWeight: 700,
-                      fontSize: '1.35rem',
-                      lineHeight: 1.2,
-                      letterSpacing: '-0.02em',
-                      mt: -0.25,
-                    }}
-                  >
-                    진행 중…
-                  </Typography>
-                ) : (
-                  <Typography
-                    component="div"
-                    color="text.primary"
-                    sx={{
-                      fontWeight: 800,
-                      fontSize: { xs: '3.125rem', sm: '3.5rem' },
-                      lineHeight: 1,
-                      letterSpacing: '-0.05em',
-                      fontVariantNumeric: 'tabular-nums',
-                      mt: -0.5,
-                      userSelect: 'none',
-                    }}
-                  >
-                    {bootPct}
-                    <Typography
-                      component="span"
-                      sx={{
-                        fontSize: '0.4em',
-                        fontWeight: 700,
-                        ml: 0.2,
-                        opacity: 0.82,
-                        letterSpacing: '0.04em',
-                        verticalAlign: '0.35em',
-                      }}
-                    >
-                      %
-                    </Typography>
-                  </Typography>
-                )}
+                <BootSegmentedProgress
+                  value={bootPct}
+                  indeterminate={bootLinearIndeterminate}
+                  reduceMotion={bootReduceMotion}
+                />
                 <Fade in timeout={bootReduceMotion ? 0 : 320} key={bootMessageIndex}>
                   <Typography
                     variant="body2"
@@ -2940,18 +2959,9 @@ function App() {
                 </Fade>
               </>
             )}
-            <LinearProgress
-              variant={bootLinearIndeterminate || bootMarkerGateFailed ? 'indeterminate' : 'determinate'}
-              value={bootLinearIndeterminate || bootMarkerGateFailed ? undefined : bootPct}
-              sx={{
-                width: '100%',
-                maxWidth: 288,
-                height: 8,
-                borderRadius: 999,
-                bgcolor: tokens.bg.subtle,
-                '& .MuiLinearProgress-bar': { borderRadius: 999, bgcolor: tokens.blue.main },
-              }}
-            />
+            {bootMarkerGateFailed ? (
+              <BootSegmentedProgress indeterminate reduceMotion={bootReduceMotion} />
+            ) : null}
             {bootMarkerGateFailed ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', maxWidth: 280, mt: 0.5 }}>
                 <Button

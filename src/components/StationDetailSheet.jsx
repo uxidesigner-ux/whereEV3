@@ -25,7 +25,7 @@ export function StationDetailSheet({
   headerSubtitle = '',
   chargerSummaryUpdatedInHeader = false,
 }) {
-  const { colors, tokens } = useEvTheme()
+  const { colors, tokens, resolvedMode } = useEvTheme()
   const dragStartY = useRef(0)
   const dragging = useRef(false)
   const closeBtnRef = useRef(null)
@@ -154,47 +154,59 @@ export function StationDetailSheet({
               flexShrink: 0,
               pt: 1.25,
               px: 2,
-              pb: 1.75,
-              borderBottom: `1px solid ${colors.gray[200]}`,
+              pb: 2.25,
+              borderBottom: `1px solid ${tokens.border.subtle}`,
               bgcolor: tokens.bg.subtle,
+              boxShadow: `0 10px 24px -18px ${resolvedMode === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(15,23,42,0.12)'}`,
               touchAction: 'none',
               cursor: 'grab',
               '&:active': { cursor: 'grabbing' },
             }}
           >
-            <Box sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: colors.gray[300], mx: 'auto', mb: 1.125 }} aria-hidden />
-            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1, pointerEvents: 'none' }}>
+            <Box
+              sx={{ width: 36, height: 4, borderRadius: 2, bgcolor: tokens.border.strong, mx: 'auto', mb: 1.25, opacity: 0.5 }}
+              aria-hidden
+            />
+            <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 1.25, pointerEvents: 'none' }}>
               <Box sx={{ minWidth: 0, flex: 1, pr: 0.5 }}>
                 <Typography
                   id="ev-detail-sheet-title"
                   variant="h6"
                   component="h2"
-                  sx={{ color: colors.gray[900], ...appMobileType.detailSheetTitle }}
+                  sx={{ color: tokens.text.primary, ...appMobileType.detailSheetTitle }}
                 >
                   {station.statNm}
                 </Typography>
                 {subtitle ? (
                   <Typography
-                    variant="caption"
-                    sx={{ display: 'block', mt: 0.4, color: colors.gray[500], ...appMobileType.detailSheetSubtitle }}
+                    variant="body2"
+                    sx={{
+                      display: 'block',
+                      mt: 0.5,
+                      ...appMobileType.detailSheetSubtitle,
+                      color: tokens.text.secondary,
+                      fontSize: '0.8125rem',
+                      lineHeight: 1.45,
+                      fontWeight: 500,
+                    }}
                   >
                     {subtitle}
                   </Typography>
                 ) : null}
               </Box>
-              <Box sx={{ pointerEvents: 'auto', display: 'flex', alignItems: 'center', gap: 0.25, flexShrink: 0, mt: -0.25 }}>
+              <Box sx={{ pointerEvents: 'auto', display: 'flex', alignItems: 'flex-start', gap: 0.25, flexShrink: 0, pt: 0.125 }}>
                 <IconButton
                   onClick={() => refreshEnabled && onRefresh?.()}
                   disabled={!refreshEnabled || refreshLoading}
                   aria-label={refreshEnabled ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
                   title={refreshEnabled ? '목록 데이터 다시 불러오기' : 'API 키가 설정된 경우에만 새로고침할 수 있습니다'}
                   size="small"
-                  sx={{ color: colors.gray[600] }}
+                  sx={{ color: tokens.text.secondary }}
                 >
-                  {refreshLoading ? <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} /> : <Refresh sx={{ fontSize: 22 }} />}
+                  {refreshLoading ? <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} /> : <Refresh sx={{ fontSize: 21 }} />}
                 </IconButton>
-                <IconButton ref={closeBtnRef} onClick={onClose} aria-label="상세 닫기" size="small" sx={{ color: colors.gray[600] }}>
-                  <Close />
+                <IconButton ref={closeBtnRef} onClick={onClose} aria-label="상세 닫기" size="small" sx={{ color: tokens.text.secondary }}>
+                  <Close sx={{ fontSize: 22 }} />
                 </IconButton>
               </Box>
             </Box>
@@ -216,8 +228,8 @@ export function StationDetailSheet({
                 minHeight: 0,
                 overflow: 'auto',
                 px: 2,
-                pt: 1.25,
-                pb: 1.5,
+                pt: 1.5,
+                pb: 1.75,
                 WebkitOverflowScrolling: 'touch',
                 touchAction: 'pan-y',
               }}

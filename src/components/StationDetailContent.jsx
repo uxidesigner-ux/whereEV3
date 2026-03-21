@@ -12,6 +12,16 @@ import {
 } from '../api/safemapEv.js'
 import { getChargerSessionForUi } from '../data/chargerSessionMvp.js'
 
+/** 급속/완속 보조 뱃지 — speedCategory 우선, 없으면 타입 문자열에서 추정 */
+function getSpeedBadgeLabel(row) {
+  const sc = String(row.speedCategory ?? '').trim()
+  if (sc === '급속' || sc === '완속') return sc
+  const type = String(row.displayChgerLabel ?? row.chgerTyLabel ?? '')
+  if (type.includes('급속')) return '급속'
+  if (type.includes('완속')) return '완속'
+  return null
+}
+
 function chargerRowsFromStation(station) {
   if (!station) return []
   if (Array.isArray(station.rows) && station.rows.length) {
@@ -26,24 +36,24 @@ function chargerRowsFromStation(station) {
 
 const StationDetailUiContext = /** @type {import('react').Context<StationDetailUiValue | null>} */ (createContext(null))
 
-function buildDetailUi(colors, tokens) {
+function buildDetailUi(colors, tokens, resolvedMode) {
   const chipSx = {
     avail: {
       bgcolor: tokens.status.avail.chipBg,
       color: tokens.status.avail.fg,
-      fontWeight: 700,
+      fontWeight: 600,
       border: `1px solid ${tokens.status.avail.border}`,
     },
     use: {
       bgcolor: tokens.status.use.chipBg,
       color: tokens.status.use.fg,
-      fontWeight: 700,
+      fontWeight: 600,
       border: `1px solid ${tokens.status.use.border}`,
     },
     maint: {
       bgcolor: tokens.status.maint.chipBg,
       color: tokens.status.maint.fg,
-      fontWeight: 700,
+      fontWeight: 600,
       border: `1px solid ${tokens.status.maint.border}`,
     },
   }
@@ -101,14 +111,36 @@ function buildDetailUi(colors, tokens) {
       },
     },
   }
+  const chargerCard =
+    resolvedMode === 'dark'
+      ? {
+          bgcolor: tokens.bg.raised,
+          boxShadow: '0 2px 16px rgba(0, 0, 0, 0.28)',
+        }
+      : {
+          bgcolor: tokens.bg.muted,
+          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05), 0 6px 18px rgba(15, 23, 42, 0.07)',
+        }
+
   return {
     colors,
     tokens,
     chipSx,
     statFilterPalettes,
-    sectionBlockTitleSx: { color: colors.gray[900], display: 'block', mb: 1, ...appMobileType.sectionBlock },
-    metaFieldLabelSx: { color: colors.gray[500], display: 'block', mb: 0.2, ...appMobileType.metaFieldLabel },
-    metaBodySx: { color: colors.gray[600], ...appMobileType.body },
+    chargerCard,
+    sectionBlockTitleSx: {
+      color: tokens.text.primary,
+      display: 'block',
+      mb: 1.25,
+      ...appMobileType.sectionBlock,
+    },
+    metaFieldLabelSx: {
+      color: tokens.text.tertiary,
+      display: 'block',
+      mb: 0.35,
+      ...appMobileType.metaFieldLabel,
+    },
+    metaBodySx: { color: tokens.text.secondary, ...appMobileType.body },
   }
 }
 
@@ -136,7 +168,7 @@ function StatFilterChip({ label, selected, disabled, onClick, paletteKey }) {
         height: appMobileType.chipRail.height,
         borderRadius: 999,
         fontSize: appMobileType.chipRail.fontSize,
-        fontWeight: selected ? 800 : 600,
+        fontWeight: selected ? 700 : 500,
         letterSpacing: selected ? '0.01em' : '0.005em',
         transition: `border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}`,
         '& .MuiChip-label': { px: 1.4, py: 0.125 },
@@ -158,7 +190,7 @@ function chargerFilterLabel(filter) {
 
 /** 필터 선택과 리스트를 한 문장으로 연결 */
 function ChargerListHeading({ filter, totalChargers, filteredCount }) {
-  const { colors } = useStationDetailUi()
+  const { tokens } = useStationDetailUi()
   const label = chargerFilterLabel(filter)
   const count = filter === 'all' ? totalChargers : filteredCount
   return (
@@ -167,21 +199,21 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
       component="div"
       sx={{
         display: 'block',
-        mb: 0.75,
+        mb: 1,
         letterSpacing: '0.02em',
         ...appMobileType.railHeading,
       }}
     >
-      <Box component="span" sx={{ fontWeight: 800, color: colors.gray[900] }}>
+      <Box component="span" sx={{ fontWeight: 700, color: tokens.text.primary }}>
         충전기
       </Box>
-      <Box component="span" sx={{ color: colors.gray[400], fontWeight: 500, mx: 0.45 }}>
+      <Box component="span" sx={{ color: tokens.text.muted, fontWeight: 500, mx: 0.45 }}>
         ·
       </Box>
-      <Box component="span" sx={{ fontWeight: 700, color: colors.gray[700] }}>
+      <Box component="span" sx={{ fontWeight: 600, color: tokens.text.secondary }}>
         {label}
       </Box>
-      <Box component="span" sx={{ fontWeight: 600, color: colors.gray[500], ml: 0.35 }}>
+      <Box component="span" sx={{ fontWeight: 500, color: tokens.text.tertiary, ml: 0.35 }}>
         {count}대
       </Box>
     </Typography>
@@ -189,7 +221,7 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
 }
 
 function ChargerCard({ row, idx }) {
-  const { colors, chipSx, tokens } = useStationDetailUi()
+  const { colors, chipSx, tokens, chargerCard } = useStationDetailUi()
   const stat = String(row.stat ?? '').trim()
   const title = (row.chgerNm || '').trim() || `충전기 ${(row.chgerId || '').toString().trim() || idx + 1}`
   const outRaw = (row.outputKw || '').toString().trim()
@@ -212,46 +244,83 @@ function ChargerCard({ row, idx }) {
       sx: {
         bgcolor: tokens.status.unknown.chipBg,
         color: tokens.status.unknown.fg,
-        fontWeight: 600,
+        fontWeight: 500,
         border: `1px solid ${tokens.status.unknown.border}`,
       },
     }
   }
   const chip = chipForStat()
 
-  const cardBorder =
-    stat === '2'
-      ? tokens.status.avail.border
-      : stat === '3'
-        ? tokens.status.use.border
-        : stat === '5'
-          ? tokens.status.maint.border
-          : colors.gray[200]
-  const cardBg =
-    stat === '2'
-      ? tokens.status.avail.rowBg
-      : stat === '3'
-        ? tokens.status.use.rowBg
-        : stat === '5'
-          ? tokens.status.maint.rowBg
-          : tokens.bg.paper
-
   const typeLabel = row.displayChgerLabel ?? row.chgerTyLabel ?? '—'
+  const speedBadgeLabel = getSpeedBadgeLabel(row)
+
+  const detailLabelSx = {
+    color: tokens.text.tertiary,
+    display: 'block',
+    mb: 0.35,
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+    letterSpacing: '0.02em',
+  }
+  const detailValueSx = {
+    color: tokens.text.primary,
+    ...appMobileType.body,
+    fontWeight: 500,
+    lineHeight: 1.45,
+  }
 
   return (
     <Box
       sx={{
-        mb: 1,
-        p: 1.25,
-        borderRadius: `${radius.md}px`,
-        border: `1px solid ${cardBorder}`,
-        bgcolor: cardBg,
-        transition: `border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+        mb: 1.5,
+        p: 1.5,
+        borderRadius: `${radius.lg}px`,
+        border: 'none',
+        bgcolor: chargerCard.bgcolor,
+        boxShadow: chargerCard.boxShadow,
+        transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
       }}
     >
-      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" gap={1} sx={{ mb: 1 }}>
-        <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="caption" sx={{ color: colors.gray[800], display: 'block', ...appMobileType.chargerCardTitle }}>
+      <Stack
+        direction="row"
+        alignItems="center"
+        justifyContent="space-between"
+        gap={1}
+        sx={{ mb: 1, minHeight: 28 }}
+      >
+        <Box sx={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          {speedBadgeLabel ? (
+            <Chip
+              label={speedBadgeLabel}
+              size="small"
+              sx={{
+                flexShrink: 0,
+                height: 22,
+                minHeight: 22,
+                fontSize: '0.6875rem',
+                fontWeight: 600,
+                letterSpacing: '0.02em',
+                bgcolor: tokens.bg.chipIdle,
+                color: tokens.text.secondary,
+                border: 'none',
+                boxShadow: 'none',
+                '& .MuiChip-label': { px: 0.85, py: 0 },
+              }}
+            />
+          ) : null}
+          <Typography
+            variant="subtitle2"
+            component="span"
+            sx={{
+              ...appMobileType.chargerCardTitle,
+              color: tokens.text.primary,
+              minWidth: 0,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              display: 'block',
+            }}
+          >
             {title}
           </Typography>
         </Box>
@@ -264,23 +333,36 @@ function ChargerCard({ row, idx }) {
             height: appMobileType.statusChip.height,
             fontSize: appMobileType.statusChip.fontSize,
             fontWeight: appMobileType.statusChip.fontWeight,
-            '& .MuiChip-label': { px: 1 },
+            '& .MuiChip-label': { px: 1.1 },
           }}
         />
       </Stack>
 
-      <Box sx={{ mb: stat === '3' && (showChargeBar || timeLine) ? 1 : stat === '5' ? 0.75 : 0 }}>
-        <Typography variant="body2" sx={{ color: colors.gray[700], ...appMobileType.body }}>
-          타입 {typeLabel}
-        </Typography>
-        <Typography variant="body2" sx={{ color: colors.gray[700], ...appMobileType.body }}>
-          출력 {outDisp || '—'}
-        </Typography>
-      </Box>
+      <Stack spacing={1.25} sx={{ pt: 0.75, mt: 0.25 }}>
+        <Box>
+          <Typography component="span" variant="caption" sx={detailLabelSx}>
+            커넥터
+          </Typography>
+          <Typography variant="body2" sx={detailValueSx}>
+            {typeLabel}
+          </Typography>
+        </Box>
+        <Box>
+          <Typography component="span" variant="caption" sx={detailLabelSx}>
+            출력
+          </Typography>
+          <Typography variant="body2" sx={{ ...detailValueSx, fontVariantNumeric: 'tabular-nums' }}>
+            {outDisp || '—'}
+          </Typography>
+        </Box>
+      </Stack>
 
       {stat === '3' && showChargeBar && (
-        <Box sx={{ mb: timeLine ? 0.75 : 0 }}>
-          <Typography variant="body2" sx={{ color: colors.gray[800], mb: 0.5, ...appMobileType.bodyStrong }}>
+        <Box sx={{ mt: 1.35, mb: timeLine ? 0.75 : 0 }}>
+          <Typography
+            variant="body2"
+            sx={{ color: tokens.text.primary, mb: 0.5, ...appMobileType.bodyStrong, fontWeight: 600 }}
+          >
             현재 {chargePair.current}% / 목표 {chargePair.target}%
           </Typography>
           <LinearProgress
@@ -289,24 +371,35 @@ function ChargerCard({ row, idx }) {
             sx={{
               height: 6,
               borderRadius: 3,
-              bgcolor: tokens.status.use.rowBg,
+              bgcolor: tokens.blue.muted,
               '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: colors.blue.primary },
             }}
           />
-          <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', mt: 0.35, ...appMobileType.captionDense }}>
+          <Typography
+            variant="caption"
+            sx={{ color: tokens.text.tertiary, display: 'block', mt: 0.35, ...appMobileType.captionDense }}
+          >
             목표 충전량 대비 진행(시뮬레이션)
           </Typography>
         </Box>
       )}
 
       {stat === '3' && timeLine && (
-        <Typography variant="body2" sx={{ color: colors.gray[800], ...appMobileType.bodyStrong }}>
+        <Typography
+          variant="body2"
+          sx={{
+            color: tokens.text.primary,
+            mt: showChargeBar ? 0.5 : 1.25,
+            ...appMobileType.bodyStrong,
+            fontWeight: 600,
+          }}
+        >
           {timeLine}
         </Typography>
       )}
 
       {stat === '5' && (
-        <Typography variant="caption" sx={{ color: colors.gray[500], display: 'block', ...appMobileType.secondary }}>
+        <Typography variant="caption" sx={{ color: tokens.text.tertiary, display: 'block', mt: 1, ...appMobileType.secondary }}>
           점검으로 현재 이용할 수 없습니다.
         </Typography>
       )}
@@ -317,20 +410,22 @@ function ChargerCard({ row, idx }) {
 const FOOTER_BTN_SX = {
   flex: '1 1 0',
   minWidth: 0,
-  minHeight: 48,
-  maxHeight: 48,
+  minHeight: 46,
+  maxHeight: 46,
   py: 0,
-  px: { xs: 0.75, sm: 1.25 },
-  borderRadius: `${radius.sm}px`,
-  fontWeight: 700,
-  fontSize: { xs: '0.8125rem', sm: '0.9375rem' },
+  px: { xs: 1, sm: 1.25 },
+  borderRadius: 999,
+  fontWeight: 600,
+  fontSize: { xs: '0.8125rem', sm: '0.875rem' },
   lineHeight: 1.2,
   textTransform: 'none',
   whiteSpace: 'nowrap',
   '& .MuiButton-startIcon': {
-    marginRight: { xs: 0.35, sm: 0.75 },
+    marginRight: { xs: 0.4, sm: 0.65 },
     marginLeft: 0,
     flexShrink: 0,
+    display: 'inline-flex',
+    alignItems: 'center',
   },
 }
 
@@ -350,9 +445,9 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
     <Box
       sx={{
         ...footerBleed,
-        pt: 1.25,
-        pb: isSheet ? 'calc(10px + env(safe-area-inset-bottom, 0px))' : 1.5,
-        bgcolor: tokens.bg.subtle,
+        pt: isSheet ? 0 : 1.25,
+        pb: isSheet ? 'calc(4px + env(safe-area-inset-bottom, 0px))' : 1.5,
+        bgcolor: isSheet ? 'transparent' : tokens.bg.subtle,
       }}
     >
       <Box
@@ -360,24 +455,26 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'stretch',
-          gap: { xs: 1, sm: 1.5 },
+          gap: { xs: 0.875, sm: 1.125 },
         }}
       >
         {telno ? (
           <Button
             variant="outlined"
-            startIcon={<Phone sx={{ fontSize: { xs: 20, sm: 22 } }} />}
+            startIcon={<Phone sx={{ fontSize: 20 }} />}
             href={`tel:${telno}`}
             aria-label="전화 걸기"
             sx={{
               ...FOOTER_BTN_SX,
               flex: '1 1 0',
-              borderColor: tokens.border.strong,
-              bgcolor: tokens.bg.paper,
+              borderColor: tokens.border.default,
+              bgcolor: tokens.bg.subtle,
               color: tokens.text.primary,
+              fontWeight: 600,
+              boxShadow: 'none',
               transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
               '&:hover': {
-                borderColor: tokens.border.default,
+                borderColor: tokens.border.strong,
                 bgcolor: tokens.bg.muted,
               },
               '&:active': { transform: 'scale(0.98)' },
@@ -388,17 +485,18 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         ) : null}
         <Button
           variant="contained"
-          startIcon={<Directions sx={{ fontSize: { xs: 20, sm: 22 } }} />}
+          startIcon={<Directions sx={{ fontSize: 20 }} />}
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="충전소 위치 길찾기"
-          sx={{
+            sx={{
             ...FOOTER_BTN_SX,
             flex: telno ? '1 1 0' : '1 1 auto',
             bgcolor: colors.blue.primary,
             color: tokens.text.onPrimary,
-            boxShadow: `0 1px 4px ${tokens.blue.glowSoft}`,
+            fontWeight: 600,
+            boxShadow: `0 1px 2px rgba(0,0,0,0.06)`,
             transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
             '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 2px 10px ${tokens.blue.glowSoft}` },
             '&:active': { transform: 'scale(0.98)' },
@@ -427,8 +525,8 @@ export function StationDetailContent({
   chargerStatFilter = 'all',
   onChargerStatFilterChange,
 }) {
-  const { colors, tokens } = useEvTheme()
-  const ui = useMemo(() => buildDetailUi(colors, tokens), [colors, tokens])
+  const { colors, tokens, resolvedMode } = useEvTheme()
+  const ui = useMemo(() => buildDetailUi(colors, tokens, resolvedMode), [colors, tokens, resolvedMode])
   const chargerRows = useMemo(() => chargerRowsFromStation(station), [station])
   const totalChargers = station?.totalChargers ?? chargerRows.length
   const statCounts =
@@ -469,7 +567,7 @@ export function StationDetailContent({
     <StationDetailUiContext.Provider value={ui}>
     <>
       {chargerRows.length > 0 && (
-        <Box sx={{ mb: 1.5 }}>
+        <Box sx={{ mb: 2 }}>
           {totalChargers > 0 && (
             <Box
               sx={
@@ -485,7 +583,7 @@ export function StationDetailContent({
                       pb: 0,
                       mb: 0,
                       borderBottom: `1px solid ${tokens.border.subtle}`,
-                      boxShadow: 'none',
+                      boxShadow: `0 6px 12px -8px ${resolvedMode === 'dark' ? 'rgba(0,0,0,0.45)' : 'rgba(15,23,42,0.08)'}`,
                     }
                   : {}
               }
@@ -539,7 +637,7 @@ export function StationDetailContent({
               {!chargerSummaryUpdatedInHeader && latestStatUpdDt && (
                 <Typography
                   variant="caption"
-                  sx={{ color: colors.gray[400], display: 'block', mt: 0.5, mb: 0.125, ...appMobileType.captionDense }}
+                  sx={{ color: tokens.text.tertiary, display: 'block', mt: 0.5, mb: 0.125, ...appMobileType.captionDense }}
                 >
                   상태 갱신 {latestStatUpdDt}
                 </Typography>
@@ -551,9 +649,9 @@ export function StationDetailContent({
             variant="caption"
             component="p"
             sx={{
-              color: colors.gray[400],
+              color: tokens.text.tertiary,
               display: 'block',
-              mt: totalChargers > 0 ? 0.75 : 0,
+              mt: totalChargers > 0 ? 1 : 0,
               mb: 0,
               ...appMobileType.captionDense,
               fontStyle: 'italic',
@@ -563,7 +661,7 @@ export function StationDetailContent({
             * 충전기 상태 및 충전율 정보는 MVP용 시뮬레이션 데이터입니다.
           </Typography>
 
-          <Box sx={{ mt: totalChargers > 0 ? 1 : 0 }}>
+          <Box sx={{ mt: totalChargers > 0 ? 1.25 : 0 }}>
             <ChargerListHeading
               filter={chargerStatFilter}
               totalChargers={totalChargers}
@@ -579,11 +677,11 @@ export function StationDetailContent({
                       WebkitOverflowScrolling: 'touch',
                     }),
                 pr: 0.25,
-                pt: 0.25,
+                pt: 0.5,
               }}
             >
               {filteredChargerRows.length === 0 ? (
-                <Typography variant="body2" sx={{ color: colors.gray[500], py: 0.75, px: 0.125, ...appMobileType.secondary }}>
+                <Typography variant="body2" sx={{ color: tokens.text.tertiary, py: 0.75, px: 0.125, ...appMobileType.secondary }}>
                   이 상태의 충전기가 없습니다.
                 </Typography>
               ) : (
@@ -599,15 +697,15 @@ export function StationDetailContent({
       <Box
         sx={{
           mb: 0,
-          pt: 1.5,
-          mt: 0.5,
-          borderTop: `1px dashed ${colors.gray[200]}`,
+          pt: 2,
+          mt: 1.5,
+          borderTop: `1px solid ${tokens.border.subtle}`,
         }}
       >
         <Typography variant="subtitle2" component="h3" sx={ui.sectionBlockTitleSx}>
           장소 정보
         </Typography>
-        <Box sx={{ mb: 1.25 }}>
+        <Box sx={{ mb: 1.5 }}>
           <Typography variant="caption" component="p" sx={ui.metaFieldLabelSx}>
             주소
           </Typography>
@@ -622,7 +720,7 @@ export function StationDetailContent({
             {addressDisplay || '등록된 주소가 없습니다. 원본 API에 주소 필드가 없을 수 있습니다.'}
           </Typography>
         </Box>
-        <Box sx={{ mb: 1.25 }}>
+        <Box sx={{ mb: 1.5 }}>
           <Typography variant="caption" component="p" sx={ui.metaFieldLabelSx}>
             이용시간
           </Typography>
@@ -630,12 +728,12 @@ export function StationDetailContent({
         </Box>
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, pb: 0.5 }}>
           <Typography variant="body2" sx={ui.metaBodySx}>
-            <Box component="span" sx={{ color: colors.gray[500], fontWeight: 700, fontSize: 'inherit' }}>운영기관</Box>{' '}
+            <Box component="span" sx={{ color: tokens.text.tertiary, fontWeight: 700, fontSize: 'inherit' }}>운영기관</Box>{' '}
             {station.busiNm}
           </Typography>
           {telno && (
             <Typography variant="body2" sx={ui.metaBodySx}>
-              <Box component="span" sx={{ color: colors.gray[500], fontWeight: 700, fontSize: 'inherit' }}>전화</Box> {telno}
+              <Box component="span" sx={{ color: tokens.text.tertiary, fontWeight: 700, fontSize: 'inherit' }}>전화</Box> {telno}
             </Typography>
           )}
         </Box>
