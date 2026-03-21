@@ -500,3 +500,34 @@ code {
     transform: scaleY(1) !important;
   }
 }
+
+/* 상세 시트 충전기「사용 중」진행 바 — 아주 약한 shimmer (접근성: reduced-motion 시 비활성) */
+@keyframes ev-charger-bar-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.ev-charger-session-progress .MuiLinearProgress-bar {
+  position: relative;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ev-charger-session-progress .MuiLinearProgress-bar::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgba(255, 255, 255, 0.2) 45%,
+      transparent 90%
+    );
+    animation: ev-charger-bar-shimmer 2.4s ease-in-out infinite;
+    pointer-events: none;
+  }
+}

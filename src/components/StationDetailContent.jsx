@@ -101,20 +101,23 @@ function buildDetailUi(colors, tokens, resolvedMode) {
       },
     },
   }
+  /** 충전기 카드: 거의 화이트·소프트 섀도(라) / 레이어 분리(다) */
   const chargerCard =
     resolvedMode === 'dark'
       ? {
           bgcolor: tokens.bg.raised,
-          boxShadow: '0 2px 16px rgba(0, 0, 0, 0.28)',
+          boxShadow:
+            '0 1px 0 rgba(255,255,255,0.05) inset, 0 2px 8px rgba(0,0,0,0.35), 0 12px 32px rgba(0,0,0,0.28)',
         }
       : {
-          bgcolor: tokens.bg.muted,
-          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05), 0 6px 18px rgba(15, 23, 42, 0.07)',
+          bgcolor: tokens.bg.subtle,
+          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 20px rgba(15, 23, 42, 0.055)',
         }
 
   return {
     colors,
     tokens,
+    resolvedMode,
     chipSx,
     statFilterPalettes,
     chargerCard,
@@ -211,7 +214,7 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
 }
 
 function ChargerCard({ row, idx }) {
-  const { colors, chipSx, tokens, chargerCard } = useStationDetailUi()
+  const { colors, chipSx, tokens, chargerCard, resolvedMode } = useStationDetailUi()
   const stat = String(row.stat ?? '').trim()
   const title = (row.chgerNm || '').trim() || `충전기 ${(row.chgerId || '').toString().trim() || idx + 1}`
   const outRaw = (row.outputKw || '').toString().trim()
@@ -224,6 +227,7 @@ function ChargerCard({ row, idx }) {
       : null
   const chargePair = session != null ? parseExplicitChargePercentPair(session) : null
   const showChargeBar = chargePair != null
+  const showSessionPanel = stat === '3' && (showChargeBar || timeLine)
 
   const chipForStat = () => {
     if (stat === '2') return { label: '사용 가능', sx: chipSx.avail }
@@ -243,61 +247,71 @@ function ChargerCard({ row, idx }) {
 
   const typeLabel = row.displayChgerLabel ?? row.chgerTyLabel ?? '—'
 
+  const isDark = resolvedMode === 'dark'
+  const moduleBorder = isDark ? 'rgba(255,255,255,0.09)' : tokens.border.default
+  const moduleBg = isDark ? tokens.bg.subtle : tokens.bg.paper
+
   const statCellLabelSx = {
     display: 'block',
-    mb: 0.5,
+    mb: 0.45,
     fontSize: '0.625rem',
-    fontWeight: 600,
-    letterSpacing: '0.06em',
+    fontWeight: 500,
+    letterSpacing: '0.07em',
     textTransform: 'uppercase',
-    color: tokens.text.tertiary,
+    color: tokens.text.muted,
     lineHeight: 1.2,
   }
   const infoCellShellSx = {
     flex: 1,
     minWidth: 0,
-    p: 1,
+    minHeight: 76,
+    p: 0.875,
     borderRadius: `${radius.md}px`,
-    border: `1px solid ${tokens.border.strong}`,
-    bgcolor: tokens.bg.subtle,
+    border: `1px solid ${moduleBorder}`,
+    bgcolor: moduleBg,
     boxSizing: 'border-box',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'flex-start',
   }
-  const valueChipSx = {
+  const valueChipBase = {
     display: 'block',
     width: '100%',
-    mt: 0.25,
-    px: 0.85,
-    py: 0.5,
+    mt: 'auto',
+    px: 0.65,
+    py: 0.45,
     borderRadius: `${radius.sm}px`,
-    bgcolor: tokens.bg.paper,
-    border: `1px solid ${tokens.border.default}`,
+    bgcolor: isDark ? 'rgba(0,0,0,0.22)' : tokens.bg.subtle,
+    border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
     fontSize: '0.8125rem',
     fontWeight: 600,
-    lineHeight: 1.35,
+    lineHeight: 1.38,
     color: tokens.text.primary,
     fontVariantNumeric: 'tabular-nums',
+    textAlign: 'center',
+  }
+  const valueChipSx = {
+    ...valueChipBase,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
-    textAlign: 'center',
   }
   const valueChipMultilineSx = {
-    ...valueChipSx,
+    ...valueChipBase,
     whiteSpace: 'normal',
     display: '-webkit-box',
     WebkitLineClamp: 2,
     WebkitBoxOrient: 'vertical',
     wordBreak: 'break-word',
-    textAlign: 'center',
   }
   const statusValueSx = {
-    ...valueChipSx,
+    ...valueChipBase,
     bgcolor: chip.sx.bgcolor,
     color: chip.sx.color,
     border: chip.sx.border,
     fontWeight: chip.sx.fontWeight ?? 600,
     fontSize: '0.75rem',
-    letterSpacing: '0.01em',
+    letterSpacing: '0.008em',
     whiteSpace: 'normal',
     display: '-webkit-box',
     WebkitLineClamp: 2,
@@ -305,41 +319,78 @@ function ChargerCard({ row, idx }) {
     wordBreak: 'break-word',
   }
 
+  const headerChipSx = {
+    ...chip.sx,
+    flexShrink: 0,
+    height: 24,
+    borderRadius: `${radius.control}px`,
+    fontSize: '0.6875rem',
+    fontWeight: 600,
+    letterSpacing: '0.02em',
+    maxWidth: 'min(46%, 140px)',
+    '& .MuiChip-label': { px: 1, py: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
+  }
+
+  const sessionInsetSx = {
+    mt: 1.25,
+    p: 1.125,
+    borderRadius: `${radius.md}px`,
+    bgcolor: isDark ? tokens.bg.subtle : tokens.bg.muted,
+    border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
+    boxShadow: isDark ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'inset 0 1px 2px rgba(15,23,42,0.04)',
+  }
+
   return (
     <Box
       sx={{
-        mb: 1.75,
-        p: 1.5,
-        borderRadius: `${radius.lg}px`,
+        mb: 2,
+        p: 1.625,
+        borderRadius: `${radius.md}px`,
         border: 'none',
         bgcolor: chargerCard.bgcolor,
         boxShadow: chargerCard.boxShadow,
         transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
       }}
     >
-      <Typography
-        variant="subtitle2"
-        component="h3"
+      <Box
         sx={{
-          ...appMobileType.chargerCardTitle,
-          color: tokens.text.primary,
-          fontWeight: 600,
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: 1,
           mb: 1.125,
-          minWidth: 0,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+          minHeight: 28,
         }}
       >
-        {title}
-      </Typography>
+        <Typography
+          variant="subtitle2"
+          component="h3"
+          title={title}
+          sx={{
+            flex: 1,
+            minWidth: 0,
+            color: tokens.text.primary,
+            fontSize: '0.9375rem',
+            lineHeight: 1.3,
+            fontWeight: 600,
+            letterSpacing: '-0.018em',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {title}
+        </Typography>
+        <Chip label={chip.label} size="small" sx={headerChipSx} />
+      </Box>
 
       <Box
         sx={{
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'stretch',
-          gap: 0.75,
+          gap: 0.625,
         }}
       >
         <Box sx={infoCellShellSx}>
@@ -368,49 +419,137 @@ function ChargerCard({ row, idx }) {
         </Box>
       </Box>
 
-      {stat === '3' && showChargeBar && (
-        <Box sx={{ mt: 1.35, mb: timeLine ? 0.75 : 0 }}>
-          <Typography
-            variant="body2"
-            sx={{ color: tokens.text.primary, mb: 0.5, ...appMobileType.bodyStrong, fontWeight: 600 }}
-          >
-            현재 {chargePair.current}% / 목표 {chargePair.target}%
-          </Typography>
-          <LinearProgress
-            variant="determinate"
-            value={chargePair.barValue}
-            sx={{
-              height: 6,
-              borderRadius: 3,
-              bgcolor: tokens.blue.muted,
-              '& .MuiLinearProgress-bar': { borderRadius: 3, bgcolor: colors.blue.primary },
-            }}
-          />
-          <Typography
-            variant="caption"
-            sx={{ color: tokens.text.tertiary, display: 'block', mt: 0.35, ...appMobileType.captionDense }}
-          >
-            목표 충전량 대비 진행(시뮬레이션)
-          </Typography>
+      {showSessionPanel ? (
+        <Box sx={sessionInsetSx}>
+          {showChargeBar ? (
+            <>
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  mb: 0.75,
+                  color: tokens.text.tertiary,
+                  fontSize: '0.6875rem',
+                  fontWeight: 500,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                충전 진행
+              </Typography>
+              <Box
+                sx={{
+                  display: 'flex',
+                  flexDirection: 'row',
+                  alignItems: 'baseline',
+                  flexWrap: 'wrap',
+                  gap: 0.5,
+                  columnGap: 0.75,
+                  mb: 1,
+                }}
+              >
+                <Typography
+                  component="span"
+                  sx={{
+                    color: tokens.text.primary,
+                    fontSize: '1.375rem',
+                    fontWeight: 700,
+                    lineHeight: 1.1,
+                    fontVariantNumeric: 'tabular-nums',
+                    letterSpacing: '-0.03em',
+                  }}
+                >
+                  {chargePair.current}%
+                </Typography>
+                <Typography
+                  component="span"
+                  sx={{
+                    color: tokens.text.secondary,
+                    fontSize: '0.8125rem',
+                    fontWeight: 500,
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  / 목표 {chargePair.target}%
+                </Typography>
+              </Box>
+              <LinearProgress
+                className="ev-charger-session-progress"
+                variant="determinate"
+                value={chargePair.barValue}
+                sx={{
+                  height: 7,
+                  borderRadius: 999,
+                  bgcolor: isDark ? 'rgba(255,255,255,0.08)' : tokens.blue.muted,
+                  overflow: 'hidden',
+                  '& .MuiLinearProgress-bar': {
+                    borderRadius: 999,
+                    background: `linear-gradient(90deg, ${colors.blue.deep} 0%, ${colors.blue.primary} 55%, ${colors.blue.light} 100%)`,
+                  },
+                }}
+              />
+              <Typography
+                variant="caption"
+                sx={{
+                  display: 'block',
+                  mt: 0.5,
+                  color: tokens.text.muted,
+                  fontSize: '0.6875rem',
+                  fontWeight: 500,
+                  lineHeight: 1.4,
+                }}
+              >
+                목표 충전량 대비 진행(시뮬레이션)
+              </Typography>
+            </>
+          ) : null}
+          {timeLine ? (
+            <Box sx={{ mt: showChargeBar ? 1 : 0 }}>
+              <Typography
+                variant="caption"
+                component="div"
+                sx={{
+                  color: tokens.text.tertiary,
+                  fontSize: '0.6875rem',
+                  fontWeight: 500,
+                  letterSpacing: '0.04em',
+                  textTransform: 'uppercase',
+                  mb: 0.35,
+                }}
+              >
+                남은 시간 · 완료 예상
+              </Typography>
+              <Typography
+                variant="body2"
+                sx={{
+                  color: tokens.text.primary,
+                  fontSize: '0.875rem',
+                  fontWeight: 500,
+                  lineHeight: 1.45,
+                  fontVariantNumeric: 'tabular-nums',
+                }}
+              >
+                {timeLine}
+              </Typography>
+            </Box>
+          ) : null}
         </Box>
-      )}
-
-      {stat === '3' && timeLine && (
-        <Typography
-          variant="body2"
-          sx={{
-            color: tokens.text.primary,
-            mt: showChargeBar ? 0.5 : 1.25,
-            ...appMobileType.bodyStrong,
-            fontWeight: 600,
-          }}
-        >
-          {timeLine}
-        </Typography>
-      )}
+      ) : null}
 
       {stat === '5' && (
-        <Typography variant="caption" sx={{ color: tokens.text.tertiary, display: 'block', mt: 1, ...appMobileType.secondary }}>
+        <Typography
+          variant="caption"
+          sx={{
+            color: tokens.text.muted,
+            display: 'block',
+            mt: 1.125,
+            pt: 1,
+            borderTop: `1px solid ${tokens.border.subtle}`,
+            fontSize: '0.75rem',
+            fontWeight: 500,
+            lineHeight: 1.45,
+          }}
+        >
           점검으로 현재 이용할 수 없습니다.
         </Typography>
       )}
