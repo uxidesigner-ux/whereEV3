@@ -441,3 +441,54 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+/* 부트 로딩: EV 실루엣 이동 (가벼운 transform) */
+@keyframes ev-boot-bounce-x {
+  0%,
+  100% {
+    transform: translateX(0) translateY(0);
+  }
+  12% {
+    transform: translateX(18px) translateY(-3px);
+  }
+  25% {
+    transform: translateX(42px) translateY(0);
+  }
+  37% {
+    transform: translateX(64px) translateY(-2px);
+  }
+  50% {
+    transform: translateX(88px) translateY(0);
+  }
+  62% {
+    transform: translateX(64px) translateY(-3px);
+  }
+  75% {
+    transform: translateX(38px) translateY(0);
+  }
+  87% {
+    transform: translateX(14px) translateY(-2px);
+  }
+}
+
+.ev-boot-car--static .ev-boot-car__vehicle,
+.ev-boot-car--static .ev-boot-car__bolt {
+  animation: none !important;
+}
+
+.ev-boot-car__vehicle {
+  animation: ev-boot-bounce-x 2.8s ease-in-out infinite;
+  will-change: transform;
+}
+
+.ev-boot-car__bolt {
+  animation: ev-boot-bounce-x 2.8s ease-in-out infinite;
+  animation-delay: 0.05s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ev-boot-car__vehicle,
+  .ev-boot-car__bolt {
+    animation: none !important;
+  }
+}

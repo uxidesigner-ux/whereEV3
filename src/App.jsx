@@ -26,11 +26,13 @@ import {
   getLatestStatUpdDt,
   formatStatSummary,
 } from './api/safemapEv.js'
+import { filterDevMockRowsToBounds, filterNormalizedRowsToBounds } from './api/evViewportSummary.js'
+import { fetchEvChargersFullCatalog } from './api/fetchEvFullCatalog.js'
 import {
-  fetchEvChargersSummaryForBounds,
-  filterDevMockRowsToBounds,
-  summaryPresetForReason,
-} from './api/evViewportSummary.js'
+  evCatalogReadAll,
+  evCatalogWrite,
+  evCatalogFreshness,
+} from './data/evCatalogIdb.js'
 import { fetchDetailRowsForStatId, clearDetailRowsCache } from './api/evPlaceDetail.js'
 import { getDevMockEvChargers } from './dev/mockEvChargers.js'
 import {
@@ -143,12 +145,12 @@ import { searchAreaTimingMetrics, searchAreaTimingLog } from './dev/mapSearchAre
 import {
   isEvPipelineLogEnabled,
   logEvPipelineFetchDone,
-  logEvPipelineAdapterSamples,
   logEvPipelineReactPipeline,
   logEvPipelineFirstMarker,
   evPipelineSlowHint,
 } from './dev/evPipelinePerfLog.js'
 import { EvPipelineDebugPanel } from './dev/EvPipelineDebugPanel.jsx'
+import { BootEvCarAnimation } from './components/BootEvCarAnimation.jsx'
 
 /**
  * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
@@ -210,21 +212,22 @@ function clusterGroupedMatchesBusiNm(s, needle) {
   return rows.some((r) => (r.busiNm || '').trim() === needle)
 }
 
-/** 모바일: LayerGroup만 쓸 때 한 번에 올릴 마커 상한(성능) */
-const MOBILE_MAP_MARKER_CAP = 260
-/** 적용 영역 안 raw 행이 많을 때 그룹핑 전 거리순 상한(프로그레시브 대량 items CPU 완화) */
-const MAP_GROUP_INPUT_ROW_CAP = 2000
+/** 모바일: LayerGroup만 쓸 때 한 번에 올릴 마커 상한(성능). 전국 캐시+뷰포트 필터 후에도 고밀도 대응 */
+const MOBILE_MAP_MARKER_CAP = 360
+/** 뷰포트 내 전체 행에 가깝게 그룹 입력(캐시 기반 완전성 우선, 저사양에서는 여전히 부담 가능) */
+const MAP_GROUP_INPUT_ROW_CAP = 6000
 
 /** 부트 오버레이 안내 문구 순환(1.6~2.2초 간격은 App에서 prefers-reduced-motion 반영) */
 const BOOT_LOADING_ROTATION_MESSAGES = [
   '내 주변 충전소를 찾고 있어요',
   '충전 가능한 위치를 불러오는 중이에요',
   '가까운 충전소 정보를 정리하고 있어요',
+  '충전기 상태를 확인하고 있어요',
   '지도를 준비하고 있어요',
-  '사용 가능한 충전소를 확인하고 있어요',
-  '충전기 상태를 불러오는 중이에요',
-  '주변 정보를 빠르게 모으고 있어요',
-  '조금만 기다리면 충전소가 보여요',
+  '주변 데이터를 불러오는 중이에요',
+  '곧 충전소가 표시돼요',
+  '전국 충전소 정보를 정리하는 중이에요',
+  '현재 지역에 맞는 충전소를 찾고 있어요',
 ]
 
 /** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
@@ -568,6 +571,9 @@ function App() {
     ),
   )
   const itemsRef = useRef(items)
+  /** Safemap 전국 목록 정규화 결과(메모리 + IndexedDB와 동기). 뷰포트 `items`는 여기서 필터 */
+  const fullEvCatalogRef = useRef(/** @type {object[] | null} */ (null))
+  const catalogBackgroundAbortRef = useRef(/** @type {AbortController | null} */ (null))
   const mapLayerStationsLenRef = useRef(0)
   /** 부트 summary bbox와 일치시키기: onBootMapPaintReady의 좁은 getBounds()로 applied를 덮어쓰지 않음 */
   const suppressBootMapBoundsSnapshotRef = useRef(false)
@@ -1095,6 +1101,7 @@ function App() {
     setAwaitingInitialMapPaint(true)
     const v = bootViewportForRetryRef.current
     if (canRefetchEv && v) {
+      fullEvCatalogRef.current = null
       await runViewportSummaryFetchRef.current({
         reason: 'boot',
         viewport: v,
@@ -1159,99 +1166,153 @@ function App() {
         if (canRefetchEv) {
           const diag = evMapDiagRef.current
           const devProof = import.meta.env.DEV && (diag.apiProof || diag.proof)
-          const { rows, pagesScanned, pipelineCounts, adapterSamples } = await fetchEvChargersSummaryForBounds(
-            viewport,
-            {
-            ...summaryPresetForReason(reason),
-            signal,
-            pipelineDebug: diag.pipeline || isEvPipelineLogEnabled(),
-            adapterProofVerbose: diag.adapterProof,
-            collectAdapterSamples: isEvPipelineLogEnabled() && (reason === 'boot' || reason === 'search-area'),
-            onFirstPageSample: devProof
-              ? ({ sample }) => {
-                  const dots = sample
-                    .filter((x) => x.n && Number.isFinite(x.n.lat) && Number.isFinite(x.n.lng))
-                    .slice(0, 20)
-                    .map((x) => ({ id: x.n.id, lat: x.n.lat, lng: x.n.lng }))
-                  setMapProofApiDots(dots)
-                }
-              : undefined,
-          },
-          )
-          const fetchMs = Math.round(performance.now() - t0)
-          if (import.meta.env.DEV && (diag.pipeline || diag.countTrace) && pipelineCounts) {
-            // eslint-disable-next-line no-console -- count trace
-            console.info('[mapCountTrace] fetch', {
-              reason,
-              ...pipelineCounts,
-              apiRowsReturned: rows.length,
-              pagesScanned,
+
+          const applyRowsAndTelemetry = (rows, fetchMs, pagesScanned, rawApprox, note) => {
+            if (signal.aborted) {
+              viewportSummaryMarkAbort()
+              if (import.meta.env.DEV) searchAreaTimingMetrics.aborts += 1
+              viewportSummaryTelemetry(reason, 'fetch-aborted', { gen })
+              return { ok: false }
+            }
+            if (summaryFetchGenerationRef.current !== gen) {
+              viewportSummaryMarkStale()
+              if (import.meta.env.DEV) searchAreaTimingMetrics.staleDrops += 1
+              viewportSummaryTelemetry(reason, 'stale-drop', { gen, current: summaryFetchGenerationRef.current })
+              return { ok: false }
+            }
+            setItems(rows)
+            const sig = `${rows.length}:${rows[0]?.id ?? ''}`
+            if (import.meta.env.DEV && itemsRenderSigRef.current !== sig) {
+              itemsRenderSigRef.current = sig
+              searchAreaTimingMetrics.renderSourceChanges += 1
+            }
+            setTotalCount(rows.length)
+            setLastEvFetchAt(new Date().toISOString())
+            clearDetailRowsCache()
+            viewportSummaryMarkApplied()
+            if (import.meta.env.DEV && timingSession) {
+              searchAreaTimingLog(timingSession, 'adapter-done-render-source-set', { gen, rowCount: rows.length })
+            }
+            const fetchEndT = performance.now()
+            if (isEvPipelineLogEnabled() && (reason === 'boot' || reason === 'search-area')) {
+              lastEvPipelineFetchRef.current = {
+                phase: reason,
+                fetchEndT,
+                fetchMs,
+                rawRowsScanned: rawApprox,
+                normalizeOk: fullEvCatalogRef.current?.length ?? null,
+                normalizeNull: null,
+                boundsInsideRows: rows.length,
+                pagesScanned,
+                gen,
+              }
+              logEvPipelineFetchDone({
+                phase: reason,
+                fetchMs,
+                rawRowsScanned: rawApprox,
+                normalizeOk: fullEvCatalogRef.current?.length ?? null,
+                normalizeNull: null,
+                boundsInsideRows: rows.length,
+                pagesScanned,
+                note: note || '전국 캐시에서 뷰포트 필터',
+              })
+              pipelineReactLogPendingRef.current = true
+            }
+            viewportSummaryTelemetry(reason, 'state-applied', {
+              gen,
+              n: rows.length,
+              pages: pagesScanned,
+              ms: fetchMs,
             })
+            return { ok: true, rows, rowCount: rows.length }
           }
+
+          if (reason === 'refresh') {
+            const { items: all, aborted, pagesScanned } = await fetchEvChargersFullCatalog({ signal })
+            const fetchMs = Math.round(performance.now() - t0)
+            if (import.meta.env.DEV && timingSession) {
+              searchAreaTimingLog(timingSession, 'fetch-response-received', { gen, fetchMs, rows: all.length })
+            }
+            if (aborted || signal.aborted) {
+              viewportSummaryMarkAbort()
+              return { ok: false }
+            }
+            fullEvCatalogRef.current = all
+            await evCatalogWrite(all, { reason: 'refresh' })
+            if (summaryFetchGenerationRef.current !== gen) {
+              viewportSummaryMarkStale()
+              return { ok: false }
+            }
+            const rows = filterNormalizedRowsToBounds(all, viewport)
+            if (import.meta.env.DEV && (diag.pipeline || diag.countTrace)) {
+              // eslint-disable-next-line no-console -- count trace
+              console.info('[mapCountTrace] fetch', {
+                reason,
+                catalogRows: all.length,
+                viewportRows: rows.length,
+                pagesScanned,
+              })
+            }
+            return applyRowsAndTelemetry(
+              rows,
+              fetchMs,
+              pagesScanned,
+              all.length,
+              'refresh: 전국 재수집 후 뷰포트 필터',
+            )
+          }
+
+          let catalog = fullEvCatalogRef.current
+          if (!catalog?.length) {
+            const { items: all, aborted, pagesScanned } = await fetchEvChargersFullCatalog({ signal })
+            const fetchMs = Math.round(performance.now() - t0)
+            if (import.meta.env.DEV && timingSession) {
+              searchAreaTimingLog(timingSession, 'fetch-response-received', { gen, fetchMs, rows: all.length })
+            }
+            if (aborted || signal.aborted) {
+              viewportSummaryMarkAbort()
+              return { ok: false }
+            }
+            fullEvCatalogRef.current = all
+            catalog = all
+            await evCatalogWrite(all, { reason: `fill-${reason}` })
+            if (summaryFetchGenerationRef.current !== gen) {
+              viewportSummaryMarkStale()
+              return { ok: false }
+            }
+            if (import.meta.env.DEV && (diag.pipeline || diag.countTrace)) {
+              // eslint-disable-next-line no-console -- count trace
+              console.info('[mapCountTrace] fetch', {
+                reason,
+                catalogColdFill: true,
+                catalogRows: all.length,
+                pagesScanned,
+              })
+            }
+          }
+
+          const rows = filterNormalizedRowsToBounds(catalog, viewport)
+          const fetchMs = Math.round(performance.now() - t0)
+
+          if (devProof && catalog.length) {
+            const dots = catalog
+              .filter((x) => Number.isFinite(Number(x.lat)) && Number.isFinite(Number(x.lng)))
+              .slice(0, 20)
+              .map((x) => ({ id: x.id, lat: x.lat, lng: x.lng }))
+            setMapProofApiDots(dots)
+          }
+
           if (import.meta.env.DEV && timingSession) {
             searchAreaTimingLog(timingSession, 'fetch-response-received', { gen, fetchMs, rows: rows.length })
           }
-          if (signal.aborted) {
-            viewportSummaryMarkAbort()
-            if (import.meta.env.DEV) searchAreaTimingMetrics.aborts += 1
-            viewportSummaryTelemetry(reason, 'fetch-aborted', { gen })
-            return { ok: false }
-          }
-          if (summaryFetchGenerationRef.current !== gen) {
-            viewportSummaryMarkStale()
-            if (import.meta.env.DEV) searchAreaTimingMetrics.staleDrops += 1
-            viewportSummaryTelemetry(reason, 'stale-drop', { gen, current: summaryFetchGenerationRef.current })
-            return { ok: false }
-          }
-          setItems(rows)
-          const sig = `${rows.length}:${rows[0]?.id ?? ''}`
-          if (import.meta.env.DEV && itemsRenderSigRef.current !== sig) {
-            itemsRenderSigRef.current = sig
-            searchAreaTimingMetrics.renderSourceChanges += 1
-          }
-          setTotalCount(rows.length)
-          setLastEvFetchAt(new Date().toISOString())
-          clearDetailRowsCache()
-          viewportSummaryMarkApplied()
-          if (import.meta.env.DEV && timingSession) {
-            searchAreaTimingLog(timingSession, 'adapter-done-render-source-set', { gen, rowCount: rows.length })
-          }
-          const fetchEndT = performance.now()
-          if (isEvPipelineLogEnabled() && (reason === 'boot' || reason === 'search-area')) {
-            lastEvPipelineFetchRef.current = {
-              phase: reason,
-              fetchEndT,
-              fetchMs,
-              rawRowsScanned: pipelineCounts?.rawItemCount ?? null,
-              normalizeOk: pipelineCounts?.totalNormalized ?? null,
-              normalizeNull: pipelineCounts?.totalNormNull ?? null,
-              boundsInsideRows: rows.length,
-              pagesScanned,
-              gen,
-            }
-            logEvPipelineFetchDone({
-              phase: reason,
-              fetchMs,
-              rawRowsScanned: pipelineCounts?.rawItemCount ?? null,
-              normalizeOk: pipelineCounts?.totalNormalized ?? null,
-              normalizeNull: pipelineCounts?.totalNormNull ?? null,
-              boundsInsideRows: rows.length,
-              pagesScanned,
-              note:
-                'rawRowsScanned는 페이지 순회 중 수신한 raw 행 누적(bounds 밖·중복 id 제외 전). boundsInsideRows는 최종 앱 상태(items) 길이.',
-            })
-            if (adapterSamples?.length) {
-              logEvPipelineAdapterSamples({ phase: reason, samples: adapterSamples })
-            }
-            pipelineReactLogPendingRef.current = true
-          }
-          viewportSummaryTelemetry(reason, 'state-applied', {
-            gen,
-            n: rows.length,
-            pages: pagesScanned,
-            ms: fetchMs,
-          })
-          return { ok: true, rows, rowCount: rows.length }
+
+          return applyRowsAndTelemetry(
+            rows,
+            fetchMs,
+            0,
+            catalog.length,
+            catalog.length ? '캐시(메모리)에서 뷰포트 필터' : '빈 캐시',
+          )
         }
       } catch (err) {
         if (!signal.aborted && summaryFetchGenerationRef.current === gen) {
@@ -1537,50 +1598,158 @@ function App() {
 
       setApiError(null)
       setItems([])
-      viewportSummaryTelemetry('boot', 'fetch-with-progress', {})
+      viewportSummaryTelemetry('boot', 'ev-catalog-bootstrap', {})
       const bootT0 = performance.now()
-      const progressTimer = window.setInterval(() => {
-        setBootProgress((p) => (p >= 71 ? p : p + 1))
-      }, 400)
-      let fetchResult = { ok: false }
-      try {
-        fetchResult =
-          (await runViewportSummaryFetchRef.current({
-            reason: 'boot',
-            viewport: initialViewportB,
-            showLoading: false,
-            signal: ac.signal,
-          })) || { ok: false }
-      } catch (err) {
-        if (!cancelled) setApiError(err.message || '데이터를 불러오지 못했습니다.')
-      }
-      window.clearInterval(progressTimer)
-      if (cancelled || ac.signal.aborted) return
 
-      if (fetchResult.ok) {
+      const enterMarkerWait = (boundsLiteral) => {
         suppressBootMapBoundsSnapshotRef.current = true
-        setAppliedMapBounds(initialViewportB)
+        setAppliedMapBounds(boundsLiteral)
+        setBootLinearIndeterminate(false)
+        setBootProgress(88)
+        setBootStageMessage('현재 지역 충전소를 지도에 올리는 중이에요. 첫 마커가 보이면 완료돼요')
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- 부트 단계 증명
+          console.info('[bootTiming] enter-marker-ready-wait', {
+            phase: 'ev-catalog',
+            fetchMs: Math.round(performance.now() - bootT0),
+            catalogSize: fullEvCatalogRef.current?.length ?? 0,
+          })
+        }
+        if (cancelled) return
+        bootMarkerWaitT0Ref.current = performance.now()
+        setAwaitingInitialMapPaint(true)
+        viewportSummaryTelemetry('boot', 'awaiting-map-paint', {})
       }
 
-      setBootLinearIndeterminate(false)
-      setBootProgress((p) => Math.max(p, 72))
-      setBootStageMessage('충전소 마커를 지도에 올리는 중이에요. 첫 마커가 보이면 완료돼요')
-      if (import.meta.env.DEV) {
-        // eslint-disable-next-line no-console -- 부트 단계 증명
-        console.info('[bootTiming] enter-72-marker-ready-wait', {
-          phase: 'after-fetch',
-          fetchMs: Math.round(performance.now() - bootT0),
-        })
+      const applyViewportFromCatalog = (boundsLiteral) => {
+        const scoped = filterNormalizedRowsToBounds(fullEvCatalogRef.current || [], boundsLiteral)
+        setItems(scoped)
+        setTotalCount(scoped.length)
+        setLastEvFetchAt(new Date().toISOString())
+        clearDetailRowsCache()
+        viewportSummaryMarkApplied()
+        return scoped
       }
-      if (cancelled) return
-      bootMarkerWaitT0Ref.current = performance.now()
-      setAwaitingInitialMapPaint(true)
-      viewportSummaryTelemetry('boot', 'awaiting-map-paint', {})
+
+      const logPipelineBoot = (fetchMs, pagesScanned, rawApprox, rowsInView) => {
+        if (!isEvPipelineLogEnabled()) return
+        const fetchEndT = performance.now()
+        lastEvPipelineFetchRef.current = {
+          phase: 'boot',
+          fetchEndT,
+          fetchMs,
+          rawRowsScanned: rawApprox,
+          normalizeOk: fullEvCatalogRef.current?.length ?? null,
+          normalizeNull: null,
+          boundsInsideRows: rowsInView,
+          pagesScanned,
+          gen: summaryFetchGenerationRef.current,
+        }
+        logEvPipelineFetchDone({
+          phase: 'boot',
+          fetchMs,
+          rawRowsScanned: rawApprox,
+          normalizeOk: fullEvCatalogRef.current?.length ?? null,
+          normalizeNull: null,
+          boundsInsideRows: rowsInView,
+          pagesScanned,
+          note: '전국 캐시 수집·IndexedDB 후 현재 뷰포트 필터',
+        })
+        pipelineReactLogPendingRef.current = true
+      }
+
+      const startCatalogBackgroundRefresh = (reasonLabel) => {
+        catalogBackgroundAbortRef.current?.abort()
+        const bg = new AbortController()
+        catalogBackgroundAbortRef.current = bg
+        void (async () => {
+          try {
+            const { items, aborted } = await fetchEvChargersFullCatalog({
+              signal: bg.signal,
+              onProgress: () => {},
+            })
+            if (aborted || bg.signal.aborted) return
+            fullEvCatalogRef.current = items
+            await evCatalogWrite(items, { refreshedFrom: reasonLabel })
+            const b = appliedMapBoundsRef.current || liveMapBoundsRef.current
+            if (b) {
+              const scoped = filterNormalizedRowsToBounds(items, b)
+              setItems(scoped)
+              setTotalCount(scoped.length)
+            }
+          } catch {
+            /* stale-while-revalidate 실패는 무시 */
+          }
+        })()
+      }
+
+      try {
+        setBootStageMessage('저장해 둔 충전소 정보를 확인하는 중이에요')
+        setBootProgress(44)
+        const cached = await evCatalogReadAll()
+        if (cancelled || ac.signal.aborted) return
+
+        if (cached?.rows?.length) {
+          fullEvCatalogRef.current = cached.rows
+          const fresh = evCatalogFreshness(cached.meta)
+
+          setBootStageMessage('현재 지역에 맞는 충전소를 골라 지도에 올리는 중이에요')
+          setBootProgress(68)
+          await new Promise((r) => requestAnimationFrame(r))
+          const scoped = applyViewportFromCatalog(initialViewportB)
+          setBootProgress(78)
+          logPipelineBoot(0, 0, cached.rows.length, scoped.length)
+
+          enterMarkerWait(initialViewportB)
+
+          if (fresh !== 'fresh') {
+            startCatalogBackgroundRefresh(`swr-${fresh}`)
+          }
+          return
+        }
+
+        setBootStageMessage('전국 충전소 목록을 받는 중이에요. 처음 한 번만 시간이 걸릴 수 있어요')
+        setBootProgress(48)
+
+        const result = await fetchEvChargersFullCatalog({
+          signal: ac.signal,
+          onProgress: ({ pageIndex, estimatedTotalPages }) => {
+            let pct = 48
+            if (estimatedTotalPages != null && estimatedTotalPages > 0) {
+              pct = 48 + Math.min(30, Math.round((pageIndex / estimatedTotalPages) * 30))
+            } else {
+              pct = 48 + Math.min(30, pageIndex * 2)
+            }
+            setBootProgress(pct)
+          },
+        })
+
+        if (cancelled || ac.signal.aborted) return
+        if (result.aborted) return
+
+        fullEvCatalogRef.current = result.items
+        setBootStageMessage('데이터를 저장하고 정리하는 중이에요')
+        setBootProgress(78)
+        await evCatalogWrite(result.items, { pagesScanned: result.pagesScanned })
+        setBootProgress(82)
+
+        const scoped = applyViewportFromCatalog(initialViewportB)
+        setBootProgress(85)
+        const fetchMs = Math.round(performance.now() - bootT0)
+        logPipelineBoot(fetchMs, result.pagesScanned, result.normalizedUniqueCount, scoped.length)
+
+        enterMarkerWait(initialViewportB)
+      } catch (err) {
+        if (!cancelled && !ac.signal.aborted) {
+          setApiError(err.message || '데이터를 불러오지 못했습니다.')
+        }
+      }
     })()
 
     return () => {
       cancelled = true
       ac.abort()
+      catalogBackgroundAbortRef.current?.abort()
     }
   }, [])
 
@@ -2890,6 +3059,8 @@ function App() {
                 {bootStageMessage}
               </Typography>
             ) : (
+              <>
+              <BootEvCarAnimation reduceMotion={bootReduceMotion} />
               <Fade
                 in
                 timeout={bootReduceMotion ? 0 : 320}
@@ -2911,6 +3082,7 @@ function App() {
                   {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
                 </Typography>
               </Fade>
+              </>
             )}
             <LinearProgress
               variant={bootLinearIndeterminate || bootMarkerGateFailed ? 'indeterminate' : 'determinate'}
@@ -3163,7 +3335,7 @@ function App() {
               markerCount={harnessBootMarkerCount ?? mapLayerStations.length}
               expectedMarkerIcons={harnessBootMarkerCount ?? mapLayerStations.length}
               skipDomIconCountGate={import.meta.env.DEV && evMapDiag.anyLeafletHarness}
-              firstPaintMaxWaitMs={12000}
+              firstPaintMaxWaitMs={480000}
               onTimeout={evMapDiag.anyLeafletHarness ? undefined : onBootMapPaintTimeout}
               onReady={onBootMapPaintReady}
             />

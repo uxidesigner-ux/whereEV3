@@ -55,6 +55,19 @@ export function literalBoundsContains(bounds, lat, lng) {
   }
 }
 
+/** 정규화된 행(lat/lng)을 뷰포트 bounds로 필터 (전국 캐시 → 현재 지도) */
+export function filterNormalizedRowsToBounds(rows, boundsLiteral) {
+  if (!boundsLiteral || !Array.isArray(rows)) return []
+  const out = []
+  for (const r of rows) {
+    const la = Number(r?.lat)
+    const ln = Number(r?.lng)
+    if (!Number.isFinite(la) || !Number.isFinite(ln)) continue
+    if (literalBoundsContains(boundsLiteral, la, ln)) out.push(r)
+  }
+  return out
+}
+
 /**
  * @param {{ southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} boundsLiteral
  * @param {{
