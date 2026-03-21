@@ -1,0 +1,2 @@
+# GitHub 100MB 제한 — 전국 summary(~300MB)는 LFS로 커밋
+public/data/ev-stations-summary.json filter=lfs diff=lfs merge=lfs -text

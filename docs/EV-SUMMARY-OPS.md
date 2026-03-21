@@ -3,16 +3,15 @@
 구조 전환 후 **실데이터 스냅샷**으로 운영 검증을 할 때의 절차와 정책을 정리한다.  
 현재 단계: **구조 검증 완료** → **real summary 생성·배포 후** 수동 QA로 “운영 준비”를 판단한다.
 
-## 채택 정책: Git에 summary 두지 않음 (CI / 스토리지)
+## 채택 정책: `ev-stations-summary.json`을 저장소에 포함
 
 | 항목 | 내용 |
 |------|------|
-| **저장소** | `public/data/ev-stations-summary.json`은 **`.gitignore`** — 커밋하지 않는다. |
-| **스냅샷 생성** | GitHub Actions `ev-summary` 워크플로(수동/스케줄) → **아티팄트**로 보관. 필요 시 R2·S3 등 **공개 URL**에 올려 고정 링크로 쓴다. |
-| **프론트 배포 빌드** | `npm run build:deploy` = `fetch` 후 `vite build`. 환경변수 **`EV_SUMMARY_DOWNLOAD_URL`**에 위 URL을 넣으면 빌드 시 `public/data/`로 받아 넣는다. |
-| **로컬** | `npm run build:ev-summary` 또는 `npm run seed:ev-summary`로 파일 생성 후 `npm run dev` / `npm run build`. |
-
-Vercel은 `vercel.json`에서 **`buildCommand`: `npm run build:deploy`** 를 쓰도록 맞춰 두었다. 프로젝트 설정에서 **Environment Variables**에 `EV_SUMMARY_DOWNLOAD_URL`을 넣어야 한다(없고 로컬 파일도 없으면 빌드 실패).
+| **저장소** | `public/data/ev-stations-summary.json`을 **커밋**해 앱과 함께 배포한다. |
+| **용량** | 전국 스냅샷은 수백 MB일 수 있어 **Git LFS**로 추적한다 (`.gitattributes`). 로컬: `brew install git-lfs` 후 `git lfs install`, 커밋 전 `git lfs track`은 이미 설정됨. Vercel 등 Git 연동 호스트는 보통 LFS 파일을 체크아웃할 때 함께 받는다(호스트 문서 확인). |
+| **프론트 빌드** | 별도 URL 불필요. **`npm run build`** (`vite build`)만이면 `public/data`가 그대로 정적 자산으로 포함된다. |
+| **갱신** | 로컬에서 `npm run build:ev-summary` 후 JSON을 커밋하거나, CI `ev-summary` 아티팩트를 받아 덮어쓴 뒤 커밋. |
+| **선택** | 외부 URL만 쓰고 싶다면 예전처럼 `EV_SUMMARY_DOWNLOAD_URL` + `npm run build:deploy` + `scripts/fetch-ev-summary-for-build.mjs` 경로도 유지 가능. |
 
 ---
 
@@ -116,20 +115,14 @@ npm run inspect:ev-summary
 
 ## 5. 로컬·배포 요약
 
-1. 스냅샷 갱신: Actions에서 `ev-summary` 실행 → 아티팄트 다운로드 후 **스토리지에 업로드**해 `EV_SUMMARY_DOWNLOAD_URL`을 갱신(또는 배포 파이프라인에서 아티팄트를 직접 복사).
-2. 로컬 검증: `.env.local`에 키 후 `npm run build:ev-summary` → `npm run inspect:ev-summary` (파일은 커밋하지 않음).
-3. 프로덕션: `EV_SUMMARY_DOWNLOAD_URL` 설정 + `npm run build:deploy`(Vercel 기본).
+1. 스냅샷 갱신: `npm run build:ev-summary` → `npm run inspect:ev-summary` → `public/data/ev-stations-summary.json` **커밋·푸시** (LFS).
+2. 또는 Actions `ev-summary` 아티팄트로 받은 파일을 같은 경로에 두고 커밋.
+3. Vercel 등: **`npm run build`** 기본값이면 됨. `EV_SUMMARY_DOWNLOAD_URL`은 설정하지 않아도 된다.
 4. 배포 후 **섹션 2** 체크리스트.
 
 실키가 없는 클론만 있는 환경에서는 `build:ev-summary`로는 생성할 수 없다. 키는 **Secrets / `.env.local`만** 쓰고 커밋하지 않는다.
 
----
-
-## 부록: 예전에 “저장소 vs CI”로 나눠 말했던 것
-
-이제 **CI·스토리지만** 쓰는 쪽으로 고정했다. Git에 수백 MB JSON을 넣으면 clone·히스토리가 비대해지므로 제외한다.
-
 ### `.env.local` / GitHub
 
 - `.env.local`은 **`.gitignore`**.
-- summary 생성 워크플로는 **`secrets.*`만** 사용한다.
+- summary **생성** 워크플로는 **`secrets.*`만** 사용한다. 생성된 JSON은 **LFS로 저장소에 포함**한다.
