@@ -6,10 +6,16 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:fetch-summary": "node scripts/fetch-ev-summary-for-build.mjs",
+    "build:deploy": "npm run build:fetch-summary && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "diag:metrics": "node scripts/collect-evdiag-metrics.mjs",
-    "evpipeline:capture-real": "node scripts/real-evpipeline-capture.mjs"
+    "evpipeline:capture-real": "node scripts/real-evpipeline-capture.mjs",
+    "build:ev-summary": "node scripts/build-ev-stations-summary.mjs",
+    "seed:ev-summary": "node scripts/seed-ev-summary-from-dev-mock.mjs",
+    "inspect:ev-summary": "node scripts/inspect-ev-summary.mjs",
+    "import:ev-summary": "node scripts/import-safemap-json-to-summary.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",

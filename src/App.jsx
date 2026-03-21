@@ -26,13 +26,8 @@ import {
   getLatestStatUpdDt,
   formatStatSummary,
 } from './api/safemapEv.js'
-import { filterDevMockRowsToBounds, filterNormalizedRowsToBounds } from './api/evViewportSummary.js'
-import { fetchEvChargersFullCatalog } from './api/fetchEvFullCatalog.js'
-import {
-  evCatalogReadAll,
-  evCatalogWrite,
-  evCatalogFreshness,
-} from './data/evCatalogIdb.js'
+import { filterNormalizedRowsToBounds } from './api/evViewportSummary.js'
+import { fetchEvStationsSummaryDataset } from './api/evStationsSummary.js'
 import { fetchDetailRowsForStatId, clearDetailRowsCache } from './api/evPlaceDetail.js'
 import { getDevMockEvChargers } from './dev/mockEvChargers.js'
 import {
@@ -222,12 +217,8 @@ const BOOT_LOADING_ROTATION_MESSAGES = [
   '내 주변 충전소를 찾고 있어요',
   '충전 가능한 위치를 불러오는 중이에요',
   '가까운 충전소 정보를 정리하고 있어요',
-  '충전기 상태를 확인하고 있어요',
   '지도를 준비하고 있어요',
-  '주변 데이터를 불러오는 중이에요',
   '곧 충전소가 표시돼요',
-  '전국 충전소 정보를 정리하는 중이에요',
-  '현재 지역에 맞는 충전소를 찾고 있어요',
 ]
 
 /** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
@@ -571,9 +562,8 @@ function App() {
     ),
   )
   const itemsRef = useRef(items)
-  /** Safemap 전국 목록 정규화 결과(메모리 + IndexedDB와 동기). 뷰포트 `items`는 여기서 필터 */
+  /** summary JSON(+ MVP overlay) 전체 충전기 행. 뷰포트 `items`는 여기서 필터 */
   const fullEvCatalogRef = useRef(/** @type {object[] | null} */ (null))
-  const catalogBackgroundAbortRef = useRef(/** @type {AbortController | null} */ (null))
   const mapLayerStationsLenRef = useRef(0)
   /** 부트 summary bbox와 일치시키기: onBootMapPaintReady의 좁은 getBounds()로 applied를 덮어쓰지 않음 */
   const suppressBootMapBoundsSnapshotRef = useRef(false)
@@ -583,7 +573,7 @@ function App() {
   const [apiError, setApiError] = useState(null)
   const [lastEvFetchAt, setLastEvFetchAt] = useState(null)
   const [detailRefreshing, setDetailRefreshing] = useState(false)
-  const canRefetchEv = !!(import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
+  const hasSafemapServiceKey = !!(import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
   const evMapDiag = useMemo(() => parseEvMapDiag(), [])
   const evMapDiagRef = useRef(evMapDiag)
   evMapDiagRef.current = evMapDiag
@@ -812,7 +802,7 @@ function App() {
     setMobileSheetSnap('half')
 
     const statId = s.rows?.[0]?.statId
-    if (canRefetchEv && statId) {
+    if (hasSafemapServiceKey && statId) {
       void (async () => {
         const openId = s.id
         try {
@@ -836,7 +826,7 @@ function App() {
         }
       })()
     }
-  }, [mobileSheetSnap, canRefetchEv])
+  }, [mobileSheetSnap, hasSafemapServiceKey])
 
   const openDetailPreserveRef = useRef(null)
   openDetailPreserveRef.current = openDetailPreserve
@@ -1100,21 +1090,16 @@ function App() {
     bootMarkerWaitT0Ref.current = performance.now()
     setAwaitingInitialMapPaint(true)
     const v = bootViewportForRetryRef.current
-    if (canRefetchEv && v) {
+    if (v) {
       fullEvCatalogRef.current = null
       await runViewportSummaryFetchRef.current({
         reason: 'boot',
         viewport: v,
         showLoading: false,
       })
-    } else if (import.meta.env.DEV && v) {
-      const mock = getDevMockEvChargers()
-      const scoped = filterDevMockRowsToBounds(mock, v)
-      setItems(scoped)
-      setTotalCount(scoped.length)
     }
     viewportSummaryTelemetry('boot', 'marker-retry', {})
-  }, [canRefetchEv])
+  }, [])
 
   /**
    * viewport summary 단일 진입점 (boot / 이 지역 검색 / 칩 / 검색 fit / 새로고침).
@@ -1163,157 +1148,136 @@ function App() {
       const t0 = performance.now()
 
       try {
-        if (canRefetchEv) {
-          const diag = evMapDiagRef.current
-          const devProof = import.meta.env.DEV && (diag.apiProof || diag.proof)
+        const summaryUrl = `${import.meta.env.BASE_URL}data/ev-stations-summary.json`
+        const diag = evMapDiagRef.current
+        const devProof = import.meta.env.DEV && (diag.apiProof || diag.proof)
 
-          const applyRowsAndTelemetry = (rows, fetchMs, pagesScanned, rawApprox, note) => {
+        const applyRowsAndTelemetry = (rows, fetchMs, pagesScanned, rawApprox, note) => {
+          if (signal.aborted) {
+            viewportSummaryMarkAbort()
+            if (import.meta.env.DEV) searchAreaTimingMetrics.aborts += 1
+            viewportSummaryTelemetry(reason, 'fetch-aborted', { gen })
+            return { ok: false }
+          }
+          if (summaryFetchGenerationRef.current !== gen) {
+            viewportSummaryMarkStale()
+            if (import.meta.env.DEV) searchAreaTimingMetrics.staleDrops += 1
+            viewportSummaryTelemetry(reason, 'stale-drop', { gen, current: summaryFetchGenerationRef.current })
+            return { ok: false }
+          }
+          setItems(rows)
+          const sig = `${rows.length}:${rows[0]?.id ?? ''}`
+          if (import.meta.env.DEV && itemsRenderSigRef.current !== sig) {
+            itemsRenderSigRef.current = sig
+            searchAreaTimingMetrics.renderSourceChanges += 1
+          }
+          setTotalCount(rows.length)
+          setLastEvFetchAt(new Date().toISOString())
+          clearDetailRowsCache()
+          viewportSummaryMarkApplied()
+          if (import.meta.env.DEV && timingSession) {
+            searchAreaTimingLog(timingSession, 'adapter-done-render-source-set', { gen, rowCount: rows.length })
+          }
+          const fetchEndT = performance.now()
+          if (isEvPipelineLogEnabled() && (reason === 'boot' || reason === 'search-area')) {
+            lastEvPipelineFetchRef.current = {
+              phase: reason,
+              fetchEndT,
+              fetchMs,
+              rawRowsScanned: rawApprox,
+              normalizeOk: fullEvCatalogRef.current?.length ?? null,
+              normalizeNull: null,
+              boundsInsideRows: rows.length,
+              pagesScanned,
+              gen,
+            }
+            logEvPipelineFetchDone({
+              phase: reason,
+              fetchMs,
+              rawRowsScanned: rawApprox,
+              normalizeOk: fullEvCatalogRef.current?.length ?? null,
+              normalizeNull: null,
+              boundsInsideRows: rows.length,
+              pagesScanned,
+              note: note || 'summary 데이터에서 뷰포트 필터',
+            })
+            pipelineReactLogPendingRef.current = true
+          }
+          viewportSummaryTelemetry(reason, 'state-applied', {
+            gen,
+            n: rows.length,
+            pages: pagesScanned,
+            ms: fetchMs,
+          })
+          return { ok: true, rows, rowCount: rows.length }
+        }
+
+        if (reason === 'refresh') {
+          const ds = await fetchEvStationsSummaryDataset({
+            url: `${summaryUrl}?cb=${Date.now()}`,
+            signal,
+          })
+          if (signal.aborted) {
+            viewportSummaryMarkAbort()
+            return { ok: false }
+          }
+          fullEvCatalogRef.current = ds.allRowsWithOverlay
+          if (summaryFetchGenerationRef.current !== gen) {
+            viewportSummaryMarkStale()
+            return { ok: false }
+          }
+        } else if (fullEvCatalogRef.current == null) {
+          try {
+            const ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal })
             if (signal.aborted) {
               viewportSummaryMarkAbort()
-              if (import.meta.env.DEV) searchAreaTimingMetrics.aborts += 1
-              viewportSummaryTelemetry(reason, 'fetch-aborted', { gen })
               return { ok: false }
             }
-            if (summaryFetchGenerationRef.current !== gen) {
-              viewportSummaryMarkStale()
-              if (import.meta.env.DEV) searchAreaTimingMetrics.staleDrops += 1
-              viewportSummaryTelemetry(reason, 'stale-drop', { gen, current: summaryFetchGenerationRef.current })
-              return { ok: false }
-            }
-            setItems(rows)
-            const sig = `${rows.length}:${rows[0]?.id ?? ''}`
-            if (import.meta.env.DEV && itemsRenderSigRef.current !== sig) {
-              itemsRenderSigRef.current = sig
-              searchAreaTimingMetrics.renderSourceChanges += 1
-            }
-            setTotalCount(rows.length)
-            setLastEvFetchAt(new Date().toISOString())
-            clearDetailRowsCache()
-            viewportSummaryMarkApplied()
-            if (import.meta.env.DEV && timingSession) {
-              searchAreaTimingLog(timingSession, 'adapter-done-render-source-set', { gen, rowCount: rows.length })
-            }
-            const fetchEndT = performance.now()
-            if (isEvPipelineLogEnabled() && (reason === 'boot' || reason === 'search-area')) {
-              lastEvPipelineFetchRef.current = {
-                phase: reason,
-                fetchEndT,
-                fetchMs,
-                rawRowsScanned: rawApprox,
-                normalizeOk: fullEvCatalogRef.current?.length ?? null,
-                normalizeNull: null,
-                boundsInsideRows: rows.length,
-                pagesScanned,
-                gen,
-              }
-              logEvPipelineFetchDone({
-                phase: reason,
-                fetchMs,
-                rawRowsScanned: rawApprox,
-                normalizeOk: fullEvCatalogRef.current?.length ?? null,
-                normalizeNull: null,
-                boundsInsideRows: rows.length,
-                pagesScanned,
-                note: note || '전국 캐시에서 뷰포트 필터',
-              })
-              pipelineReactLogPendingRef.current = true
-            }
-            viewportSummaryTelemetry(reason, 'state-applied', {
-              gen,
-              n: rows.length,
-              pages: pagesScanned,
-              ms: fetchMs,
-            })
-            return { ok: true, rows, rowCount: rows.length }
-          }
-
-          if (reason === 'refresh') {
-            const { items: all, aborted, pagesScanned } = await fetchEvChargersFullCatalog({ signal })
-            const fetchMs = Math.round(performance.now() - t0)
-            if (import.meta.env.DEV && timingSession) {
-              searchAreaTimingLog(timingSession, 'fetch-response-received', { gen, fetchMs, rows: all.length })
-            }
-            if (aborted || signal.aborted) {
-              viewportSummaryMarkAbort()
-              return { ok: false }
-            }
-            fullEvCatalogRef.current = all
-            await evCatalogWrite(all, { reason: 'refresh' })
-            if (summaryFetchGenerationRef.current !== gen) {
-              viewportSummaryMarkStale()
-              return { ok: false }
-            }
-            const rows = filterNormalizedRowsToBounds(all, viewport)
-            if (import.meta.env.DEV && (diag.pipeline || diag.countTrace)) {
-              // eslint-disable-next-line no-console -- count trace
-              console.info('[mapCountTrace] fetch', {
-                reason,
-                catalogRows: all.length,
-                viewportRows: rows.length,
-                pagesScanned,
-              })
-            }
-            return applyRowsAndTelemetry(
-              rows,
-              fetchMs,
-              pagesScanned,
-              all.length,
-              'refresh: 전국 재수집 후 뷰포트 필터',
-            )
-          }
-
-          let catalog = fullEvCatalogRef.current
-          if (!catalog?.length) {
-            const { items: all, aborted, pagesScanned } = await fetchEvChargersFullCatalog({ signal })
-            const fetchMs = Math.round(performance.now() - t0)
-            if (import.meta.env.DEV && timingSession) {
-              searchAreaTimingLog(timingSession, 'fetch-response-received', { gen, fetchMs, rows: all.length })
-            }
-            if (aborted || signal.aborted) {
-              viewportSummaryMarkAbort()
-              return { ok: false }
-            }
-            fullEvCatalogRef.current = all
-            catalog = all
-            await evCatalogWrite(all, { reason: `fill-${reason}` })
-            if (summaryFetchGenerationRef.current !== gen) {
-              viewportSummaryMarkStale()
-              return { ok: false }
-            }
-            if (import.meta.env.DEV && (diag.pipeline || diag.countTrace)) {
-              // eslint-disable-next-line no-console -- count trace
-              console.info('[mapCountTrace] fetch', {
-                reason,
-                catalogColdFill: true,
-                catalogRows: all.length,
-                pagesScanned,
-              })
+            fullEvCatalogRef.current =
+              import.meta.env.DEV && ds.allRowsWithOverlay.length === 0
+                ? getDevMockEvChargers()
+                : ds.allRowsWithOverlay
+          } catch (loadErr) {
+            if (import.meta.env.DEV) {
+              fullEvCatalogRef.current = getDevMockEvChargers()
+            } else {
+              throw loadErr
             }
           }
-
-          const rows = filterNormalizedRowsToBounds(catalog, viewport)
-          const fetchMs = Math.round(performance.now() - t0)
-
-          if (devProof && catalog.length) {
-            const dots = catalog
-              .filter((x) => Number.isFinite(Number(x.lat)) && Number.isFinite(Number(x.lng)))
-              .slice(0, 20)
-              .map((x) => ({ id: x.id, lat: x.lat, lng: x.lng }))
-            setMapProofApiDots(dots)
-          }
-
-          if (import.meta.env.DEV && timingSession) {
-            searchAreaTimingLog(timingSession, 'fetch-response-received', { gen, fetchMs, rows: rows.length })
-          }
-
-          return applyRowsAndTelemetry(
-            rows,
-            fetchMs,
-            0,
-            catalog.length,
-            catalog.length ? '캐시(메모리)에서 뷰포트 필터' : '빈 캐시',
-          )
         }
+
+        const catalog = fullEvCatalogRef.current ?? []
+        const rows = filterNormalizedRowsToBounds(catalog, viewport)
+        const fetchMs = Math.round(performance.now() - t0)
+
+        if (import.meta.env.DEV && timingSession) {
+          searchAreaTimingLog(timingSession, 'fetch-response-received', { gen, fetchMs, rows: rows.length })
+        }
+
+        if (devProof && catalog.length) {
+          const dots = catalog
+            .filter((x) => Number.isFinite(Number(x.lat)) && Number.isFinite(Number(x.lng)))
+            .slice(0, 20)
+            .map((x) => ({ id: x.id, lat: x.lat, lng: x.lng }))
+          setMapProofApiDots(dots)
+        }
+
+        if (import.meta.env.DEV && (diag.pipeline || diag.countTrace)) {
+          // eslint-disable-next-line no-console -- count trace
+          console.info('[mapCountTrace] summary', {
+            reason,
+            catalogRows: catalog.length,
+            viewportRows: rows.length,
+          })
+        }
+
+        return applyRowsAndTelemetry(
+          rows,
+          fetchMs,
+          0,
+          catalog.length,
+          reason === 'refresh' ? 'summary JSON 재로드·뷰포트 필터' : 'summary 메모리·뷰포트 필터',
+        )
       } catch (err) {
         if (!signal.aborted && summaryFetchGenerationRef.current === gen) {
           setApiError(err.message || '데이터를 불러오지 못했습니다.')
@@ -1327,9 +1291,8 @@ function App() {
           if (import.meta.env.DEV && timingSession) searchAreaTimingLog(timingSession, 'loading-overlay-off', { gen })
         }
       }
-      return { ok: false }
     },
-    [canRefetchEv],
+    [],
   )
 
   runViewportSummaryFetchRef.current = runViewportSummaryFetch
@@ -1337,14 +1300,9 @@ function App() {
   const onSearchViewportBoundsApplied = useCallback(
     (boundsLiteral) => {
       if (!boundsLiteral) return
-      if (canRefetchEv) {
-        void runViewportSummaryFetch({ reason: 'search', viewport: boundsLiteral, showLoading: false })
-      } else if (import.meta.env.DEV) {
-        const mock = getDevMockEvChargers()
-        setItems(filterDevMockRowsToBounds(mock, boundsLiteral))
-      }
+      void runViewportSummaryFetch({ reason: 'search', viewport: boundsLiteral, showLoading: false })
     },
-    [canRefetchEv, runViewportSummaryFetch],
+    [runViewportSummaryFetch],
   )
 
   /** 「이 지역 검색」: viewport summary 재조회 + 적용 영역 동기화 */
@@ -1365,50 +1323,15 @@ function App() {
       searchAreaTimingLog(timingSession, 'search-area-button-click')
     }
     viewportSummaryTelemetry('search-area', 'button-click', {})
-    if (canRefetchEv) {
-      if (import.meta.env.DEV || isEvPipelineLogEnabled()) {
-        searchAreaAwaitingMarkersRef.current = { t0: performance.now() }
-      }
-      await runViewportSummaryFetch({
-        reason: 'search-area',
-        viewport: b,
-        showLoading: true,
-        timingSession,
-      })
-    } else if (import.meta.env.DEV) {
-      const mock = getDevMockEvChargers()
-      const scoped = filterDevMockRowsToBounds(mock, b)
-      setItems(scoped)
-      setTotalCount(scoped.length)
-      if (isEvPipelineLogEnabled()) {
-        const fetchEndT = performance.now()
-        lastEvPipelineFetchRef.current = {
-          phase: 'search-area',
-          fetchEndT,
-          fetchMs: 0,
-          rawRowsScanned: mock.length,
-          normalizeOk: scoped.length,
-          normalizeNull: null,
-          boundsInsideRows: scoped.length,
-          pagesScanned: 0,
-          gen: summaryFetchGenerationRef.current,
-        }
-        logEvPipelineFetchDone({
-          phase: 'search-area',
-          fetchMs: 0,
-          rawRowsScanned: mock.length,
-          normalizeOk: scoped.length,
-          normalizeNull: null,
-          boundsInsideRows: scoped.length,
-          pagesScanned: 0,
-          note: 'DEV mock 이 지역 검색(API 키 없음)',
-        })
-        pipelineReactLogPendingRef.current = true
-      }
-      if (import.meta.env.DEV || isEvPipelineLogEnabled()) {
-        searchAreaAwaitingMarkersRef.current = { t0: performance.now() }
-      }
+    if (import.meta.env.DEV || isEvPipelineLogEnabled()) {
+      searchAreaAwaitingMarkersRef.current = { t0: performance.now() }
     }
+    await runViewportSummaryFetch({
+      reason: 'search-area',
+      viewport: b,
+      showLoading: true,
+      timingSession,
+    })
     setAppliedMapBounds(b)
     setClusterBrowseGrouped(null)
     setConfirmedMobileSearchQuery('')
@@ -1423,7 +1346,7 @@ function App() {
         metrics: { ...searchAreaTimingMetrics },
       })
     }
-  }, [openMobileListSheetToHalf, canRefetchEv, runViewportSummaryFetch, mapSearchAreaLoading])
+  }, [openMobileListSheetToHalf, runViewportSummaryFetch, mapSearchAreaLoading])
 
   const handleChipViewportJumpComplete = useCallback(
     (boundsLiteral) => {
@@ -1446,22 +1369,13 @@ function App() {
       setMapSelectedStation(null)
       setDetailStation(null)
       detailStationRef.current = null
-      if (canRefetchEv) {
-        void runViewportSummaryFetch({
-          reason: 'suggestion-chip',
-          viewport: boundsLiteral,
-          showLoading: false,
-        })
-      } else if (import.meta.env.DEV) {
-        const mock = getDevMockEvChargers()
-        const scoped = filterDevMockRowsToBounds(mock, boundsLiteral)
-        setApiError(null)
-        setItems(scoped)
-        setTotalCount(scoped.length)
-        setLastEvFetchAt(new Date().toISOString())
-      }
+      void runViewportSummaryFetch({
+        reason: 'suggestion-chip',
+        viewport: boundsLiteral,
+        showLoading: false,
+      })
     },
-    [canRefetchEv, runViewportSummaryFetch],
+    [runViewportSummaryFetch],
   )
 
   const handleMobileQuickSearchPick = useCallback(
@@ -1510,12 +1424,11 @@ function App() {
     let cancelled = false
 
     ;(async () => {
-      const key = (import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
       setBootProgress(0)
       setBootStageMessage('시작하는 중')
 
       setBootStageMessage('현재 위치를 확인하고 있어요')
-      const pLoc = easeBootProgress(setBootProgress, 0, 32, 640)
+      const pLoc = easeBootProgress(setBootProgress, 0, 32, 480)
       const pos = await getBootstrapGeolocationPosition()
       await pLoc
       if (cancelled) return
@@ -1524,8 +1437,8 @@ function App() {
       setBootProgress(40)
       setBootStageMessage(
         pos.usedGeo
-          ? '내 위치를 확인했어요. 주변 충전소 정보를 불러오고 있어요'
-          : '위치를 사용할 수 없어 기본 위치로 시작해요. 주변 충전소 정보를 불러오고 있어요',
+          ? '내 위치를 확인했어요. 충전소 요약 데이터를 불러오고 있어요'
+          : '위치를 사용할 수 없어 기본 위치로 시작해요. 충전소 요약 데이터를 불러오고 있어요',
       )
       const view = computeBootLeafletView(pos.lat, pos.lng, mapBootstrapWidthPx())
       setLeafletInitial(view)
@@ -1535,70 +1448,7 @@ function App() {
       const initialViewportB = squareBoundsLiteralAroundCenter(pos.lat, pos.lng, 32)
       bootViewportForRetryRef.current = initialViewportB
 
-      if (!key) {
-        await easeBootProgress(setBootProgress, 40, 58, 420)
-        if (cancelled) return
-        if (import.meta.env.DEV) {
-          viewportSummaryTelemetry('boot', 'mock-no-api-key', {})
-          const mock = getDevMockEvChargers()
-          const scoped = filterDevMockRowsToBounds(mock, initialViewportB)
-          setApiError(null)
-          suppressBootMapBoundsSnapshotRef.current = true
-          setAppliedMapBounds(initialViewportB)
-          setItems(scoped)
-          setTotalCount(scoped.length)
-          setLastEvFetchAt(new Date().toISOString())
-          viewportSummaryTelemetry('boot', 'mock-applied', { n: scoped.length })
-          if (isEvPipelineLogEnabled()) {
-            const fetchEndT = performance.now()
-            lastEvPipelineFetchRef.current = {
-              phase: 'boot',
-              fetchEndT,
-              fetchMs: 0,
-              rawRowsScanned: mock.length,
-              normalizeOk: scoped.length,
-              normalizeNull: null,
-              boundsInsideRows: scoped.length,
-              pagesScanned: 0,
-              gen: summaryFetchGenerationRef.current,
-            }
-            logEvPipelineFetchDone({
-              phase: 'boot',
-              fetchMs: 0,
-              rawRowsScanned: mock.length,
-              normalizeOk: scoped.length,
-              normalizeNull: null,
-              boundsInsideRows: scoped.length,
-              pagesScanned: 0,
-              note: 'DEV mock 부트: rawRowsScanned=mock 전체 길이',
-            })
-            pipelineReactLogPendingRef.current = true
-          }
-          console.info(
-            `[whereEV3] API 키 없음 — viewport 요약용 mock ${scoped.length}건(전체 ${mock.length}건 중). 실제 Safemap은 .env.local의 VITE_SAFEMAP_SERVICE_KEY 설정 후 재시작하세요. (docs/DATA-SOURCES.md)`
-          )
-        } else {
-          setApiError('VITE_SAFEMAP_SERVICE_KEY를 .env 또는 .env.local에 설정해 주세요.')
-          setItems([])
-          setTotalCount(null)
-        }
-        setBootLinearIndeterminate(false)
-        setBootProgress(72)
-        setBootStageMessage('충전소 마커를 지도에 올리는 중이에요. 첫 마커가 보이면 완료돼요')
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console -- 부트 단계 증명
-          console.info('[bootTiming] enter-72-marker-ready-wait', { phase: 'no-api-key' })
-        }
-        if (cancelled) return
-        bootMarkerWaitT0Ref.current = performance.now()
-        setAwaitingInitialMapPaint(true)
-        viewportSummaryTelemetry('boot', 'awaiting-map-paint', {})
-        return
-      }
-
-      setApiError(null)
-      setItems([])
-      viewportSummaryTelemetry('boot', 'ev-catalog-bootstrap', {})
+      const summaryUrl = `${import.meta.env.BASE_URL}data/ev-stations-summary.json`
       const bootT0 = performance.now()
 
       const enterMarkerWait = (boundsLiteral) => {
@@ -1610,7 +1460,7 @@ function App() {
         if (import.meta.env.DEV) {
           // eslint-disable-next-line no-console -- 부트 단계 증명
           console.info('[bootTiming] enter-marker-ready-wait', {
-            phase: 'ev-catalog',
+            phase: 'ev-summary-json',
             fetchMs: Math.round(performance.now() - bootT0),
             catalogSize: fullEvCatalogRef.current?.length ?? 0,
           })
@@ -1631,7 +1481,7 @@ function App() {
         return scoped
       }
 
-      const logPipelineBoot = (fetchMs, pagesScanned, rawApprox, rowsInView) => {
+      const logPipelineBoot = (fetchMs, rawApprox, rowsInView) => {
         if (!isEvPipelineLogEnabled()) return
         const fetchEndT = performance.now()
         lastEvPipelineFetchRef.current = {
@@ -1642,7 +1492,7 @@ function App() {
           normalizeOk: fullEvCatalogRef.current?.length ?? null,
           normalizeNull: null,
           boundsInsideRows: rowsInView,
-          pagesScanned,
+          pagesScanned: 0,
           gen: summaryFetchGenerationRef.current,
         }
         logEvPipelineFetchDone({
@@ -1652,96 +1502,68 @@ function App() {
           normalizeOk: fullEvCatalogRef.current?.length ?? null,
           normalizeNull: null,
           boundsInsideRows: rowsInView,
-          pagesScanned,
-          note: '전국 캐시 수집·IndexedDB 후 현재 뷰포트 필터',
+          pagesScanned: 0,
+          note: 'summary JSON 로드 후 뷰포트 필터',
         })
         pipelineReactLogPendingRef.current = true
       }
 
-      const startCatalogBackgroundRefresh = (reasonLabel) => {
-        catalogBackgroundAbortRef.current?.abort()
-        const bg = new AbortController()
-        catalogBackgroundAbortRef.current = bg
-        void (async () => {
-          try {
-            const { items, aborted } = await fetchEvChargersFullCatalog({
-              signal: bg.signal,
-              onProgress: () => {},
-            })
-            if (aborted || bg.signal.aborted) return
-            fullEvCatalogRef.current = items
-            await evCatalogWrite(items, { refreshedFrom: reasonLabel })
-            const b = appliedMapBoundsRef.current || liveMapBoundsRef.current
-            if (b) {
-              const scoped = filterNormalizedRowsToBounds(items, b)
-              setItems(scoped)
-              setTotalCount(scoped.length)
-            }
-          } catch {
-            /* stale-while-revalidate 실패는 무시 */
-          }
-        })()
-      }
+      setApiError(null)
+      setItems([])
+      viewportSummaryTelemetry('boot', 'ev-summary-bootstrap', {})
 
       try {
-        setBootStageMessage('저장해 둔 충전소 정보를 확인하는 중이에요')
-        setBootProgress(44)
-        const cached = await evCatalogReadAll()
+        setBootStageMessage('충전소 요약 정보를 불러오는 중이에요')
+        await easeBootProgress(setBootProgress, 40, 62, 360)
         if (cancelled || ac.signal.aborted) return
 
-        if (cached?.rows?.length) {
-          fullEvCatalogRef.current = cached.rows
-          const fresh = evCatalogFreshness(cached.meta)
-
-          setBootStageMessage('현재 지역에 맞는 충전소를 골라 지도에 올리는 중이에요')
-          setBootProgress(68)
-          await new Promise((r) => requestAnimationFrame(r))
-          const scoped = applyViewportFromCatalog(initialViewportB)
-          setBootProgress(78)
-          logPipelineBoot(0, 0, cached.rows.length, scoped.length)
-
-          enterMarkerWait(initialViewportB)
-
-          if (fresh !== 'fresh') {
-            startCatalogBackgroundRefresh(`swr-${fresh}`)
+        let ds = null
+        try {
+          ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal: ac.signal })
+        } catch (e) {
+          if (import.meta.env.DEV) {
+            fullEvCatalogRef.current = getDevMockEvChargers()
+            viewportSummaryTelemetry('boot', 'mock-summary-fallback-dev', {})
+            // eslint-disable-next-line no-console -- DEV 안내
+            console.info('[whereEV3] summary JSON 로드 실패 — DEV mock 사용:', e?.message || e)
+          } else {
+            throw e
           }
-          return
         }
 
-        setBootStageMessage('전국 충전소 목록을 받는 중이에요. 처음 한 번만 시간이 걸릴 수 있어요')
-        setBootProgress(48)
-
-        const result = await fetchEvChargersFullCatalog({
-          signal: ac.signal,
-          onProgress: ({ pageIndex, estimatedTotalPages }) => {
-            let pct = 48
-            if (estimatedTotalPages != null && estimatedTotalPages > 0) {
-              pct = 48 + Math.min(30, Math.round((pageIndex / estimatedTotalPages) * 30))
-            } else {
-              pct = 48 + Math.min(30, pageIndex * 2)
-            }
-            setBootProgress(pct)
-          },
-        })
+        if (ds) {
+          if (import.meta.env.DEV && ds.allRowsWithOverlay.length === 0) {
+            fullEvCatalogRef.current = getDevMockEvChargers()
+            viewportSummaryTelemetry('boot', 'empty-summary-use-mock-dev', {})
+          } else {
+            fullEvCatalogRef.current = ds.allRowsWithOverlay
+          }
+        }
 
         if (cancelled || ac.signal.aborted) return
-        if (result.aborted) return
 
-        fullEvCatalogRef.current = result.items
-        setBootStageMessage('데이터를 저장하고 정리하는 중이에요')
-        setBootProgress(78)
-        await evCatalogWrite(result.items, { pagesScanned: result.pagesScanned })
-        setBootProgress(82)
+        setBootStageMessage('현재 지역에 맞는 충전소를 골라 지도에 올리는 중이에요')
+        setBootProgress(72)
+        await new Promise((r) => requestAnimationFrame(r))
 
         const scoped = applyViewportFromCatalog(initialViewportB)
-        setBootProgress(85)
+        setBootProgress(78)
         const fetchMs = Math.round(performance.now() - bootT0)
-        logPipelineBoot(fetchMs, result.pagesScanned, result.normalizedUniqueCount, scoped.length)
+        logPipelineBoot(fetchMs, fullEvCatalogRef.current?.length ?? 0, scoped.length)
 
         enterMarkerWait(initialViewportB)
       } catch (err) {
         if (!cancelled && !ac.signal.aborted) {
           setApiError(err.message || '데이터를 불러오지 못했습니다.')
+          fullEvCatalogRef.current = null
+          setItems([])
+          setTotalCount(null)
+          setBootLinearIndeterminate(false)
+          setBootProgress(100)
+          setBootStageMessage('충전소 목록을 불러오지 못했어요')
+          setAwaitingInitialMapPaint(false)
+          setBootOverlayOpen(false)
+          viewportSummaryTelemetry('boot', 'summary-load-failed', { msg: String(err?.message || err) })
         }
       }
     })()
@@ -1749,12 +1571,10 @@ function App() {
     return () => {
       cancelled = true
       ac.abort()
-      catalogBackgroundAbortRef.current?.abort()
     }
   }, [])
 
   const refreshEvData = useCallback(async () => {
-    if (!canRefetchEv) return
     const b = appliedMapBoundsRef.current || liveMapBoundsRef.current
     if (!b) return
     setDetailRefreshing(true)
@@ -1800,7 +1620,7 @@ function App() {
       setDetailRefreshing(false)
       viewportSummaryTelemetry('refresh', 'done', {})
     }
-  }, [canRefetchEv, runViewportSummaryFetch])
+  }, [runViewportSummaryFetch])
 
   const itemsMatchingChipsOnly = useMemo(() => {
     return items.filter((s) => {
@@ -1854,11 +1674,7 @@ function App() {
       const padKm = Math.min(Number.isFinite(picked.radiusKm) ? picked.radiusKm : 8, 8)
       const b = squareBoundsLiteralAroundCenter(center.lat, center.lng, Math.max(padKm, 1))
       setAppliedMapBounds(b)
-      if (canRefetchEv) {
-        void runViewportSummaryFetch({ reason: 'search', viewport: b, showLoading: false })
-      } else if (import.meta.env.DEV) {
-        setItems(filterDevMockRowsToBounds(getDevMockEvChargers(), b))
-      }
+      void runViewportSummaryFetch({ reason: 'search', viewport: b, showLoading: false })
     } else {
       setSearchViewportFitNonce((n) => n + 1)
     }
@@ -2605,9 +2421,9 @@ function App() {
                         ) : null}
                       </Box>
                       <IconButton
-                        onClick={() => canRefetchEv && refreshEvData()}
-                        disabled={!canRefetchEv || detailRefreshing}
-                        aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
+                        onClick={() => void refreshEvData()}
+                        disabled={detailRefreshing}
+                        aria-label="충전소 요약 데이터 새로고침"
                         size="small"
                         sx={{
                           color: colors.gray[600],
@@ -2673,9 +2489,9 @@ function App() {
                         ) : null}
                       </Box>
                       <IconButton
-                        onClick={() => canRefetchEv && refreshEvData()}
-                        disabled={!canRefetchEv || detailRefreshing}
-                        aria-label={canRefetchEv ? '충전소 데이터 새로고침' : '새로고침을 사용할 수 없습니다'}
+                        onClick={() => void refreshEvData()}
+                        disabled={detailRefreshing}
+                        aria-label="충전소 요약 데이터 새로고침"
                         size="small"
                         sx={{
                           color: colors.gray[600],
@@ -3335,7 +3151,7 @@ function App() {
               markerCount={harnessBootMarkerCount ?? mapLayerStations.length}
               expectedMarkerIcons={harnessBootMarkerCount ?? mapLayerStations.length}
               skipDomIconCountGate={import.meta.env.DEV && evMapDiag.anyLeafletHarness}
-              firstPaintMaxWaitMs={480000}
+              firstPaintMaxWaitMs={90000}
               onTimeout={evMapDiag.anyLeafletHarness ? undefined : onBootMapPaintTimeout}
               onReady={onBootMapPaintReady}
             />

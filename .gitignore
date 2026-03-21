@@ -26,4 +26,13 @@ dist-ssr
 *.sln
 *.sw?
 .vercel
+
+# 로컬 전용(인증키·비밀) — 커밋·PR에 포함되면 안 됨. CI는 GitHub Actions Secrets만 사용.
 .env*.local
+.env.local
+
+# 전국 EV summary(수백 MB) — Git에 두지 않음. CI 아티팄트·스토리지 URL·배포 시 주입.
+public/data/ev-stations-summary.json
+
+# 로컬 임시·대용량 덤프 (포털 JSON 복사 등)
+tmp/

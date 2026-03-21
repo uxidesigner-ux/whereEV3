@@ -48,7 +48,9 @@ UI는 **기본 row(실데이터 필드) + 표시용 `stat` + `getChargerSessionF
 
 ## 관련 파일
 
-- `src/api/safemapEv.js` — fetch, `normalizeCharger`, `applyMvpChargerOverlay` 호출
+- `src/api/safemapEv.js` — fetch, `normalizeCharger`(코어+오버레이), 상세·도구용 목록 API
+- `src/api/evStationsSummary.js` — 스냅샷 JSON 로드·파싱·overlay 적용
+- `src/api/evChargerNormalizeCore.js` — 빌드·스냅샷과 동일 스키마의 정규화(overlay 제외)
 - `src/data/chargerSessionMvp.js` — 시드 상태·세션 + `getChargerSessionForUi`
 - `src/dev/mockEvChargers.js` — DEV 목록 대체 + 오버레이
 - `src/components/StationDetailContent.jsx` — row + 세션 합성·안내 문구
@@ -56,16 +58,15 @@ UI는 **기본 row(실데이터 필드) + 표시용 `stat` + `getChargerSessionF
 
 ---
 
-## 목록 fetch·지도 표시 (whereEV3)
+## 목록·지도 데이터 (whereEV3) — summary JSON 스냅샷
 
-- **Safemap:** 공간(bbox) 쿼리 없이 **페이지네이션만** 지원. 전국 데이터는 페이지 순서대로만 적재 가능.
-- **`fetchEvChargers` / `fetchEvChargersProgressive`:** 여전히 사용 가능하나, **앱 부트·목록 소스**는 아래 전국 캐시 경로가 기본이다.
-- **전국 캐시(완전성 우선):** `fetchEvChargersFullCatalog`(`src/api/fetchEvFullCatalog.js`)가 IF_0042를 **totalCount 기준 끝까지** 순회·`id` 중복 제거·`normalizeCharger` 적용. 결과는 **`fullEvCatalogRef`(메모리)** + **IndexedDB**(`src/data/evCatalogIdb.js`, 청크 저장)에 보관.
-- **첫 실행(캐시 미스):** 전국 수집·저장 후 `filterNormalizedRowsToBounds`로 **현재 부트 뷰포트**에 들어가는 행만 `items`로 올린 뒤 마커 게이트 통과 시 오버레이 종료(일부 페이지만 보고 끝내지 않음).
-- **캐시 히트 / SWR:** 유효 캐시면 즉시 읽어 뷰포트 필터 후 표시. `fetchedAt`이 **stale(기본 4h)** 이면 화면은 유지한 채 백그라운드로 전국 재수집·IDB 갱신. **hard expire(기본 36h)** 는 메타 수준; 스키마/`package.json` 버전 불일치 시 캐시 무효.
-- **이 지역 검색·검색 뷰포트:** 캐시가 있으면 **네트워크 없이** 메모리 캐시에서 뷰포트 필터만 수행.
-- **지도 마커 파이프라인:** `items`(뷰포트 내 정규화 행) → `mapSummaryStationsAdapted` → `groupChargerRowsByPlaceMapLite` → 거리 캡·`MOBILE_MAP_MARKER_CAP` — 고밀도 지역은 입력 상한·마커 캡으로 일부만 그릴 수 있으나 **데이터 소스 `items`는 뷰포트 전체**에 가깝게 유지.
-- **레거시 뷰포트 요약:** `fetchEvChargersSummaryForBounds`·`VIEWPORT_SUMMARY_FETCH_PRESETS`(`evViewportSummary.js`)는 **다른 도구/진단용**으로 남김.
+- **런타임:** 앱은 IF_0042를 **전 페이지 순회하지 않는다.** 부팅 시 **`/data/ev-stations-summary.json`**(정적 파일)을 **1회 로드**하고, `parseEvStationsSummaryJson` → 정적 `rows`에 `applyMvpChargerOverlay`만 적용한 뒤 `fullEvCatalogRef`에 보관한다.
+- **뷰포트:** `filterNormalizedRowsToBounds`로 **현재 지도 bounds**에 들어가는 충전기 행만 `items`로 올린다. **이 지역 검색·검색 fit·칩**도 동일하게 **메모리 summary에서만** 재필터링한다(목록용 IF_0042 재호출 없음).
+- **배치 생성:** `npm run build:ev-summary` → `scripts/build-ev-stations-summary.mjs`가 서비스 키로 IF_0042 전 페이지 수집·`normalizeChargerCore`(overlay 제외)·한국·`id` 중복 제거·`placeKey` 단위로 `places[]`를 만들어 `public/data/ev-stations-summary.json`에 쓴다. 배포 전 또는 cron으로 주기 갱신(예: 일 1회). **운영·CI·크기 점검:** [`docs/EV-SUMMARY-OPS.md`](./EV-SUMMARY-OPS.md).
+- **상태값:** 스냅샷 JSON에는 API 원본 `stat`만 두고, UI용 `stat`/`apiStat`는 기존과 같이 **`applyMvpChargerOverlay`**(MVP 시드)로 런타임 합성.
+- **DEV:** summary 로드 실패 또는 **빈 `places`** 이면 `getDevMockEvChargers()`로 대체. 프로덕션은 빈 JSON이면 빈 지도(오류는 네트워크/404 시).
+- **상세 패널:** `fetchDetailRowsForStatId` 등 **statId 단위 IF_0042 조회**는 서비스 키가 있을 때만 유지(목록과 분리).
+- **레거시:** `fetchEvChargersFullCatalog`·`evCatalogIdb`는 스크립트/참고용으로 남을 수 있으나 **앱 부트 경로에서는 사용하지 않는다.** `fetchEvChargersSummaryForBounds`(`evViewportSummary.js`)는 진단·도구용.
 - **프로덕 계측:** `?evPipeline=1` — 콘솔 `[evPipeline] ①②③`·`adapter-samples` 및 화면 하단 `EvPipelineDebugPanel`.
 - **DEV 계측:** 콘솔 `[evViewportSummary]` 로그 및 `viewportSummaryMetrics`(abort/stale/적용 횟수) — `src/dev/viewportSummaryTelemetry.js`.
 - **좌표:** Safemap 목록의 `x`/`y`는 Web Mercator(EPSG:3857) 미터 값인 경우가 많다. `safemapApiRowToLatLng`(`src/utils/coordTransform.js`)에서 WGS84 `lat`/`lng`로만 정규화한 뒤 `normalizeCharger`가 지도·bounds에 넘긴다. `?evDiag=pipeline`으로 페이지별 raw/normalize/bounds 통과 개수, `?evDiag=raw20`으로 `items` 좌표를 클러스터 없이 빨간 점으로 확인할 수 있다.
