@@ -128,6 +128,15 @@ import { StationDetailFooterActions } from './components/StationDetailContent.js
 import { MobileBottomSheet } from './components/MobileBottomSheet.jsx'
 import { MobileDetailSheetBody } from './components/MobileDetailSheetBody.jsx'
 import { MobileFilterSheet } from './components/MobileFilterSheet.jsx'
+import {
+  telemetryAppMount,
+  telemetryLocationResolved,
+  telemetryItemsReady,
+  telemetryMapLayerStations,
+  telemetryBootOverlayHidden,
+  logMapLayerStationsSummary,
+} from './dev/mapMarkerTelemetry.js'
+import { MapMarkerDomTelemetry } from './dev/MapMarkerDomTelemetry.jsx'
 
 /**
  * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
@@ -193,6 +202,10 @@ function clusterGroupedMatchesBusiNm(s, needle) {
 const MAP_ANCHOR_NEAREST_MAX_ROWS = 640
 /** 모바일: LayerGroup만 쓸 때 한 번에 올릴 마커 상한(성능) */
 const MOBILE_MAP_MARKER_CAP = 260
+/** 부트 직후 첫 페인트: 근접 순으로 이 개수만 먼저 올린 뒤 idle로 상한까지 확장 */
+const MAP_MARKER_INITIAL_PAINT_CAP = 44
+/** 적용 영역 안 raw 행이 많을 때 그룹핑 전 거리순 상한(프로그레시브 대량 items CPU 완화) */
+const MAP_GROUP_INPUT_ROW_CAP = 2000
 
 /** 부트 중 지도·마커 대기 시 로딩 문구 순환 */
 const BOOT_MAP_WAIT_MESSAGES = [
@@ -407,6 +420,8 @@ function App() {
   const [, setTotalCount] = useState(null)
   const [bootOverlayOpen, setBootOverlayOpen] = useState(true)
   const [awaitingInitialMapPaint, setAwaitingInitialMapPaint] = useState(false)
+  /** 부트 직후 짧게 마커 상한을 낮춘 뒤 idle에서 `MOBILE_MAP_MARKER_CAP`까지 확장 */
+  const [markerPaintPhase, setMarkerPaintPhase] = useState(/** @type {'initial' | 'full'} */ ('full'))
   const [bootProgress, setBootProgress] = useState(0)
   const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
   const bootMapPaintedRef = useRef(false)
@@ -478,6 +493,10 @@ function App() {
 
   const openMobileListSheetToHalf = useCallback(() => {
     setMobileSheetSnap('half')
+  }, [])
+
+  useEffect(() => {
+    telemetryAppMount()
   }, [])
 
   useEffect(() => {
@@ -616,6 +635,16 @@ function App() {
     detailStationRef.current = s
     setMobileSheetSnap('half')
   }, [mobileSheetSnap])
+
+  const openDetailPreserveRef = useRef(null)
+  openDetailPreserveRef.current = openDetailPreserve
+
+  const mapLayerStationsByIdRef = useRef(/** @type {Map<string, unknown>} */ (new Map()))
+  const onMapMarkerPickId = useCallback((id) => {
+    const s = mapLayerStationsByIdRef.current.get(id)
+    const fn = openDetailPreserveRef.current
+    if (s && fn) fn(s)
+  }, [])
 
   const handleCloseDetail = useCallback(() => {
     if (detailHistoryPushed.current) {
@@ -812,6 +841,7 @@ function App() {
       const pos = await getBootstrapGeolocationPosition()
       await pLoc
       if (cancelled) return
+      telemetryLocationResolved(pos.usedGeo)
 
       setBootProgress(25)
       setBootStageMessage(
@@ -1280,10 +1310,10 @@ function App() {
   }, [items, leafletInitial.center])
 
   /**
-   * 지도 마커: 적용된 화면 영역(`appliedMapBounds` — 부트 시 스냅 또는「이 지역 검색」) 안만.
-   * 지도를 움직여도 마커는 버튼 탭 전까지 갱신되지 않음.
+   * 지도 마커(선택 제외): 적용 영역 + 그룹핑 입력 행 상한 — `items` 대량 증가 시 CPU 제한.
+   * 선택 병합은 아래 별도 메모로 분리해 탭 시 전체 그룹 재계산을 피함.
    */
-  const groupedAllStationsForMap = useMemo(() => {
+  const groupedAllStationsForMapBase = useMemo(() => {
     if (!appliedMapBoundsPadded) return []
     let validItems = items.filter((r) => {
       const la = Number(r.lat)
@@ -1295,12 +1325,25 @@ function App() {
       [appliedMapBoundsPadded.northEast.lat, appliedMapBoundsPadded.northEast.lng],
     )
     validItems = validItems.filter((r) => b.contains([r.lat, r.lng]))
-    const grouped = groupChargerRowsByPlaceMapLite(validItems)
+    if (validItems.length > MAP_GROUP_INPUT_ROW_CAP) {
+      const centerLat = (appliedMapBoundsPadded.southWest.lat + appliedMapBoundsPadded.northEast.lat) / 2
+      const centerLng = (appliedMapBoundsPadded.southWest.lng + appliedMapBoundsPadded.northEast.lng) / 2
+      validItems = [...validItems]
+        .map((r) => ({ r, d: haversineDistanceKm(r.lat, r.lng, centerLat, centerLng) }))
+        .sort((a, b) => a.d - b.d)
+        .slice(0, MAP_GROUP_INPUT_ROW_CAP)
+        .map(({ r }) => r)
+    }
+    return groupChargerRowsByPlaceMapLite(validItems)
+  }, [items, appliedMapBoundsPadded])
+
+  const groupedAllStationsForMap = useMemo(() => {
+    const grouped = groupedAllStationsForMapBase
     const sel = mapSelectedStation
     if (!sel) return grouped
     if (grouped.some((s) => s.id === sel.id)) return grouped
     return [sel, ...grouped]
-  }, [items, mapSelectedStation, appliedMapBoundsPadded])
+  }, [groupedAllStationsForMapBase, mapSelectedStation])
 
   /**
    * 지도 마커 소스: 평소는 적용 영역만. 부트 중 applied 아직 없으면 앵커 근처만 임시 표시.
@@ -1315,7 +1358,8 @@ function App() {
   }, [awaitingInitialMapPaint, groupedAllStationsForMap, mapAnchorStations])
 
   const mapLayerStations = useMemo(() => {
-    const cap = MOBILE_MAP_MARKER_CAP
+    const cap =
+      markerPaintPhase === 'initial' ? MAP_MARKER_INITIAL_PAINT_CAP : MOBILE_MAP_MARKER_CAP
     const src = mapStations
     if (src.length <= cap) return src
     const { lat, lng } = mapViewCenterForMarkers
@@ -1324,7 +1368,71 @@ function App() {
       .sort((a, b) => a.d - b.d)
       .slice(0, cap)
       .map(({ s }) => s)
-  }, [mapStations, mapViewCenterForMarkers])
+  }, [mapStations, mapViewCenterForMarkers, markerPaintPhase])
+
+  const prevAwaitingMapPaintRef = useRef(awaitingInitialMapPaint)
+  useEffect(() => {
+    const was = prevAwaitingMapPaintRef.current
+    prevAwaitingMapPaintRef.current = awaitingInitialMapPaint
+    if (was && !awaitingInitialMapPaint) {
+      setMarkerPaintPhase('initial')
+      let cancelled = false
+      const done = () => {
+        if (!cancelled) setMarkerPaintPhase('full')
+      }
+      let idleId = null
+      let timeoutId = null
+      if (typeof requestIdleCallback === 'function') {
+        idleId = requestIdleCallback(done, { timeout: 280 })
+      } else {
+        timeoutId = window.setTimeout(done, 120)
+      }
+      return () => {
+        cancelled = true
+        if (idleId != null && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleId)
+        if (timeoutId != null) window.clearTimeout(timeoutId)
+      }
+    }
+    return undefined
+  }, [awaitingInitialMapPaint])
+
+  const appliedBoundsApplyCountRef = useRef(0)
+  useEffect(() => {
+    if (!appliedMapBounds) return
+    appliedBoundsApplyCountRef.current += 1
+    if (appliedBoundsApplyCountRef.current > 1) setMarkerPaintPhase('full')
+  }, [appliedMapBounds])
+
+  const prevMapLayerLenRef = useRef(-1)
+  useEffect(() => {
+    telemetryMapLayerStations(mapLayerStations.length, prevMapLayerLenRef.current)
+    prevMapLayerLenRef.current = mapLayerStations.length
+  }, [mapLayerStations])
+
+  const itemsReadyLoggedRef = useRef(false)
+  useEffect(() => {
+    if (items.length > 0 && !itemsReadyLoggedRef.current) {
+      itemsReadyLoggedRef.current = true
+      telemetryItemsReady(items.length)
+    }
+  }, [items.length])
+
+  useEffect(() => {
+    const m = new Map()
+    for (const s of mapLayerStations) {
+      m.set(s.id, s)
+    }
+    mapLayerStationsByIdRef.current = m
+  }, [mapLayerStations])
+
+  const prevBootOpenRef = useRef(bootOverlayOpen)
+  useEffect(() => {
+    if (prevBootOpenRef.current && !bootOverlayOpen) {
+      telemetryBootOverlayHidden()
+      logMapLayerStationsSummary()
+    }
+    prevBootOpenRef.current = bootOverlayOpen
+  }, [bootOverlayOpen])
 
   const mapBootDiagPrevAwaitingRef = useRef(false)
   useEffect(() => {
@@ -2162,6 +2270,7 @@ function App() {
           >
             <MapCenterTracker setMapCenter={setMapCenter} />
             <MapBoundsTracker setMapBounds={setLiveMapBounds} syncRef={liveMapBoundsRef} />
+            {import.meta.env.DEV ? <MapMarkerDomTelemetry /> : null}
             <MapBootMarkerReady
               active={awaitingInitialMapPaint}
               center={leafletInitial.center}
@@ -2186,7 +2295,7 @@ function App() {
             <EvStationMapLayer
               stations={mapLayerStations}
               variant="lite"
-              onDetailClick={openDetailPreserve}
+              onDetailClickById={onMapMarkerPickId}
               onClusterTap={handleClusterStationsTap}
               selectedId={mapSelectedStation?.id}
               isMobile={isMobile}
