@@ -9,8 +9,8 @@
   justify-content: center;
   pointer-events: auto;
   background: var(--ev-search-area-dim, rgba(15, 23, 42, 0.22));
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .ev-map-search-loading-panel {
@@ -32,35 +32,36 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  height: 40px;
-  width: 120px;
+  height: 44px;
+  width: 76px;
 }
 
 .ev-map-search-bolt {
   position: absolute;
   color: var(--ev-search-area-bolt, #2563eb);
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.15));
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.12));
   will-change: transform, opacity;
 }
 
+/* 중앙 메인 — 좌우는 더 가깝게 모아 한 덩어리로 읽히게 */
 .ev-map-search-bolt--1 {
   left: 50%;
-  margin-left: -14px;
-  font-size: 28px !important;
+  margin-left: -16px;
+  font-size: 30px !important;
   animation: ev-search-bolt-drop-1 0.85s ease-in-out infinite;
 }
 
 .ev-map-search-bolt--2 {
   left: 50%;
-  margin-left: -38px;
-  font-size: 22px !important;
+  margin-left: -30px;
+  font-size: 21px !important;
   animation: ev-search-bolt-drop-2 0.85s ease-in-out infinite;
 }
 
 .ev-map-search-bolt--3 {
   left: 50%;
-  margin-left: 10px;
-  font-size: 19px !important;
+  margin-left: 4px;
+  font-size: 18px !important;
   animation: ev-search-bolt-drop-3 0.85s ease-in-out infinite;
 }
 

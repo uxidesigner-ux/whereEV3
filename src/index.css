@@ -442,53 +442,46 @@ code {
   background: var(--code-bg);
 }
 
-/* 부트 로딩: EV 실루엣 이동 (가벼운 transform) */
-@keyframes ev-boot-bounce-x {
+/* 부트 로딩: 정면 EV — 방지턱 통과 느낌(피치 + 수직, transform-origin 하단 중앙) */
+@keyframes ev-boot-suspension {
   0%,
   100% {
-    transform: translateX(0) translateY(0);
+    transform: translateY(0) rotate(0deg);
   }
-  12% {
-    transform: translateX(18px) translateY(-3px);
+  14% {
+    transform: translateY(-3px) rotate(-2.4deg);
   }
-  25% {
-    transform: translateX(42px) translateY(0);
+  28% {
+    transform: translateY(-6px) rotate(-3.1deg);
   }
-  37% {
-    transform: translateX(64px) translateY(-2px);
+  42% {
+    transform: translateY(-4px) rotate(0.9deg);
   }
-  50% {
-    transform: translateX(88px) translateY(0);
+  56% {
+    transform: translateY(-1px) rotate(1.1deg);
   }
-  62% {
-    transform: translateX(64px) translateY(-3px);
+  70% {
+    transform: translateY(0) rotate(0deg);
   }
-  75% {
-    transform: translateX(38px) translateY(0);
+  82% {
+    transform: translateY(-1px) rotate(-0.35deg);
   }
-  87% {
-    transform: translateX(14px) translateY(-2px);
+  92% {
+    transform: translateY(0) rotate(0deg);
   }
 }
 
-.ev-boot-car--static .ev-boot-car__vehicle,
-.ev-boot-car--static .ev-boot-car__bolt {
+.ev-boot-car--static .ev-boot-car__body {
   animation: none !important;
 }
 
-.ev-boot-car__vehicle {
-  animation: ev-boot-bounce-x 2.8s ease-in-out infinite;
+.ev-boot-car__body {
+  animation: ev-boot-suspension 2.15s cubic-bezier(0.45, 0, 0.25, 1) infinite;
   will-change: transform;
 }
 
-.ev-boot-car__bolt {
-  animation: ev-boot-bounce-x 2.8s ease-in-out infinite;
-  animation-delay: 0.05s;
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .ev-boot-car__vehicle,
-  .ev-boot-car__bolt {
+  .ev-boot-car__body {
     animation: none !important;
   }
 }

@@ -2876,28 +2876,68 @@ function App() {
               </Typography>
             ) : (
               <>
-              <BootEvCarAnimation reduceMotion={bootReduceMotion} />
-              <Fade
-                in
-                timeout={bootReduceMotion ? 0 : 320}
-                key={bootMessageIndex}
-              >
-                <Typography
-                  variant="body2"
-                  color="text.secondary"
-                  sx={{
-                    fontWeight: 600,
-                    lineHeight: 1.45,
-                    px: 0.75,
-                    minHeight: '3.2em',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
-                >
-                  {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
-                </Typography>
-              </Fade>
+                <BootEvCarAnimation reduceMotion={bootReduceMotion} />
+                {bootLinearIndeterminate ? (
+                  <Typography
+                    component="div"
+                    color="text.secondary"
+                    sx={{
+                      fontWeight: 700,
+                      fontSize: '1.35rem',
+                      lineHeight: 1.2,
+                      letterSpacing: '-0.02em',
+                      mt: -0.25,
+                    }}
+                  >
+                    진행 중…
+                  </Typography>
+                ) : (
+                  <Typography
+                    component="div"
+                    color="text.primary"
+                    sx={{
+                      fontWeight: 800,
+                      fontSize: { xs: '3.125rem', sm: '3.5rem' },
+                      lineHeight: 1,
+                      letterSpacing: '-0.05em',
+                      fontVariantNumeric: 'tabular-nums',
+                      mt: -0.5,
+                      userSelect: 'none',
+                    }}
+                  >
+                    {bootPct}
+                    <Typography
+                      component="span"
+                      sx={{
+                        fontSize: '0.4em',
+                        fontWeight: 700,
+                        ml: 0.2,
+                        opacity: 0.82,
+                        letterSpacing: '0.04em',
+                        verticalAlign: '0.35em',
+                      }}
+                    >
+                      %
+                    </Typography>
+                  </Typography>
+                )}
+                <Fade in timeout={bootReduceMotion ? 0 : 320} key={bootMessageIndex}>
+                  <Typography
+                    variant="body2"
+                    color="text.secondary"
+                    sx={{
+                      fontWeight: 600,
+                      lineHeight: 1.45,
+                      px: 0.75,
+                      minHeight: '3.2em',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
+                  </Typography>
+                </Fade>
               </>
             )}
             <LinearProgress
@@ -2906,15 +2946,12 @@ function App() {
               sx={{
                 width: '100%',
                 maxWidth: 288,
-                height: 7,
+                height: 8,
                 borderRadius: 999,
                 bgcolor: tokens.bg.subtle,
                 '& .MuiLinearProgress-bar': { borderRadius: 999, bgcolor: tokens.blue.main },
               }}
             />
-            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600 }}>
-              {bootLinearIndeterminate || bootMarkerGateFailed ? '진행 중…' : `${bootPct}%`}
-            </Typography>
             {bootMarkerGateFailed ? (
               <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', maxWidth: 280, mt: 0.5 }}>
                 <Button
