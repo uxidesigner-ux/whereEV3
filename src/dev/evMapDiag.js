@@ -10,7 +10,7 @@
  * - light              : EvStationMapLayer 최소 원형 divIcon (브랜드 SVG 제거)
  * - nobounds1500       : MapBoundsTracker가 마운트 후 1.5초간 setState 생략
  * - track              : 그룹핑·레이어 ref churn 로그
- * - noDefer            : useDeferredValue(지도용 items) 비활성화 (대조군)
+ * - noDefer            : (레거시) 지도용 items는 항상 즉시 반영 — 플래그는 무시됨
  */
 
 export function parseEvMapDiag() {

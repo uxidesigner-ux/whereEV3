@@ -62,4 +62,6 @@ UI는 **기본 row(실데이터 필드) + 표시용 `stat` + `getChargerSessionF
 - **`fetchEvChargers`:** 한 번에 끝까지 순회(새로고침·상세 동기 등에 사용).
 - **`fetchEvChargersProgressive`:** 첫 페이지 적재 직후 UI `loading` 해제 → 이후 페이지는 백그라운드에서 `setItems` 누적. 언마운트 시 `AbortSignal`로 이후 요청 중단.
 - **지도 클러스터:** 현재 **디바운스된 지도 bounds + 패딩** 안에 있는 충전소만 마커로 올려 연산량을 줄임(서버는 여전히 전국 페이지를 받되, 클라이언트 표시는 뷰포트 중심).
+- **`fetchEvChargersSummaryForBounds` + `VIEWPORT_SUMMARY_FETCH_PRESETS`:** 부트/새로고침(`boot`)은 페이지 스캔 상한을 조금 더 크게, **이 지역 검색·칩·검색 fit** 등 사용자 입력(`interactive`)은 상한을 낮춰 응답을 빠르게 한다. API가 bbox를 지원하지 않는 한 일부 뷰포트에서 행이 덜 잡힐 수 있다.
+- **DEV 계측:** 콘솔 `[evViewportSummary]` 로그 및 `viewportSummaryMetrics`(abort/stale/적용 횟수) — `src/dev/viewportSummaryTelemetry.js`.
 - **시트·KPI:** `filteredItems` → `appliedMapBounds` 기준 `itemsInScope` → 목록 그룹 파이프라인은 **로드된 `items` 전체** 기준(변경 없음).

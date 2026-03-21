@@ -1,5 +1,5 @@
 import 'leaflet/dist/leaflet.css'
-import { useMemo, useState, useEffect, useRef, useCallback, useDeferredValue } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
 import {
   Box,
   Typography,
@@ -28,6 +28,7 @@ import {
 import {
   fetchEvChargersSummaryForBounds,
   filterDevMockRowsToBounds,
+  summaryPresetForReason,
 } from './api/evViewportSummary.js'
 import { fetchDetailRowsForStatId, clearDetailRowsCache } from './api/evPlaceDetail.js'
 import { getDevMockEvChargers } from './dev/mockEvChargers.js'
@@ -150,6 +151,13 @@ import {
   diagIconResolveCountRef,
   evMapDiagHarnessBootMarkerCount,
 } from './dev/evMapDiag.js'
+import {
+  viewportSummaryTelemetry,
+  viewportSummaryMarkFetchStart,
+  viewportSummaryMarkAbort,
+  viewportSummaryMarkStale,
+  viewportSummaryMarkApplied,
+} from './dev/viewportSummaryTelemetry.js'
 import { MapLeafletExperiments } from './dev/MapLeafletExperiments.jsx'
 
 /**
@@ -216,8 +224,6 @@ function clusterGroupedMatchesBusiNm(s, needle) {
 const MAP_ANCHOR_NEAREST_MAX_ROWS = 640
 /** 모바일: LayerGroup만 쓸 때 한 번에 올릴 마커 상한(성능) */
 const MOBILE_MAP_MARKER_CAP = 260
-/** 부트 직후 첫 페인트: 근접 순으로 이 개수만 먼저 올린 뒤 idle로 상한까지 확장 */
-const MAP_MARKER_INITIAL_PAINT_CAP = 44
 /** 적용 영역 안 raw 행이 많을 때 그룹핑 전 거리순 상한(프로그레시브 대량 items CPU 완화) */
 const MAP_GROUP_INPUT_ROW_CAP = 2000
 
@@ -526,8 +532,6 @@ function App() {
   const [, setTotalCount] = useState(null)
   const [bootOverlayOpen, setBootOverlayOpen] = useState(true)
   const [awaitingInitialMapPaint, setAwaitingInitialMapPaint] = useState(false)
-  /** 부트 직후 짧게 마커 상한을 낮춘 뒤 idle에서 `MOBILE_MAP_MARKER_CAP`까지 확장 */
-  const [markerPaintPhase, setMarkerPaintPhase] = useState(/** @type {'initial' | 'full'} */ ('full'))
   const [bootProgress, setBootProgress] = useState(0)
   const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
   const bootMapPaintedRef = useRef(false)
@@ -545,11 +549,8 @@ function App() {
     () => evMapDiagHarnessBootMarkerCount(evMapDiag),
     [evMapDiag],
   )
-  /** 목록·필터는 즉시 `items`, 지도 그룹핑만 낮은 우선순위로 따라가 progressive churn 완화 */
-  const itemsDeferredForMap = useDeferredValue(items)
-  /** 부트 오버레이가 떠 있는 동안은 지도용 입력을 지연 없이 유지(첫 마커·bounds 반영). 이후 deferred로 churn 완화 */
-  const itemsForMapMarkers =
-    evMapDiag.noDefer || bootOverlayOpen ? items : itemsDeferredForMap
+  /** 지도·목록 동일 summary 소스 — 지도만 deferred 하면 첫 페인트가 밀리고 부트 타이밍이 꼬여 제거함 */
+  const itemsForMapMarkers = items
   const [filterBusiNm, setFilterBusiNm] = useState('')
   const [filterSpeed, setFilterSpeed] = useState('') // '' | '급속' | '완속'
   const [filterCtprvnCd, setFilterCtprvnCd] = useState('')
@@ -937,6 +938,11 @@ function App() {
   /** 「이 지역 검색」summary 전용 로딩(초기 부트 오버레이와 분리) */
   const [mapSearchAreaLoading, setMapSearchAreaLoading] = useState(false)
   const summaryFetchAbortRef = useRef(null)
+  /** 완료 시점에 더 최신 요청이 있으면 setItems 등 무시 */
+  const summaryFetchGenerationRef = useRef(0)
+  const runViewportSummaryFetchRef = useRef(
+    /** @returns {Promise<{ ok: boolean, rows?: object[], rowCount?: number }>} */ async () => ({ ok: false }),
+  )
   useEffect(
     () => () => {
       summaryFetchAbortRef.current?.abort()
@@ -963,72 +969,117 @@ function App() {
     setBootStageMessage('준비했어요')
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
+        viewportSummaryTelemetry('boot', 'boot-overlay-off', {})
         setAwaitingInitialMapPaint(false)
         setBootOverlayOpen(false)
       })
     })
   }, [])
 
+  /**
+   * viewport summary 단일 진입점 (boot / 이 지역 검색 / 칩 / 검색 fit / 새로고침).
+   * @param {{
+   *   reason: 'boot' | 'search-area' | 'suggestion-chip' | 'search' | 'refresh',
+   *   viewport: { southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } } | null,
+   *   showLoading?: boolean,
+   *   signal?: AbortSignal,
+   * }} args
+   * @returns {Promise<{ ok: boolean, rows?: object[], rowCount?: number }>}
+   */
   const runViewportSummaryFetch = useCallback(
-    /**
-     * viewport 기준 summary(페이지 순회 + 클라이언트 bbox 필터). applied bounds는 호출측에서 맞춤.
-     * @param {{ southWest: { lat: number, lng: number }, northEast: { lat: number, lng: number } }} boundsLiteral
-     */
-    async (boundsLiteral, { overlay = false } = {}) => {
-      if (!boundsLiteral || !canRefetchEv) return
-      summaryFetchAbortRef.current?.abort()
-      const ac = new AbortController()
-      summaryFetchAbortRef.current = ac
-      if (overlay) setMapSearchAreaLoading(true)
-      setApiError(null)
-      try {
-        const { rows } = await fetchEvChargersSummaryForBounds(boundsLiteral, { signal: ac.signal })
-        if (ac.signal.aborted) return
-        setItems(rows)
-        setTotalCount(rows.length)
-        setLastEvFetchAt(new Date().toISOString())
-        clearDetailRowsCache()
-      } catch (err) {
-        if (ac.signal.aborted) return
-        setApiError(err.message || '데이터를 불러오지 못했습니다.')
-      } finally {
-        if (overlay) setMapSearchAreaLoading(false)
+    async ({ reason, viewport, showLoading = false, signal: externalSignal }) => {
+      if (!viewport) {
+        viewportSummaryTelemetry(reason, 'skip-no-viewport', {})
+        return { ok: false }
       }
+      const gen = (summaryFetchGenerationRef.current += 1)
+      viewportSummaryMarkFetchStart()
+      viewportSummaryTelemetry(reason, 'fetch-start', { gen })
+
+      let signal = externalSignal
+      if (!signal) {
+        summaryFetchAbortRef.current?.abort()
+        const ac = new AbortController()
+        summaryFetchAbortRef.current = ac
+        signal = ac.signal
+      }
+
+      if (showLoading) {
+        setMapSearchAreaLoading(true)
+        viewportSummaryTelemetry(reason, 'loading-on', { gen })
+      }
+      setApiError(null)
+      const t0 = performance.now()
+
+      try {
+        if (canRefetchEv) {
+          const preset = summaryPresetForReason(reason)
+          const { rows, pagesScanned } = await fetchEvChargersSummaryForBounds(viewport, {
+            ...preset,
+            signal,
+          })
+          if (signal.aborted) {
+            viewportSummaryMarkAbort()
+            viewportSummaryTelemetry(reason, 'fetch-aborted', { gen })
+            return { ok: false }
+          }
+          if (summaryFetchGenerationRef.current !== gen) {
+            viewportSummaryMarkStale()
+            viewportSummaryTelemetry(reason, 'stale-drop', { gen, current: summaryFetchGenerationRef.current })
+            return { ok: false }
+          }
+          setItems(rows)
+          setTotalCount(rows.length)
+          setLastEvFetchAt(new Date().toISOString())
+          clearDetailRowsCache()
+          viewportSummaryMarkApplied()
+          viewportSummaryTelemetry(reason, 'state-applied', {
+            gen,
+            n: rows.length,
+            pages: pagesScanned,
+            ms: Math.round(performance.now() - t0),
+          })
+          return { ok: true, rows, rowCount: rows.length }
+        }
+      } catch (err) {
+        if (!signal.aborted && summaryFetchGenerationRef.current === gen) {
+          setApiError(err.message || '데이터를 불러오지 못했습니다.')
+          viewportSummaryTelemetry(reason, 'error', { gen, msg: String(err?.message || err) })
+        }
+        return { ok: false }
+      } finally {
+        if (showLoading) {
+          setMapSearchAreaLoading(false)
+          viewportSummaryTelemetry(reason, 'loading-off', { gen })
+        }
+      }
+      return { ok: false }
     },
     [canRefetchEv],
   )
 
-  /** @param {'boot' | 'search-area' | 'suggestion-chip' | 'search' | 'refresh'} reason */
-  const fetchSummaryForViewport = useCallback(
-    async (reason, boundsLiteral, opts) => {
-      if (import.meta.env.DEV && reason) {
-        // eslint-disable-next-line no-console -- viewport summary 진입점 추적
-        console.debug(`[whereEV3] viewport summary (${reason})`, boundsLiteral)
-      }
-      return runViewportSummaryFetch(boundsLiteral, opts)
-    },
-    [runViewportSummaryFetch],
-  )
+  runViewportSummaryFetchRef.current = runViewportSummaryFetch
 
   const onSearchViewportBoundsApplied = useCallback(
     (boundsLiteral) => {
       if (!boundsLiteral) return
       if (canRefetchEv) {
-        void fetchSummaryForViewport('search', boundsLiteral, { overlay: false })
+        void runViewportSummaryFetch({ reason: 'search', viewport: boundsLiteral, showLoading: false })
       } else if (import.meta.env.DEV) {
         const mock = getDevMockEvChargers()
         setItems(filterDevMockRowsToBounds(mock, boundsLiteral))
       }
     },
-    [canRefetchEv, fetchSummaryForViewport],
+    [canRefetchEv, runViewportSummaryFetch],
   )
 
   /** 「이 지역 검색」: viewport summary 재조회 + 적용 영역 동기화 */
   const applySearchAreaFromMap = useCallback(async () => {
     const b = liveMapBoundsRef.current
     if (!b || mapSearchAreaLoading) return
+    viewportSummaryTelemetry('search-area', 'button-click', {})
     if (canRefetchEv) {
-      await fetchSummaryForViewport('search-area', b, { overlay: true })
+      await runViewportSummaryFetch({ reason: 'search-area', viewport: b, showLoading: true })
     } else if (import.meta.env.DEV) {
       const mock = getDevMockEvChargers()
       setItems(filterDevMockRowsToBounds(mock, b))
@@ -1042,7 +1093,7 @@ function App() {
     setMapSelectedStation(null)
     setDetailStation(null)
     detailStationRef.current = null
-  }, [openMobileListSheetToHalf, canRefetchEv, fetchSummaryForViewport, mapSearchAreaLoading])
+  }, [openMobileListSheetToHalf, canRefetchEv, runViewportSummaryFetch, mapSearchAreaLoading])
 
   const handleChipViewportJumpComplete = useCallback(
     (boundsLiteral) => {
@@ -1050,6 +1101,7 @@ function App() {
       const meta = chipJumpPresetRef.current
       chipJumpPresetRef.current = null
       if (!boundsLiteral || !meta) return
+      viewportSummaryTelemetry('suggestion-chip', 'map-bounds-ready', { label: meta.label })
       setAppliedMapBounds(boundsLiteral)
       setClusterBrowseGrouped(null)
       setConfirmedMobileSearchQuery(meta.label)
@@ -1065,7 +1117,11 @@ function App() {
       setDetailStation(null)
       detailStationRef.current = null
       if (canRefetchEv) {
-        void fetchSummaryForViewport('suggestion-chip', boundsLiteral, { overlay: false })
+        void runViewportSummaryFetch({
+          reason: 'suggestion-chip',
+          viewport: boundsLiteral,
+          showLoading: false,
+        })
       } else if (import.meta.env.DEV) {
         const mock = getDevMockEvChargers()
         const scoped = filterDevMockRowsToBounds(mock, boundsLiteral)
@@ -1075,7 +1131,7 @@ function App() {
         setLastEvFetchAt(new Date().toISOString())
       }
     },
-    [canRefetchEv, fetchSummaryForViewport],
+    [canRefetchEv, runViewportSummaryFetch],
   )
 
   const handleMobileQuickSearchPick = useCallback(
@@ -1083,6 +1139,7 @@ function App() {
       const raw = text.trim()
       const preset = MOBILE_QUICK_SEARCH_PLACE_PRESETS[raw]
       if (preset) {
+        viewportSummaryTelemetry('suggestion-chip', 'chip-click', { label: raw })
         setSearchInput(text)
         setSearchQuery(text)
         setConfirmedMobileSearchQuery(raw)
@@ -1117,7 +1174,9 @@ function App() {
   }, [])
 
   useEffect(() => {
+    summaryFetchAbortRef.current?.abort()
     const ac = new AbortController()
+    summaryFetchAbortRef.current = ac
     let cancelled = false
 
     ;(async () => {
@@ -1149,6 +1208,7 @@ function App() {
         await easeBootProgress(setBootProgress, 25, 72, 480)
         if (cancelled) return
         if (import.meta.env.DEV) {
+          viewportSummaryTelemetry('boot', 'mock-no-api-key', {})
           const mock = getDevMockEvChargers()
           const scoped = filterDevMockRowsToBounds(mock, initialViewportB)
           setApiError(null)
@@ -1157,6 +1217,7 @@ function App() {
           setItems(scoped)
           setTotalCount(scoped.length)
           setLastEvFetchAt(new Date().toISOString())
+          viewportSummaryTelemetry('boot', 'mock-applied', { n: scoped.length })
           console.info(
             `[whereEV3] API 키 없음 — viewport 요약용 mock ${scoped.length}건(전체 ${mock.length}건 중). 실제 Safemap은 .env.local의 VITE_SAFEMAP_SERVICE_KEY 설정 후 재시작하세요. (docs/DATA-SOURCES.md)`
           )
@@ -1174,27 +1235,35 @@ function App() {
 
       setApiError(null)
       setItems([])
-      const pFetch = easeBootProgress(setBootProgress, 25, 72, 3200)
+      viewportSummaryTelemetry('boot', 'fetch-and-min-splash', {})
+      const minSplash = easeBootProgress(setBootProgress, 25, 72, 420)
+      let fetchResult = { ok: false }
       try {
-        const { rows } = await fetchEvChargersSummaryForBounds(initialViewportB, { signal: ac.signal })
-        if (!cancelled && !ac.signal.aborted) {
-          suppressBootMapBoundsSnapshotRef.current = true
-          setAppliedMapBounds(initialViewportB)
-          setItems(rows)
-          setTotalCount(rows.length)
-          setLastEvFetchAt(new Date().toISOString())
-          clearDetailRowsCache()
-        }
+        const [, result] = await Promise.all([
+          minSplash,
+          runViewportSummaryFetchRef.current({
+            reason: 'boot',
+            viewport: initialViewportB,
+            showLoading: false,
+            signal: ac.signal,
+          }),
+        ])
+        fetchResult = result || { ok: false }
       } catch (err) {
         if (!cancelled) setApiError(err.message || '데이터를 불러오지 못했습니다.')
       }
-      await pFetch
-      if (cancelled) return
+      if (cancelled || ac.signal.aborted) return
+
+      if (fetchResult.ok) {
+        suppressBootMapBoundsSnapshotRef.current = true
+        setAppliedMapBounds(initialViewportB)
+      }
 
       setBootStageMessage('지도와 충전소 마커를 표시하는 중이에요')
-      await easeBootProgress(setBootProgress, 72, 82, 560)
+      await easeBootProgress(setBootProgress, 72, 82, 280)
       if (cancelled) return
       setAwaitingInitialMapPaint(true)
+      viewportSummaryTelemetry('boot', 'awaiting-map-paint', {})
     })()
 
     return () => {
@@ -1208,17 +1277,11 @@ function App() {
     const b = appliedMapBoundsRef.current || liveMapBoundsRef.current
     if (!b) return
     setDetailRefreshing(true)
-    setApiError(null)
-    summaryFetchAbortRef.current?.abort()
-    const ac = new AbortController()
-    summaryFetchAbortRef.current = ac
+    viewportSummaryTelemetry('refresh', 'start', {})
     try {
-      const { rows: list } = await fetchEvChargersSummaryForBounds(b, { signal: ac.signal })
-      if (ac.signal.aborted) return
-      setItems(list)
-      setTotalCount(list.length)
-      setLastEvFetchAt(new Date().toISOString())
-      clearDetailRowsCache()
+      const result = await runViewportSummaryFetch({ reason: 'refresh', viewport: b, showLoading: false })
+      if (!result?.ok || !Array.isArray(result.rows)) return
+      const list = result.rows
       const prev = detailStationRef.current
       if (prev) {
         const matched = rowsMatchingDetailStation(prev, list)
@@ -1254,8 +1317,9 @@ function App() {
       setApiError(err.message || '데이터를 불러오지 못했습니다.')
     } finally {
       setDetailRefreshing(false)
+      viewportSummaryTelemetry('refresh', 'done', {})
     }
-  }, [canRefetchEv])
+  }, [canRefetchEv, runViewportSummaryFetch])
 
   const itemsMatchingChipsOnly = useMemo(() => {
     return items.filter((s) => {
@@ -1310,7 +1374,7 @@ function App() {
       const b = squareBoundsLiteralAroundCenter(center.lat, center.lng, Math.max(padKm, 1))
       setAppliedMapBounds(b)
       if (canRefetchEv) {
-        void fetchSummaryForViewport('search', b, { overlay: false })
+        void runViewportSummaryFetch({ reason: 'search', viewport: b, showLoading: false })
       } else if (import.meta.env.DEV) {
         setItems(filterDevMockRowsToBounds(getDevMockEvChargers(), b))
       }
@@ -1657,8 +1721,7 @@ function App() {
   }, [awaitingInitialMapPaint, groupedAllStationsForMap, mapAnchorStations])
 
   const mapLayerStationsComputed = useMemo(() => {
-    const cap =
-      markerPaintPhase === 'initial' ? MAP_MARKER_INITIAL_PAINT_CAP : MOBILE_MAP_MARKER_CAP
+    const cap = MOBILE_MAP_MARKER_CAP
     const src = mapStations
     if (src.length <= cap) return src
     const { lat, lng } = mapViewCenterForMarkers
@@ -1667,7 +1730,7 @@ function App() {
       .sort((a, b) => a.d - b.d)
       .slice(0, cap)
       .map(({ s }) => s)
-  }, [mapStations, mapViewCenterForMarkers, markerPaintPhase])
+  }, [mapStations, mapViewCenterForMarkers])
 
   const freezeSnapRef = useRef(/** @type {null | unknown[]} */ (null))
   const freezeUntilRef = useRef(0)
@@ -1725,39 +1788,6 @@ function App() {
     }
     prevMapLayerIds20Ref.current = ids20
   }, [mapLayerStations, evMapDiag.track])
-
-  const prevAwaitingMapPaintRef = useRef(awaitingInitialMapPaint)
-  useEffect(() => {
-    const was = prevAwaitingMapPaintRef.current
-    prevAwaitingMapPaintRef.current = awaitingInitialMapPaint
-    if (was && !awaitingInitialMapPaint) {
-      setMarkerPaintPhase('initial')
-      let cancelled = false
-      const done = () => {
-        if (!cancelled) setMarkerPaintPhase('full')
-      }
-      let idleId = null
-      let timeoutId = null
-      if (typeof requestIdleCallback === 'function') {
-        idleId = requestIdleCallback(done, { timeout: 280 })
-      } else {
-        timeoutId = window.setTimeout(done, 120)
-      }
-      return () => {
-        cancelled = true
-        if (idleId != null && typeof cancelIdleCallback === 'function') cancelIdleCallback(idleId)
-        if (timeoutId != null) window.clearTimeout(timeoutId)
-      }
-    }
-    return undefined
-  }, [awaitingInitialMapPaint])
-
-  const appliedBoundsApplyCountRef = useRef(0)
-  useEffect(() => {
-    if (!appliedMapBounds) return
-    appliedBoundsApplyCountRef.current += 1
-    if (appliedBoundsApplyCountRef.current > 1) setMarkerPaintPhase('full')
-  }, [appliedMapBounds])
 
   const prevMapLayerLenRef = useRef(-1)
   useEffect(() => {

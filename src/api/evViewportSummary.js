@@ -11,6 +11,24 @@ import {
   extractListFromResponse,
 } from './safemapEv.js'
 
+/**
+ * 클라이언트 bbox 필터 전용이라 페이지를 많이 돌수록 느려짐.
+ * - boot/refresh: 조금 더 많이 스캔
+ * - search-area / 칩 / 검색 fit 등 사용자 입력: 상한을 낮춰 체감 속도 우선(누락 가능성은 docs에 명시)
+ */
+export const VIEWPORT_SUMMARY_FETCH_PRESETS = {
+  boot: { maxPages: 12, maxRowsInBounds: 3500, numOfRows: 500 },
+  interactive: { maxPages: 8, maxRowsInBounds: 2200, numOfRows: 500 },
+}
+
+/**
+ * @param {'boot' | 'refresh' | 'search-area' | 'suggestion-chip' | 'search'} reason
+ */
+export function summaryPresetForReason(reason) {
+  if (reason === 'boot' || reason === 'refresh') return VIEWPORT_SUMMARY_FETCH_PRESETS.boot
+  return VIEWPORT_SUMMARY_FETCH_PRESETS.interactive
+}
+
 /** @param {import('./safemapEv.js').BoundsLiteral | null | undefined} bounds */
 export function literalBoundsContains(bounds, lat, lng) {
   if (!bounds?.southWest || !bounds?.northEast) return false
