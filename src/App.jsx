@@ -108,6 +108,7 @@ import {
   pickMobileSearchRadiusTier,
   squareBoundsLiteralAroundCenter,
 } from './utils/mobileRadiusSearch.js'
+import { MOBILE_QUICK_SEARCH_PLACE_PRESETS } from './utils/mobileQuickSearchPlacePresets.js'
 import { zoomForHorizontalSpanMeters } from './utils/mapZoomMeters.js'
 import { computeBootLeafletView, GWANGHWAMUN_FALLBACK, mapBootstrapWidthPx } from './utils/mapInitialView.js'
 import {
@@ -462,6 +463,63 @@ function LocationRipple({ userLocation }) {
   )
 }
 
+/**
+ * 퀵 검색 지명 칩: flyTo 후 getBounds()로 부모에 전달 → summary·applied 동기화.
+ * @param {{ lat: number, lng: number, zoom: number, nonce: number } | null} request
+ */
+function MapChipViewportJump({ request, onComplete }) {
+  const map = useMap()
+  const onCompleteRef = useRef(onComplete)
+  useEffect(() => {
+    onCompleteRef.current = onComplete
+  }, [onComplete])
+
+  useEffect(() => {
+    if (!request) return undefined
+    const { lat, lng, zoom } = request
+    let cancelled = false
+    let finished = false
+    const readBoundsLiteral = () => {
+      try {
+        const bb = map.getBounds()
+        return {
+          southWest: { lat: bb.getSouthWest().lat, lng: bb.getSouthWest().lng },
+          northEast: { lat: bb.getNorthEast().lat, lng: bb.getNorthEast().lng },
+        }
+      } catch {
+        return null
+      }
+    }
+    const finishOnce = () => {
+      if (cancelled || finished) return
+      finished = true
+      onCompleteRef.current(readBoundsLiteral())
+    }
+    const onMoveEnd = () => {
+      map.off('moveend', onMoveEnd)
+      finishOnce()
+    }
+    map.on('moveend', onMoveEnd)
+    try {
+      map.flyTo([lat, lng], zoom, { duration: 0.45 })
+    } catch {
+      map.off('moveend', onMoveEnd)
+      finishOnce()
+    }
+    const safety = window.setTimeout(() => {
+      map.off('moveend', onMoveEnd)
+      finishOnce()
+    }, 1200)
+    return () => {
+      cancelled = true
+      window.clearTimeout(safety)
+      map.off('moveend', onMoveEnd)
+    }
+  }, [request, map])
+
+  return null
+}
+
 function App() {
   const { tokens, colors, resolvedMode, togglePreference } = useEvTheme()
   const [items, setItems] = useState([])
@@ -473,6 +531,8 @@ function App() {
   const [bootProgress, setBootProgress] = useState(0)
   const [bootStageMessage, setBootStageMessage] = useState('시작하는 중')
   const bootMapPaintedRef = useRef(false)
+  /** 부트 summary bbox와 일치시키기: onBootMapPaintReady의 좁은 getBounds()로 applied를 덮어쓰지 않음 */
+  const suppressBootMapBoundsSnapshotRef = useRef(false)
   const [leafletInitial, setLeafletInitial] = useState(() =>
     computeBootLeafletView(GWANGHWAMUN_FALLBACK.lat, GWANGHWAMUN_FALLBACK.lng),
   )
@@ -498,6 +558,9 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchBarFocused, setSearchBarFocused] = useState(false)
   const [searchViewportFitNonce, setSearchViewportFitNonce] = useState(0)
+  /** 지명 퀵 칩: flyTo 요청(null이면 대기 없음) */
+  const [chipViewportJumpRequest, setChipViewportJumpRequest] = useState(null)
+  const chipJumpPresetRef = useRef(null)
   /** 칩/Enter로 맞춤한 직후, debounce 지역 fit 중복 방지 */
   const lastFittedSearchQueryRef = useRef('')
   const searchQuerySyncRef = useRef(searchQuery)
@@ -891,8 +954,11 @@ function App() {
   const onBootMapPaintReady = useCallback((boundsFromMap) => {
     if (bootMapPaintedRef.current) return
     bootMapPaintedRef.current = true
-    const b = boundsFromMap ?? liveMapBoundsRef.current
-    if (b) setAppliedMapBounds(b)
+    if (!suppressBootMapBoundsSnapshotRef.current) {
+      const b = boundsFromMap ?? liveMapBoundsRef.current
+      if (b) setAppliedMapBounds(b)
+    }
+    suppressBootMapBoundsSnapshotRef.current = false
     setBootProgress(100)
     setBootStageMessage('준비했어요')
     requestAnimationFrame(() => {
@@ -932,17 +998,29 @@ function App() {
     [canRefetchEv],
   )
 
+  /** @param {'boot' | 'search-area' | 'suggestion-chip' | 'search' | 'refresh'} reason */
+  const fetchSummaryForViewport = useCallback(
+    async (reason, boundsLiteral, opts) => {
+      if (import.meta.env.DEV && reason) {
+        // eslint-disable-next-line no-console -- viewport summary 진입점 추적
+        console.debug(`[whereEV3] viewport summary (${reason})`, boundsLiteral)
+      }
+      return runViewportSummaryFetch(boundsLiteral, opts)
+    },
+    [runViewportSummaryFetch],
+  )
+
   const onSearchViewportBoundsApplied = useCallback(
     (boundsLiteral) => {
       if (!boundsLiteral) return
       if (canRefetchEv) {
-        void runViewportSummaryFetch(boundsLiteral, { overlay: false })
+        void fetchSummaryForViewport('search', boundsLiteral, { overlay: false })
       } else if (import.meta.env.DEV) {
         const mock = getDevMockEvChargers()
         setItems(filterDevMockRowsToBounds(mock, boundsLiteral))
       }
     },
-    [canRefetchEv, runViewportSummaryFetch],
+    [canRefetchEv, fetchSummaryForViewport],
   )
 
   /** 「이 지역 검색」: viewport summary 재조회 + 적용 영역 동기화 */
@@ -950,7 +1028,7 @@ function App() {
     const b = liveMapBoundsRef.current
     if (!b || mapSearchAreaLoading) return
     if (canRefetchEv) {
-      await runViewportSummaryFetch(b, { overlay: true })
+      await fetchSummaryForViewport('search-area', b, { overlay: true })
     } else if (import.meta.env.DEV) {
       const mock = getDevMockEvChargers()
       setItems(filterDevMockRowsToBounds(mock, b))
@@ -964,7 +1042,69 @@ function App() {
     setMapSelectedStation(null)
     setDetailStation(null)
     detailStationRef.current = null
-  }, [openMobileListSheetToHalf, canRefetchEv, runViewportSummaryFetch, mapSearchAreaLoading])
+  }, [openMobileListSheetToHalf, canRefetchEv, fetchSummaryForViewport, mapSearchAreaLoading])
+
+  const handleChipViewportJumpComplete = useCallback(
+    (boundsLiteral) => {
+      setChipViewportJumpRequest(null)
+      const meta = chipJumpPresetRef.current
+      chipJumpPresetRef.current = null
+      if (!boundsLiteral || !meta) return
+      setAppliedMapBounds(boundsLiteral)
+      setClusterBrowseGrouped(null)
+      setConfirmedMobileSearchQuery(meta.label)
+      setSearchQuery(meta.label)
+      setSearchInput(meta.label)
+      setMobileSearchGeo({
+        center: { lat: meta.lat, lng: meta.lng },
+        radiusKm: 14,
+        widenedHint: false,
+      })
+      mapSelectedStationRef.current = null
+      setMapSelectedStation(null)
+      setDetailStation(null)
+      detailStationRef.current = null
+      if (canRefetchEv) {
+        void fetchSummaryForViewport('suggestion-chip', boundsLiteral, { overlay: false })
+      } else if (import.meta.env.DEV) {
+        const mock = getDevMockEvChargers()
+        const scoped = filterDevMockRowsToBounds(mock, boundsLiteral)
+        setApiError(null)
+        setItems(scoped)
+        setTotalCount(scoped.length)
+        setLastEvFetchAt(new Date().toISOString())
+      }
+    },
+    [canRefetchEv, fetchSummaryForViewport],
+  )
+
+  const handleMobileQuickSearchPick = useCallback(
+    (text) => {
+      const raw = text.trim()
+      const preset = MOBILE_QUICK_SEARCH_PLACE_PRESETS[raw]
+      if (preset) {
+        setSearchInput(text)
+        setSearchQuery(text)
+        setConfirmedMobileSearchQuery(raw)
+        setClusterBrowseGrouped(null)
+        mapSelectedStationRef.current = null
+        setMapSelectedStation(null)
+        setDetailStation(null)
+        detailStationRef.current = null
+        chipJumpPresetRef.current = { lat: preset.lat, lng: preset.lng, label: raw }
+        setChipViewportJumpRequest({
+          lat: preset.lat,
+          lng: preset.lng,
+          zoom: preset.zoom ?? 14,
+          nonce: Date.now(),
+        })
+        openMobileListSheetToHalf()
+        return
+      }
+      pickSearchSuggestion(text)
+    },
+    [pickSearchSuggestion, openMobileListSheetToHalf],
+  )
 
   const handleClusterStationsTap = useCallback(({ stations }) => {
     if (!Array.isArray(stations) || stations.length === 0) return
@@ -1012,6 +1152,8 @@ function App() {
           const mock = getDevMockEvChargers()
           const scoped = filterDevMockRowsToBounds(mock, initialViewportB)
           setApiError(null)
+          suppressBootMapBoundsSnapshotRef.current = true
+          setAppliedMapBounds(initialViewportB)
           setItems(scoped)
           setTotalCount(scoped.length)
           setLastEvFetchAt(new Date().toISOString())
@@ -1036,6 +1178,8 @@ function App() {
       try {
         const { rows } = await fetchEvChargersSummaryForBounds(initialViewportB, { signal: ac.signal })
         if (!cancelled && !ac.signal.aborted) {
+          suppressBootMapBoundsSnapshotRef.current = true
+          setAppliedMapBounds(initialViewportB)
           setItems(rows)
           setTotalCount(rows.length)
           setLastEvFetchAt(new Date().toISOString())
@@ -1166,7 +1310,7 @@ function App() {
       const b = squareBoundsLiteralAroundCenter(center.lat, center.lng, Math.max(padKm, 1))
       setAppliedMapBounds(b)
       if (canRefetchEv) {
-        void runViewportSummaryFetch(b, { overlay: false })
+        void fetchSummaryForViewport('search', b, { overlay: false })
       } else if (import.meta.env.DEV) {
         setItems(filterDevMockRowsToBounds(getDevMockEvChargers(), b))
       }
@@ -2468,7 +2612,7 @@ function App() {
                 <MobileMapQuickSearchChipsRail
                   variant="fullBleed"
                   activeQuickQuery={searchQuery}
-                  onSuggestionPick={pickSearchSuggestion}
+                  onSuggestionPick={handleMobileQuickSearchPick}
                 />
               ) : null}
             </Box>
@@ -2493,6 +2637,10 @@ function App() {
               setMapBounds={setLiveMapBounds}
               syncRef={liveMapBoundsRef}
               boundsQuietMs={evMapDiag.nobounds1500 ? 1500 : 0}
+            />
+            <MapChipViewportJump
+              request={chipViewportJumpRequest}
+              onComplete={handleChipViewportJumpComplete}
             />
             {import.meta.env.DEV ? <MapMarkerDomTelemetry /> : null}
             {import.meta.env.DEV ? <MapContainerMountProbe /> : null}
@@ -2544,6 +2692,19 @@ function App() {
               setLocationError={setLocationError}
               setLocationLoading={setLocationLoading}
             />
+            {!userLocation && (
+              <CircleMarker
+                center={leafletInitial.center}
+                radius={5}
+                pathOptions={{
+                  color: tokens.map.userCircle,
+                  fillColor: tokens.map.userCircle,
+                  fillOpacity: 0.4,
+                  weight: 2,
+                  opacity: 0.95,
+                }}
+              />
+            )}
             {userLocation && (
               <>
                 <Circle

@@ -10,7 +10,7 @@ import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 
 const ICON_SX = { fontSize: 16 }
 
-/** 퀵 검색: 라벨 + 의미 아이콘 */
+/** 퀵 검색: 라벨 + 의미 아이콘. 지명(강남·판교·성수·종로)은 `utils/mobileQuickSearchPlacePresets.js` 키와 동일해야 함 */
 const QUICK_SUGGESTIONS = [
   { label: '급속', Icon: FlashOn },
   { label: '완속', Icon: ElectricalServices },
