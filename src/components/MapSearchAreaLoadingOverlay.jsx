@@ -22,16 +22,16 @@ export function MapSearchAreaLoadingOverlay({
       aria-busy="true"
       style={rootStyle}
     >
-      <Box className="ev-map-search-loading-panel">
+      <Box className="ev-map-search-loading-content">
         <Box className="ev-map-search-lightnings" aria-hidden>
           <FlashOn className="ev-map-search-bolt ev-map-search-bolt--1" />
           <FlashOn className="ev-map-search-bolt ev-map-search-bolt--2" />
           <FlashOn className="ev-map-search-bolt ev-map-search-bolt--3" />
         </Box>
-        <Typography sx={{ fontWeight: 700, fontSize: '0.9375rem', lineHeight: 1.35 }}>
+        <Typography className="ev-map-search-title" component="p">
           {title}
         </Typography>
-        <Typography sx={{ fontSize: '0.75rem', color: 'text.secondary', lineHeight: 1.4 }}>
+        <Typography className="ev-map-search-subtitle" component="p">
           {subtitle}
         </Typography>
       </Box>

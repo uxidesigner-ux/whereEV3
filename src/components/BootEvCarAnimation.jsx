@@ -18,8 +18,8 @@ export function BootEvCarAnimation({ reduceMotion = false }) {
       aria-hidden="true"
       sx={{
         width: '100%',
-        maxWidth: 220,
-        height: 96,
+        maxWidth: 176,
+        height: 78,
         position: 'relative',
         mx: 'auto',
         overflow: 'visible',
@@ -31,11 +31,11 @@ export function BootEvCarAnimation({ reduceMotion = false }) {
           position: 'absolute',
           left: '8%',
           right: '8%',
-          bottom: 8,
-          height: 3,
+          bottom: 6,
+          height: 2,
           borderRadius: 999,
           bgcolor: 'action.disabledBackground',
-          opacity: 0.5,
+          opacity: 0.45,
         }}
       />
       <Box
@@ -43,10 +43,10 @@ export function BootEvCarAnimation({ reduceMotion = false }) {
         sx={{
           position: 'absolute',
           left: '50%',
-          bottom: 14,
-          width: 72,
-          height: 72,
-          marginLeft: '-36px',
+          bottom: 12,
+          width: 58,
+          height: 58,
+          marginLeft: '-29px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
@@ -58,11 +58,11 @@ export function BootEvCarAnimation({ reduceMotion = false }) {
         <Box
           component="svg"
           xmlns="http://www.w3.org/2000/svg"
-          width={72}
-          height={72}
+          width={58}
+          height={58}
           viewBox="0 0 72 72"
           fill="none"
-          sx={{ display: 'block', width: 72, height: 72 }}
+          sx={{ display: 'block', width: 58, height: 58 }}
         >
           <path
             fillRule="evenodd"

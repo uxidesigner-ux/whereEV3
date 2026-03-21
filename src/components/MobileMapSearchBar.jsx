@@ -28,9 +28,9 @@ const QUICK_SUGGESTIONS = [
   { label: '종로', Icon: LocationOn },
 ]
 
-const QUICK_CHIP_H = 42
+const QUICK_CHIP_H = 40
 const QUICK_CHIP_FONT_PX = 14
-const QUICK_CHIP_GAP_PX = 8
+const QUICK_CHIP_GAP_PX = 7
 const QUICK_ICON_TEXT_GAP_PX = 7
 const QUICK_CHIP_PAD_X = 14
 
@@ -247,7 +247,10 @@ export function MobileMapSearchBar({
                 <Chip
                   key={label}
                   icon={createElement(Icon, {
-                    sx: { ...ICON_SX, color: active ? colors.blue.deep : colors.gray[600] },
+                    sx: {
+                      ...ICON_SX,
+                      color: active ? colors.blue.deep : tokens.text.secondary,
+                    },
                     'aria-hidden': true,
                   })}
                   label={label}
@@ -258,27 +261,31 @@ export function MobileMapSearchBar({
                     height: QUICK_CHIP_H,
                     borderRadius: 9999,
                     fontSize: `${QUICK_CHIP_FONT_PX}px`,
-                    fontWeight: 600,
-                    bgcolor: active ? tokens.blue.mutedStrong : colors.gray[100],
-                    color: active ? colors.blue.deep : colors.gray[800],
-                    border: active ? `1px solid ${colors.blue.primary}` : `1px solid ${colors.gray[200]}`,
-                    boxShadow: 'none',
-                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}`,
+                    fontWeight: active ? 700 : 500,
+                    bgcolor: active ? tokens.blue.mutedStrong : tokens.bg.chipIdle,
+                    color: active ? colors.blue.deep : tokens.text.primary,
+                    border: active ? `1.5px solid ${colors.blue.primary}` : `1px solid ${tokens.border.default}`,
+                    boxShadow: active ? `0 1px 8px ${tokens.blue.glowSoft}` : 'none',
+                    opacity: 1,
+                    transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}, border-color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
                     '& .MuiChip-icon': {
                       marginLeft: '10px',
                       marginRight: `${QUICK_ICON_TEXT_GAP_PX}px`,
+                      opacity: 1,
                     },
                     '& .MuiChip-label': {
                       px: `${QUICK_CHIP_PAD_X}px`,
                       py: 0,
                       pl: 0,
+                      opacity: 1,
                     },
                     '&:hover': {
-                      bgcolor: active ? tokens.blue.muted : colors.gray[200],
-                      borderColor: active ? colors.blue.deep : colors.gray[300],
+                      bgcolor: active ? tokens.blue.mutedStrong : tokens.bg.muted,
+                      borderColor: active ? colors.blue.primary : tokens.border.strong,
+                      boxShadow: active ? `0 2px 14px ${tokens.blue.glowSoft}` : 'none',
                     },
                     '&:active': {
-                      transform: 'scale(0.98)',
+                      boxShadow: active ? `0 1px 6px ${tokens.blue.glowSoft}` : 'none',
                     },
                   }}
                 />

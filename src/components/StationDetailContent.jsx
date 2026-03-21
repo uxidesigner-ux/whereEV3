@@ -12,16 +12,6 @@ import {
 } from '../api/safemapEv.js'
 import { getChargerSessionForUi } from '../data/chargerSessionMvp.js'
 
-/** 급속/완속 보조 뱃지 — speedCategory 우선, 없으면 타입 문자열에서 추정 */
-function getSpeedBadgeLabel(row) {
-  const sc = String(row.speedCategory ?? '').trim()
-  if (sc === '급속' || sc === '완속') return sc
-  const type = String(row.displayChgerLabel ?? row.chgerTyLabel ?? '')
-  if (type.includes('급속')) return '급속'
-  if (type.includes('완속')) return '완속'
-  return null
-}
-
 function chargerRowsFromStation(station) {
   if (!station) return []
   if (Array.isArray(station.rows) && station.rows.length) {
@@ -252,27 +242,73 @@ function ChargerCard({ row, idx }) {
   const chip = chipForStat()
 
   const typeLabel = row.displayChgerLabel ?? row.chgerTyLabel ?? '—'
-  const speedBadgeLabel = getSpeedBadgeLabel(row)
 
-  const detailLabelSx = {
-    color: tokens.text.tertiary,
+  const statCellLabelSx = {
     display: 'block',
-    mb: 0.35,
-    fontSize: '0.6875rem',
+    mb: 0.5,
+    fontSize: '0.625rem',
     fontWeight: 600,
-    letterSpacing: '0.02em',
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    color: tokens.text.tertiary,
+    lineHeight: 1.2,
   }
-  const detailValueSx = {
+  const infoCellShellSx = {
+    flex: 1,
+    minWidth: 0,
+    p: 1,
+    borderRadius: `${radius.md}px`,
+    border: `1px solid ${tokens.border.strong}`,
+    bgcolor: tokens.bg.subtle,
+    boxSizing: 'border-box',
+  }
+  const valueChipSx = {
+    display: 'block',
+    width: '100%',
+    mt: 0.25,
+    px: 0.85,
+    py: 0.5,
+    borderRadius: `${radius.sm}px`,
+    bgcolor: tokens.bg.paper,
+    border: `1px solid ${tokens.border.default}`,
+    fontSize: '0.8125rem',
+    fontWeight: 600,
+    lineHeight: 1.35,
     color: tokens.text.primary,
-    ...appMobileType.body,
-    fontWeight: 500,
-    lineHeight: 1.45,
+    fontVariantNumeric: 'tabular-nums',
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    whiteSpace: 'nowrap',
+    textAlign: 'center',
+  }
+  const valueChipMultilineSx = {
+    ...valueChipSx,
+    whiteSpace: 'normal',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    wordBreak: 'break-word',
+    textAlign: 'center',
+  }
+  const statusValueSx = {
+    ...valueChipSx,
+    bgcolor: chip.sx.bgcolor,
+    color: chip.sx.color,
+    border: chip.sx.border,
+    fontWeight: chip.sx.fontWeight ?? 600,
+    fontSize: '0.75rem',
+    letterSpacing: '0.01em',
+    whiteSpace: 'normal',
+    display: '-webkit-box',
+    WebkitLineClamp: 2,
+    WebkitBoxOrient: 'vertical',
+    wordBreak: 'break-word',
   }
 
   return (
     <Box
       sx={{
-        mb: 1.5,
+        mb: 1.75,
         p: 1.5,
         borderRadius: `${radius.lg}px`,
         border: 'none',
@@ -281,81 +317,56 @@ function ChargerCard({ row, idx }) {
         transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
       }}
     >
-      <Stack
-        direction="row"
-        alignItems="center"
-        justifyContent="space-between"
-        gap={1}
-        sx={{ mb: 1, minHeight: 28 }}
+      <Typography
+        variant="subtitle2"
+        component="h3"
+        sx={{
+          ...appMobileType.chargerCardTitle,
+          color: tokens.text.primary,
+          fontWeight: 600,
+          mb: 1.125,
+          minWidth: 0,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}
       >
-        <Box sx={{ minWidth: 0, flex: 1, display: 'flex', alignItems: 'center', gap: 0.75 }}>
-          {speedBadgeLabel ? (
-            <Chip
-              label={speedBadgeLabel}
-              size="small"
-              sx={{
-                flexShrink: 0,
-                height: 22,
-                minHeight: 22,
-                fontSize: '0.6875rem',
-                fontWeight: 600,
-                letterSpacing: '0.02em',
-                bgcolor: tokens.bg.chipIdle,
-                color: tokens.text.secondary,
-                border: 'none',
-                boxShadow: 'none',
-                '& .MuiChip-label': { px: 0.85, py: 0 },
-              }}
-            />
-          ) : null}
-          <Typography
-            variant="subtitle2"
-            component="span"
-            sx={{
-              ...appMobileType.chargerCardTitle,
-              color: tokens.text.primary,
-              minWidth: 0,
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-              whiteSpace: 'nowrap',
-              display: 'block',
-            }}
-          >
-            {title}
-          </Typography>
-        </Box>
-        <Chip
-          label={chip.label}
-          size="small"
-          sx={{
-            ...chip.sx,
-            flexShrink: 0,
-            height: appMobileType.statusChip.height,
-            fontSize: appMobileType.statusChip.fontSize,
-            fontWeight: appMobileType.statusChip.fontWeight,
-            '& .MuiChip-label': { px: 1.1 },
-          }}
-        />
-      </Stack>
+        {title}
+      </Typography>
 
-      <Stack spacing={1.25} sx={{ pt: 0.75, mt: 0.25 }}>
-        <Box>
-          <Typography component="span" variant="caption" sx={detailLabelSx}>
+      <Box
+        sx={{
+          display: 'flex',
+          flexDirection: 'row',
+          alignItems: 'stretch',
+          gap: 0.75,
+        }}
+      >
+        <Box sx={infoCellShellSx}>
+          <Typography component="span" sx={statCellLabelSx}>
             커넥터
           </Typography>
-          <Typography variant="body2" sx={detailValueSx}>
+          <Typography component="span" sx={valueChipMultilineSx} title={String(typeLabel)}>
             {typeLabel}
           </Typography>
         </Box>
-        <Box>
-          <Typography component="span" variant="caption" sx={detailLabelSx}>
+        <Box sx={infoCellShellSx}>
+          <Typography component="span" sx={statCellLabelSx}>
             출력
           </Typography>
-          <Typography variant="body2" sx={{ ...detailValueSx, fontVariantNumeric: 'tabular-nums' }}>
+          <Typography component="span" sx={valueChipSx}>
             {outDisp || '—'}
           </Typography>
         </Box>
-      </Stack>
+        <Box sx={infoCellShellSx}>
+          <Typography component="span" sx={statCellLabelSx}>
+            상태
+          </Typography>
+          <Typography component="span" sx={statusValueSx}>
+            {chip.label}
+          </Typography>
+        </Box>
+      </Box>
 
       {stat === '3' && showChargeBar && (
         <Box sx={{ mt: 1.35, mb: timeLine ? 0.75 : 0 }}>

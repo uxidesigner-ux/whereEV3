@@ -4,7 +4,7 @@ import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 const SEGMENTS = 20
 
 /**
- * 부트 로딩 전용: 20칸(칸당 5%) 세그먼트 바. 높이는 기존 LinearProgress(8px)의 4배(32px).
+ * 부트 로딩 전용: 20칸(칸당 5%) 세그먼트 바. 높이 22px(부트 오버레이와 촘촘히 정렬).
  */
 export function BootSegmentedProgress({ value = 0, indeterminate = false, reduceMotion = false, sx }) {
   const { tokens } = useEvTheme()
@@ -22,10 +22,10 @@ export function BootSegmentedProgress({ value = 0, indeterminate = false, reduce
       aria-label={indeterminate ? '로딩 중' : `진행률 ${Math.round(v)}퍼센트`}
       sx={{
         display: 'flex',
-        gap: '3px',
+        gap: '2px',
         width: '100%',
-        maxWidth: 288,
-        height: 32,
+        maxWidth: 272,
+        height: 22,
         mx: 'auto',
         ...sx,
       }}
@@ -41,8 +41,8 @@ export function BootSegmentedProgress({ value = 0, indeterminate = false, reduce
             sx={{
               flex: 1,
               minWidth: 0,
-              height: 32,
-              borderRadius: '6px',
+              height: 22,
+              borderRadius: '4px',
               bgcolor: isFilled
                 ? tokens.blue.main
                 : indeterminate

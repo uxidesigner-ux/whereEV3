@@ -98,7 +98,6 @@ import {
   appMobileType,
 } from './theme/dashboardTheme.js'
 import { useEvTheme } from './theme/ThemeModeProvider.jsx'
-import { GlassPanel } from './components/GlassPanel.jsx'
 import { StationListMobile } from './components/StationListMobile.jsx'
 import { MobileMapSearchBar } from './components/MobileMapSearchBar.jsx'
 import { MobileMapQuickSearchChipsRail } from './components/MobileMapQuickSearchChipsRail.jsx'
@@ -2908,50 +2907,84 @@ function App() {
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            bgcolor: resolvedMode === 'dark' ? 'rgba(0, 0, 0, 0.48)' : 'rgba(15, 23, 42, 0.14)',
+            bgcolor: resolvedMode === 'dark' ? 'rgba(0, 0, 0, 0.55)' : 'rgba(15, 23, 42, 0.5)',
             px: 2.5,
           }}
         >
-          <GlassPanel
-            elevation="panel"
+          <Box
             sx={{
               width: '100%',
-              maxWidth: 380,
-              borderRadius: '32px',
-              p: 3,
-              pt: 3.25,
-              pb: 3.25,
+              maxWidth: 300,
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               textAlign: 'center',
-              gap: 2,
+              gap: 1,
             }}
           >
             {bootMarkerGateFailed ? (
-              <Typography variant="body2" color="text.secondary" sx={{ fontWeight: 600, lineHeight: 1.45, px: 0.75 }}>
+              <Typography
+                variant="body2"
+                sx={{
+                  fontWeight: 600,
+                  lineHeight: 1.45,
+                  px: 0.5,
+                  color: 'rgba(255,255,255,0.92)',
+                }}
+              >
                 {bootStageMessage}
               </Typography>
             ) : (
               <>
                 <BootEvCarAnimation reduceMotion={bootReduceMotion} />
-                <BootSegmentedProgress
-                  value={bootPct}
-                  indeterminate={bootLinearIndeterminate}
-                  reduceMotion={bootReduceMotion}
-                />
+                <Box
+                  sx={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.75,
+                    width: '100%',
+                    maxWidth: 272,
+                    mt: -0.25,
+                  }}
+                >
+                  <BootSegmentedProgress
+                    value={bootPct}
+                    indeterminate={bootLinearIndeterminate}
+                    reduceMotion={bootReduceMotion}
+                    sx={{ flex: 1, minWidth: 0, maxWidth: 'none', mx: 0 }}
+                  />
+                  {!bootLinearIndeterminate ? (
+                    <Typography
+                      component="span"
+                      variant="body2"
+                      sx={{
+                        flexShrink: 0,
+                        color: 'rgba(255,255,255,0.92)',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        fontVariantNumeric: 'tabular-nums',
+                        minWidth: '2.35em',
+                        textAlign: 'right',
+                        lineHeight: 1.2,
+                      }}
+                    >
+                      {bootPct}%
+                    </Typography>
+                  ) : null}
+                </Box>
                 <Fade in timeout={bootReduceMotion ? 0 : 320} key={bootMessageIndex}>
                   <Typography
                     variant="body2"
-                    color="text.secondary"
                     sx={{
                       fontWeight: 600,
                       lineHeight: 1.45,
-                      px: 0.75,
-                      minHeight: '3.2em',
+                      px: 0.5,
+                      mt: -0.125,
+                      minHeight: '2.75em',
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
+                      color: 'rgba(255,255,255,0.78)',
                     }}
                   >
                     {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
@@ -2960,10 +2993,10 @@ function App() {
               </>
             )}
             {bootMarkerGateFailed ? (
-              <BootSegmentedProgress indeterminate reduceMotion={bootReduceMotion} />
+              <BootSegmentedProgress indeterminate reduceMotion={bootReduceMotion} sx={{ maxWidth: 272, mx: 0 }} />
             ) : null}
             {bootMarkerGateFailed ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', maxWidth: 280, mt: 0.5 }}>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%', maxWidth: 280, mt: 0.25 }}>
                 <Button
                   type="button"
                   variant="contained"
@@ -2982,13 +3015,18 @@ function App() {
                     setBootOverlayOpen(false)
                     bootMapPaintedRef.current = true
                   }}
-                  sx={{ textTransform: 'none', fontWeight: 600 }}
+                  sx={{
+                    textTransform: 'none',
+                    fontWeight: 600,
+                    color: 'rgba(255,255,255,0.78)',
+                    '&:hover': { bgcolor: 'rgba(255,255,255,0.08)' },
+                  }}
                 >
                   닫고 지도만 보기
                 </Button>
               </Box>
             ) : null}
-          </GlassPanel>
+          </Box>
         </Box>
       ) : null}
       {import.meta.env.DEV && (
@@ -3294,17 +3332,15 @@ function App() {
             style={
               resolvedMode === 'dark'
                 ? {
-                    '--ev-search-area-dim': 'rgba(0,0,0,0.45)',
-                    '--ev-search-area-panel-bg': 'rgba(30,41,59,0.92)',
-                    '--ev-search-area-panel-border': 'rgba(255,255,255,0.1)',
-                    '--ev-search-area-panel-shadow': '0 12px 40px rgba(0,0,0,0.5)',
+                    '--ev-search-area-dim': 'rgba(0,0,0,0.52)',
+                    '--ev-search-area-title': 'rgba(255,255,255,0.96)',
+                    '--ev-search-area-subtitle': 'rgba(255,255,255,0.72)',
                     '--ev-search-area-bolt': colors.blue.primary,
                   }
                 : {
-                    '--ev-search-area-dim': 'rgba(255,255,255,0.3)',
-                    '--ev-search-area-panel-bg': 'rgba(255,255,255,0.94)',
-                    '--ev-search-area-panel-border': 'rgba(15,23,42,0.08)',
-                    '--ev-search-area-panel-shadow': '0 10px 36px rgba(15,23,42,0.12)',
+                    '--ev-search-area-dim': 'rgba(15,23,42,0.44)',
+                    '--ev-search-area-title': 'rgba(255,255,255,0.98)',
+                    '--ev-search-area-subtitle': 'rgba(255,255,255,0.74)',
                     '--ev-search-area-bolt': colors.blue.primary,
                   }
             }

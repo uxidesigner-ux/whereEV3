@@ -1,4 +1,4 @@
-/* 이 지역 검색 전용 — 지도 위 로딩. 라이트/다크는 부모가 CSS 변수 주입 */
+/* 이 지역 검색 전용 — 지도 위 전체 dim, 중앙 패널 없음. 라이트/다크는 CSS 변수 */
 
 .ev-map-search-loading-root {
   position: absolute;
@@ -8,110 +8,105 @@
   align-items: center;
   justify-content: center;
   pointer-events: auto;
-  background: var(--ev-search-area-dim, rgba(15, 23, 42, 0.22));
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: var(--ev-search-area-dim, rgba(15, 23, 42, 0.46));
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
 }
 
-.ev-map-search-loading-panel {
+.ev-map-search-loading-content {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 12px;
-  padding: 20px 24px;
-  border-radius: 16px;
-  max-width: min(320px, 88vw);
   text-align: center;
-  background: var(--ev-search-area-panel-bg, rgba(255, 255, 255, 0.92));
-  border: 1px solid var(--ev-search-area-panel-border, rgba(0, 0, 0, 0.08));
-  box-shadow: var(--ev-search-area-panel-shadow, 0 8px 32px rgba(0, 0, 0, 0.12));
+  gap: 6px;
+  padding: 0 18px;
+  max-width: min(300px, 90vw);
+}
+
+.ev-map-search-title {
+  margin: 0;
+  font-weight: 700;
+  font-size: 0.9375rem;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
+  color: var(--ev-search-area-title, rgba(255, 255, 255, 0.96));
+}
+
+.ev-map-search-subtitle {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--ev-search-area-subtitle, rgba(255, 255, 255, 0.72));
 }
 
 .ev-map-search-lightnings {
   position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: center;
-  height: 44px;
-  width: 76px;
+  height: 32px;
+  width: 48px;
+  margin-bottom: 2px;
 }
 
 .ev-map-search-bolt {
   position: absolute;
+  bottom: 0;
   color: var(--ev-search-area-bolt, #2563eb);
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.12));
-  will-change: transform, opacity;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.2));
+  will-change: transform;
 }
 
-/* 중앙 메인 — 좌우는 더 가깝게 모아 한 덩어리로 읽히게 */
+/* 중앙 메인 — 좌우를 좁혀 한 덩어리로 */
 .ev-map-search-bolt--1 {
   left: 50%;
-  margin-left: -16px;
-  font-size: 30px !important;
-  animation: ev-search-bolt-drop-1 0.85s ease-in-out infinite;
+  margin-left: -13px;
+  font-size: 26px !important;
+  animation: ev-search-bolt-nudge-1 1.1s ease-in-out infinite;
 }
 
 .ev-map-search-bolt--2 {
   left: 50%;
-  margin-left: -30px;
-  font-size: 21px !important;
-  animation: ev-search-bolt-drop-2 0.85s ease-in-out infinite;
+  margin-left: -22px;
+  font-size: 18px !important;
+  animation: ev-search-bolt-nudge-2 1.1s ease-in-out infinite;
 }
 
 .ev-map-search-bolt--3 {
   left: 50%;
-  margin-left: 4px;
-  font-size: 18px !important;
-  animation: ev-search-bolt-drop-3 0.85s ease-in-out infinite;
+  margin-left: 2px;
+  font-size: 16px !important;
+  animation: ev-search-bolt-nudge-3 1.1s ease-in-out infinite;
 }
 
-@keyframes ev-search-bolt-drop-1 {
-  0% {
-    transform: translateY(-14px) scale(0.88);
-    opacity: 0.35;
-  }
-  35% {
-    transform: translateY(2px) scale(1);
-    opacity: 1;
-  }
-  70%,
-  100% {
-    transform: translateY(8px) scale(0.92);
-    opacity: 0.5;
-  }
-}
-
-@keyframes ev-search-bolt-drop-2 {
+@keyframes ev-search-bolt-nudge-1 {
   0%,
-  8% {
-    transform: translateY(-12px) scale(0.85);
-    opacity: 0.25;
-  }
-  40% {
-    transform: translateY(2px) scale(1);
-    opacity: 1;
-  }
-  75%,
   100% {
-    transform: translateY(8px) scale(0.9);
-    opacity: 0.45;
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-4px);
   }
 }
 
-@keyframes ev-search-bolt-drop-3 {
+@keyframes ev-search-bolt-nudge-2 {
   0%,
-  14% {
-    transform: translateY(-10px) scale(0.82);
-    opacity: 0.2;
-  }
-  45% {
-    transform: translateY(1px) scale(1);
-    opacity: 0.95;
-  }
-  78%,
   100% {
-    transform: translateY(7px) scale(0.88);
-    opacity: 0.4;
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes ev-search-bolt-nudge-3 {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-2px);
   }
 }
 
@@ -121,6 +116,5 @@
   .ev-map-search-bolt--3 {
     animation: none;
     transform: translateY(0);
-    opacity: 0.9;
   }
 }
