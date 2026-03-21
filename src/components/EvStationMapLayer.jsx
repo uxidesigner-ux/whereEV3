@@ -1,4 +1,4 @@
-import { useCallback, useMemo, memo } from 'react'
+import { useCallback, useMemo, memo, useEffect } from 'react'
 import { LayerGroup, Marker, Popup, TileLayer, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { Box, Button, Typography } from '@mui/material'
@@ -7,6 +7,19 @@ import MarkerClusterGroup from 'react-leaflet-cluster'
 import { formatDistanceKm } from '../utils/geo.js'
 import { useEvTheme } from '../theme/ThemeModeProvider.jsx'
 import { telemetryMarkerComponentRender } from '../dev/mapMarkerTelemetry.js'
+import {
+  logDiag,
+  diagEvLayerMountCount,
+  diagIconResolveCountRef,
+} from '../dev/evMapDiag.js'
+
+/** 진단용: 브랜드 SVG 없이 최소 divIcon */
+const LEAFLET_LIGHT_MARKER_ICON = L.divIcon({
+  className: 'ev-marker-light-diag',
+  html: '<div style="width:11px;height:11px;background:#2563eb;border-radius:50%;border:1px solid #fff;box-sizing:border-box"></div>',
+  iconSize: [11, 11],
+  iconAnchor: [5, 5],
+})
 
 function mapPopupDistOrHint(s) {
   if (s.distanceKm != null && !Number.isNaN(s.distanceKm)) return formatDistanceKm(s.distanceKm)
@@ -33,8 +46,13 @@ const EvStationMapMarkerLite = memo(
     selectedIconMobile,
     isMobile,
     onPickId,
+    iconDiag,
   }) {
     if (import.meta.env.DEV) telemetryMarkerComponentRender()
+    if (iconDiag) {
+      // eslint-disable-next-line react-hooks/immutability -- 진단 전역 ref 카운터
+      diagIconResolveCountRef.current += 1
+    }
 
     const icon =
       selected && isMobile && selectedIconMobile
@@ -73,7 +91,8 @@ const EvStationMapMarkerLite = memo(
     prev.defaultIcon === next.defaultIcon &&
     prev.selectedIcon === next.selectedIcon &&
     prev.selectedIconMobile === next.selectedIconMobile &&
-    prev.onPickId === next.onPickId,
+    prev.onPickId === next.onPickId &&
+    prev.iconDiag === next.iconDiag,
 )
 
 /**
@@ -100,10 +119,23 @@ export function EvStationMapLayer({
   /** true면 화면 밖 마커를 클러스터에서 제거(대량 시 유리). 초기 페인트에서 마커가 비는 경우가 있어 기본은 false */
   removeOutsideVisibleBounds = false,
   variant = 'full',
+  /** DEV evDiag=light: 브랜드 divIcon 대신 최소 원형 아이콘 */
+  diagnosticLightMarkers = false,
+  /** DEV evDiag=track: 레이어 마운트·아이콘 resolve 횟수 로그 */
+  diagnosticTrack = false,
 }) {
   const map = useMap()
   const muiThemeLocal = useTheme()
   const { colors, resolvedMode } = useEvTheme()
+
+  useEffect(() => {
+    if (!import.meta.env.DEV || !diagnosticTrack) return undefined
+    diagEvLayerMountCount.current += 1
+    logDiag('EvStationMapLayer mount', String(diagEvLayerMountCount.current))
+    return () => {
+      logDiag('EvStationMapLayer unmount', '')
+    }
+  }, [diagnosticTrack])
 
   const iconCreateFunction = useCallback(
     (cluster) => {
@@ -127,6 +159,10 @@ export function EvStationMapLayer({
 
   const useLiteMarkers = Boolean(isMobile && onDetailClickById)
 
+  const liteDefaultIcon = diagnosticLightMarkers ? LEAFLET_LIGHT_MARKER_ICON : defaultMarkerIcon
+  const liteSelectedIcon = diagnosticLightMarkers ? LEAFLET_LIGHT_MARKER_ICON : selectedMarkerIcon
+  const liteSelectedMobile = diagnosticLightMarkers ? LEAFLET_LIGHT_MARKER_ICON : selectedMarkerIconMobile
+
   const markerNodesLite = useMemo(() => {
     if (!useLiteMarkers) return null
     return stations.map((s) => (
@@ -136,22 +172,24 @@ export function EvStationMapLayer({
         lat={s.lat}
         lng={s.lng}
         selected={selectedId === s.id}
-        defaultIcon={defaultMarkerIcon}
-        selectedIcon={selectedMarkerIcon}
-        selectedIconMobile={selectedMarkerIconMobile}
+        defaultIcon={liteDefaultIcon}
+        selectedIcon={liteSelectedIcon}
+        selectedIconMobile={liteSelectedMobile}
         isMobile={isMobile}
         onPickId={onDetailClickById}
+        iconDiag={diagnosticTrack}
       />
     ))
   }, [
     useLiteMarkers,
     stations,
     selectedId,
-    defaultMarkerIcon,
-    selectedMarkerIcon,
-    selectedMarkerIconMobile,
+    liteDefaultIcon,
+    liteSelectedIcon,
+    liteSelectedMobile,
     isMobile,
     onDetailClickById,
+    diagnosticTrack,
   ])
 
   const iconFor = useCallback(

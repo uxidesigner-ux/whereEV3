@@ -1,5 +1,5 @@
 import 'leaflet/dist/leaflet.css'
-import { useMemo, useState, useEffect, useRef, useCallback } from 'react'
+import { useMemo, useState, useEffect, useRef, useCallback, useDeferredValue } from 'react'
 import {
   Box,
   Typography,
@@ -137,6 +137,15 @@ import {
   logMapLayerStationsSummary,
 } from './dev/mapMarkerTelemetry.js'
 import { MapMarkerDomTelemetry } from './dev/MapMarkerDomTelemetry.jsx'
+import {
+  parseEvMapDiag,
+  logDiag,
+  diagGroupedBaseComputeCount,
+  diagMapLayerRefChanges,
+  diagEvLayerMountCount,
+  diagIconResolveCountRef,
+} from './dev/evMapDiag.js'
+import { MapLeafletExperiments } from './dev/MapLeafletExperiments.jsx'
 
 /**
  * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
@@ -306,17 +315,31 @@ function MapCenterTracker({ setMapCenter }) {
   return null
 }
 
-function MapBoundsTracker({ setMapBounds, syncRef }) {
+/** @param {{ setMapBounds: function, syncRef?: object, boundsQuietMs?: number }} props */
+function MapBoundsTracker({ setMapBounds, syncRef, boundsQuietMs = 0 }) {
   const map = useMap()
+  const quietUntilRef = useRef(0)
+  useEffect(() => {
+    if (boundsQuietMs > 0) {
+      quietUntilRef.current = performance.now() + boundsQuietMs
+      if (import.meta.env.DEV) logDiag('MapBoundsTracker quiet window', `${boundsQuietMs}ms`)
+    }
+  }, [map, boundsQuietMs])
+
+  const pushBounds = useCallback(() => {
+    const b = map.getBounds()
+    const literal = {
+      southWest: { lat: b.getSouthWest().lat, lng: b.getSouthWest().lng },
+      northEast: { lat: b.getNorthEast().lat, lng: b.getNorthEast().lng },
+    }
+    if (syncRef) syncRef.current = literal
+    setMapBounds(literal)
+  }, [map, setMapBounds, syncRef])
+
   useEffect(() => {
     const update = () => {
-      const b = map.getBounds()
-      const literal = {
-        southWest: { lat: b.getSouthWest().lat, lng: b.getSouthWest().lng },
-        northEast: { lat: b.getNorthEast().lat, lng: b.getNorthEast().lng },
-      }
-      if (syncRef) syncRef.current = literal
-      setMapBounds(literal)
+      if (quietUntilRef.current && performance.now() < quietUntilRef.current) return
+      pushBounds()
     }
     update()
     /** 패닝·줌 시 즉시 갱신 — 마커는 `appliedMapBounds` 기준이라 여기 값만으로는 갱신되지 않음 */
@@ -326,7 +349,28 @@ function MapBoundsTracker({ setMapBounds, syncRef }) {
       map.off('moveend', update)
       map.off('zoomend', update)
     }
-  }, [map, setMapBounds, syncRef])
+  }, [map, pushBounds])
+
+  useEffect(() => {
+    if (boundsQuietMs <= 0) return undefined
+    const t = window.setTimeout(() => {
+      quietUntilRef.current = 0
+      pushBounds()
+      if (import.meta.env.DEV) logDiag('MapBoundsTracker quiet end flush', '')
+    }, boundsQuietMs)
+    return () => window.clearTimeout(t)
+  }, [boundsQuietMs, pushBounds])
+
+  return null
+}
+
+/** MapContainer 안에서 마운트 1회 로그 (remount 추적) */
+function MapContainerMountProbe() {
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined
+    logDiag('MapContainer subtree mount', '')
+    return () => logDiag('MapContainer subtree UNMOUNT', '')
+  }, [])
   return null
 }
 
@@ -432,6 +476,10 @@ function App() {
   const [lastEvFetchAt, setLastEvFetchAt] = useState(null)
   const [detailRefreshing, setDetailRefreshing] = useState(false)
   const canRefetchEv = !!(import.meta.env.VITE_SAFEMAP_SERVICE_KEY || '').trim()
+  const evMapDiag = useMemo(() => parseEvMapDiag(), [])
+  /** 목록·필터는 즉시 `items`, 지도 그룹핑만 낮은 우선순위로 따라가 progressive churn 완화 */
+  const itemsDeferredForMap = useDeferredValue(items)
+  const itemsForMapMarkers = evMapDiag.noDefer ? items : itemsDeferredForMap
   const [filterBusiNm, setFilterBusiNm] = useState('')
   const [filterSpeed, setFilterSpeed] = useState('') // '' | '급속' | '완속'
   const [filterCtprvnCd, setFilterCtprvnCd] = useState('')
@@ -1305,9 +1353,9 @@ function App() {
    */
   const mapAnchorStations = useMemo(() => {
     const [la, ln] = leafletInitial.center
-    if (!Number.isFinite(la) || !Number.isFinite(ln) || items.length === 0) return []
-    return groupedNearestPlacesForMap(items, la, ln, MAP_ANCHOR_NEAREST_MAX_ROWS)
-  }, [items, leafletInitial.center])
+    if (!Number.isFinite(la) || !Number.isFinite(ln) || itemsForMapMarkers.length === 0) return []
+    return groupedNearestPlacesForMap(itemsForMapMarkers, la, ln, MAP_ANCHOR_NEAREST_MAX_ROWS)
+  }, [itemsForMapMarkers, leafletInitial.center])
 
   /**
    * 지도 마커(선택 제외): 적용 영역 + 그룹핑 입력 행 상한 — `items` 대량 증가 시 CPU 제한.
@@ -1315,7 +1363,7 @@ function App() {
    */
   const groupedAllStationsForMapBase = useMemo(() => {
     if (!appliedMapBoundsPadded) return []
-    let validItems = items.filter((r) => {
+    let validItems = itemsForMapMarkers.filter((r) => {
       const la = Number(r.lat)
       const ln = Number(r.lng)
       return Number.isFinite(la) && Number.isFinite(ln)
@@ -1334,8 +1382,16 @@ function App() {
         .slice(0, MAP_GROUP_INPUT_ROW_CAP)
         .map(({ r }) => r)
     }
-    return groupChargerRowsByPlaceMapLite(validItems)
-  }, [items, appliedMapBoundsPadded])
+    const grouped = groupChargerRowsByPlaceMapLite(validItems)
+    if (import.meta.env.DEV && evMapDiag.track) {
+      diagGroupedBaseComputeCount.current += 1
+      logDiag(
+        `groupedAllStationsForMapBase compute #${diagGroupedBaseComputeCount.current}`,
+        `places=${grouped.length} rowsIn=${validItems.length} itemsMap=${itemsForMapMarkers.length}`,
+      )
+    }
+    return grouped
+  }, [itemsForMapMarkers, appliedMapBoundsPadded, evMapDiag.track])
 
   const groupedAllStationsForMap = useMemo(() => {
     const grouped = groupedAllStationsForMapBase
@@ -1357,7 +1413,7 @@ function App() {
     return viewportGrouped
   }, [awaitingInitialMapPaint, groupedAllStationsForMap, mapAnchorStations])
 
-  const mapLayerStations = useMemo(() => {
+  const mapLayerStationsComputed = useMemo(() => {
     const cap =
       markerPaintPhase === 'initial' ? MAP_MARKER_INITIAL_PAINT_CAP : MOBILE_MAP_MARKER_CAP
     const src = mapStations
@@ -1369,6 +1425,63 @@ function App() {
       .slice(0, cap)
       .map(({ s }) => s)
   }, [mapStations, mapViewCenterForMarkers, markerPaintPhase])
+
+  const freezeSnapRef = useRef(/** @type {null | unknown[]} */ (null))
+  const freezeUntilRef = useRef(0)
+  const freezeOnceRef = useRef(false)
+  const [freezeReleaseTick, setFreezeReleaseTick] = useState(0)
+
+  useEffect(() => {
+    if (!evMapDiag.freeze1500 || freezeOnceRef.current) return undefined
+    if (mapLayerStationsComputed.length === 0) return undefined
+    freezeOnceRef.current = true
+    freezeSnapRef.current = mapLayerStationsComputed.slice(0, 24)
+    freezeUntilRef.current = performance.now() + 1500
+    if (import.meta.env.DEV) {
+      logDiag('freeze1500 snap', `n=${freezeSnapRef.current.length}`)
+    }
+    setFreezeReleaseTick((x) => x + 1)
+    window.setTimeout(() => {
+      freezeSnapRef.current = null
+      freezeUntilRef.current = 0
+      setFreezeReleaseTick((x) => x + 1)
+      if (import.meta.env.DEV) logDiag('freeze1500 end', '')
+    }, 1500)
+    return undefined
+  }, [evMapDiag.freeze1500, mapLayerStationsComputed])
+
+  const mapLayerStations = useMemo(() => {
+    if (
+      evMapDiag.freeze1500 &&
+      freezeSnapRef.current &&
+      performance.now() < freezeUntilRef.current
+    ) {
+      return freezeSnapRef.current
+    }
+    return mapLayerStationsComputed
+    // freezeReleaseTick: freeze 만료 시 동일 computed라도 재평가
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 의도적 트리거
+  }, [mapLayerStationsComputed, evMapDiag.freeze1500, freezeReleaseTick])
+
+  const prevMapLayerArrRef = useRef(/** @type {unknown[] | null} */ (null))
+  const prevMapLayerIds20Ref = useRef('')
+  useEffect(() => {
+    if (!import.meta.env.DEV || !evMapDiag.track) return
+    const arr = mapLayerStations
+    const ids20 = arr
+      .slice(0, 20)
+      .map((s) => s.id)
+      .join('|')
+    if (prevMapLayerArrRef.current !== arr) {
+      diagMapLayerRefChanges.current += 1
+      logDiag(
+        `mapLayerStations[] ref #${diagMapLayerRefChanges.current}`,
+        `len=${arr.length} ids20eq=${ids20 === prevMapLayerIds20Ref.current}`,
+      )
+      prevMapLayerArrRef.current = arr
+    }
+    prevMapLayerIds20Ref.current = ids20
+  }, [mapLayerStations, evMapDiag.track])
 
   const prevAwaitingMapPaintRef = useRef(awaitingInitialMapPaint)
   useEffect(() => {
@@ -1430,9 +1543,17 @@ function App() {
     if (prevBootOpenRef.current && !bootOverlayOpen) {
       telemetryBootOverlayHidden()
       logMapLayerStationsSummary()
+      if (import.meta.env.DEV && evMapDiag.track) {
+        logDiag('diag@overlayOff', {
+          groupedBaseComputes: diagGroupedBaseComputeCount.current,
+          mapLayerRefChanges: diagMapLayerRefChanges.current,
+          evLayerMounts: diagEvLayerMountCount.current,
+          iconResolves: diagIconResolveCountRef.current,
+        })
+      }
     }
     prevBootOpenRef.current = bootOverlayOpen
-  }, [bootOverlayOpen])
+  }, [bootOverlayOpen, evMapDiag.track])
 
   const mapBootDiagPrevAwaitingRef = useRef(false)
   useEffect(() => {
@@ -2269,8 +2390,14 @@ function App() {
             zoomControl={false}
           >
             <MapCenterTracker setMapCenter={setMapCenter} />
-            <MapBoundsTracker setMapBounds={setLiveMapBounds} syncRef={liveMapBoundsRef} />
+            <MapBoundsTracker
+              setMapBounds={setLiveMapBounds}
+              syncRef={liveMapBoundsRef}
+              boundsQuietMs={evMapDiag.nobounds1500 ? 1500 : 0}
+            />
             {import.meta.env.DEV ? <MapMarkerDomTelemetry /> : null}
+            {import.meta.env.DEV ? <MapContainerMountProbe /> : null}
+            {import.meta.env.DEV && evMapDiag.anyLeafletHarness ? <MapLeafletExperiments /> : null}
             <MapBootMarkerReady
               active={awaitingInitialMapPaint}
               center={leafletInitial.center}
@@ -2293,7 +2420,7 @@ function App() {
             />
             <MapFocusOnStation selectedStation={mapSelectedStation} isMobile={isMobile} />
             <EvStationMapLayer
-              stations={mapLayerStations}
+              stations={evMapDiag.anyLeafletHarness ? [] : mapLayerStations}
               variant="lite"
               onDetailClickById={onMapMarkerPickId}
               onClusterTap={handleClusterStationsTap}
@@ -2307,6 +2434,8 @@ function App() {
               mapTileAttribution={tokens.map.tileAttribution}
               markerClusterChunked={false}
               removeOutsideVisibleBounds={false}
+              diagnosticLightMarkers={import.meta.env.DEV && evMapDiag.light}
+              diagnosticTrack={import.meta.env.DEV && evMapDiag.track}
             />
             <MapGeolocationSync
               geoNonce={geoNonce}
