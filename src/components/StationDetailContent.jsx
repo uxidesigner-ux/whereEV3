@@ -74,54 +74,54 @@ function buildDetailUi(colors, tokens, resolvedMode) {
   const statFilterPalettes = {
     all: {
       idle: {
-        border: `1px solid ${tokens.border.default}`,
-        bgcolor: tokens.bg.chipIdle,
-        color: colors.gray[700],
+        border: `1px solid transparent`,
+        bgcolor: resolvedMode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
+        color: tokens.text.primary,
       },
       active: {
         border: `1px solid ${tokens.blue.borderSoft}`,
         bgcolor: tokens.blue.mutedStrong,
         color: colors.blue.deep,
-        boxShadow: `0 2px 10px ${tokens.blue.glowSoft}, 0 0 0 1px ${colors.blue.primary}22`,
+        boxShadow: `0 1px 6px ${tokens.blue.glowSoft}`,
       },
     },
     avail: {
       idle: {
-        border: `1px solid ${tokens.border.default}`,
-        bgcolor: tokens.bg.chipIdle,
-        color: colors.gray[700],
+        border: `1px solid transparent`,
+        bgcolor: resolvedMode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
+        color: tokens.text.primary,
       },
       active: {
         border: `1px solid ${tokens.status.avail.border}`,
         bgcolor: tokens.status.avail.chipBg,
         color: tokens.status.avail.fg,
-        boxShadow: `0 2px 10px rgba(22, 163, 74, 0.18)`,
+        boxShadow: `0 1px 6px rgba(22, 163, 74, 0.16)`,
       },
     },
     use: {
       idle: {
-        border: `1px solid ${tokens.border.default}`,
-        bgcolor: tokens.bg.chipIdle,
-        color: colors.gray[700],
+        border: `1px solid transparent`,
+        bgcolor: resolvedMode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
+        color: tokens.text.primary,
       },
       active: {
         border: `1px solid ${tokens.status.use.border}`,
         bgcolor: tokens.status.use.chipBg,
         color: tokens.status.use.fg,
-        boxShadow: `0 2px 10px rgba(245, 158, 11, 0.22)`,
+        boxShadow: `0 1px 6px rgba(245, 158, 11, 0.18)`,
       },
     },
     maint: {
       idle: {
-        border: `1px solid ${tokens.border.default}`,
-        bgcolor: tokens.bg.chipIdle,
-        color: colors.gray[600],
+        border: `1px solid transparent`,
+        bgcolor: resolvedMode === 'dark' ? 'rgba(255,255,255,0.04)' : 'rgba(15,23,42,0.04)',
+        color: tokens.text.secondary,
       },
       active: {
         border: `1px solid ${tokens.border.strong}`,
         bgcolor: tokens.status.maint.chipBg,
         color: tokens.text.primary,
-        boxShadow: `0 2px 8px rgba(15, 23, 42, 0.08)`,
+        boxShadow: `0 1px 6px rgba(15, 23, 42, 0.07)`,
       },
     },
   }
@@ -136,7 +136,7 @@ function buildDetailUi(colors, tokens, resolvedMode) {
       : {
           bgcolor: tokens.bg.subtle,
           border: `1px solid ${tokens.border.subtle}`,
-          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05)',
+          boxShadow: '0 1px 1px rgba(15, 23, 42, 0.04)',
         }
 
   return {
@@ -191,10 +191,10 @@ function StatFilterChip({ count, segmentLabel, selected, disabled, onClick, pale
           <Typography
             component="span"
             sx={{
-              fontSize: '1.1875rem',
+              fontSize: '1.25rem',
               fontWeight: 800,
               lineHeight: 1,
-              letterSpacing: '-0.035em',
+              letterSpacing: '-0.04em',
               fontVariantNumeric: 'tabular-nums',
               color: 'inherit',
             }}
@@ -204,10 +204,10 @@ function StatFilterChip({ count, segmentLabel, selected, disabled, onClick, pale
           <Typography
             component="span"
             sx={{
-              fontSize: '0.625rem',
+              fontSize: '0.5625rem',
               fontWeight: selected ? 700 : 600,
-              lineHeight: 1.2,
-              letterSpacing: '0.06em',
+              lineHeight: 1.15,
+              letterSpacing: '0.07em',
               textTransform: 'uppercase',
               color: selected ? 'inherit' : tokens.text.tertiary,
             }}
@@ -224,12 +224,12 @@ function StatFilterChip({ count, segmentLabel, selected, disabled, onClick, pale
       sx={{
         flexShrink: 0,
         height: 'auto',
-        minHeight: 52,
+        minHeight: 50,
         borderRadius: `${radius.md}px`,
         transition: `border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
         '& .MuiChip-label': {
-          px: 1.35,
-          py: 0.55,
+          px: 1.2,
+          py: 0.5,
           display: 'block',
         },
         ...tone,
@@ -289,14 +289,18 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
   )
 }
 
-/** 어코디언 헤더 한 줄: 빈 값은 토막 생략(「—」 연속 방지) */
+/**
+ * 헤더 한 줄: 급속/완속 → 커넥터 → 출력(kW). 출력 없으면 정제 문구.
+ * `—` 그대로 노출하지 않음.
+ */
 function buildChargerHeaderSummaryLine(row, outDisp) {
   const speedLabel = row.speedCategory || getSpeedCategory(row.chgerTy)
-  const segs = [speedLabel]
-  const out = (outDisp || '').trim()
-  if (out) segs.push(out)
   const conn = (row.chgerTyLabel || '').trim()
+  const out = (outDisp || '').trim()
+  const segs = [speedLabel]
   if (conn) segs.push(conn)
+  if (out) segs.push(out)
+  else segs.push('출력 미표시')
   return segs.join(' · ')
 }
 
@@ -409,18 +413,30 @@ function ChargerCard({ row, idx }) {
     border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : tokens.border.subtle}`,
   }
 
+  /** 상태 문구 전체 노출(ellipsis/maxWidth 금지). 우측 클러스터가 폭 우선. */
   const headerChipSx = {
     ...chip.sx,
     flexShrink: 0,
-    height: 26,
-    maxHeight: 26,
+    flexGrow: 0,
+    height: 'auto',
+    minHeight: 30,
+    maxHeight: 'none',
     borderRadius: 999,
     fontSize: '0.6875rem',
     fontWeight: 600,
     letterSpacing: '0.02em',
-    maxWidth: 'min(56%, 132px)',
+    maxWidth: 'none',
+    width: 'auto',
     boxShadow: 'none',
-    '& .MuiChip-label': { px: 1, py: 0, overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 },
+    '& .MuiChip-label': {
+      px: 1.35,
+      py: 0.45,
+      overflow: 'visible',
+      textOverflow: 'clip',
+      whiteSpace: 'nowrap',
+      lineHeight: 1.35,
+      maxWidth: 'none',
+    },
   }
 
   const StatusGlyph = detailSheetStatusGlyph(stat)
@@ -448,7 +464,7 @@ function ChargerCard({ row, idx }) {
   return (
     <Box
       sx={{
-        mb: 1.75,
+        mb: 1.5,
         borderRadius: `${radius.lg}px`,
         bgcolor: chargerCard.bgcolor,
         boxShadow: chargerCard.boxShadow,
@@ -472,9 +488,9 @@ function ChargerCard({ row, idx }) {
           flexDirection: 'row',
           alignItems: 'center',
           justifyContent: 'space-between',
-          gap: 1,
+          gap: 1.125,
           m: 0,
-          p: { xs: 1.25, sm: 1.375 },
+          p: { xs: 1.125, sm: 1.25 },
           textAlign: 'left',
           cursor: 'pointer',
           border: 'none',
@@ -488,7 +504,7 @@ function ChargerCard({ row, idx }) {
           },
         }}
       >
-        <Box sx={{ flex: 1, minWidth: 0, pr: 0.75 }}>
+        <Box sx={{ flex: '1 1 0%', minWidth: 0, pr: 0.5, overflow: 'hidden' }}>
           <Typography
             variant="subtitle2"
             component="h3"
@@ -514,7 +530,10 @@ function ChargerCard({ row, idx }) {
             component="p"
             title={headerSummaryLine}
             sx={{
-              display: 'block',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
               mt: 0.35,
               color: tokens.text.secondary,
               fontSize: '0.75rem',
@@ -530,37 +549,48 @@ function ChargerCard({ row, idx }) {
         <Box
           aria-hidden
           sx={{
+            flex: '0 0 auto',
             display: 'inline-flex',
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: 'stretch',
             flexShrink: 0,
-            gap: 0,
-            pl: 0.5,
-            pr: 0.125,
-            py: 0.25,
-            minHeight: 36,
+            alignSelf: 'center',
+            pl: 0.625,
+            pr: 0,
+            py: 0.125,
             borderRadius: `${radius.md}px`,
             bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.045)',
             border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)'}`,
             pointerEvents: 'none',
           }}
         >
-          <Chip label={chip.label} size="small" sx={headerChipSx} />
+          <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, pl: 0.125, pr: 0.35 }}>
+            <Chip label={chip.label} size="small" sx={headerChipSx} />
+          </Box>
+          <Box
+            sx={{
+              width: '1px',
+              alignSelf: 'stretch',
+              my: 0.5,
+              flexShrink: 0,
+              bgcolor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.12)',
+            }}
+          />
           <Box
             sx={{
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 32,
-              height: 32,
+              width: 30,
+              minWidth: 30,
               flexShrink: 0,
             }}
           >
             <ExpandMore
               sx={{
                 display: 'block',
-                color: tokens.text.muted,
-                fontSize: 22,
+                color: tokens.text.tertiary,
+                fontSize: 19,
                 transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
                 transition: `transform ${collapseMs.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}`,
               }}
@@ -831,10 +861,10 @@ function ChargerCard({ row, idx }) {
 const FOOTER_BTN_SX = {
   flex: '1 1 0',
   minWidth: 0,
-  minHeight: 48,
-  maxHeight: 48,
+  minHeight: 46,
+  maxHeight: 46,
   py: 0,
-  px: { xs: 1.125, sm: 1.25 },
+  px: { xs: 1, sm: 1.125 },
   borderRadius: `${radius.md}px`,
   fontWeight: 600,
   fontSize: { xs: '0.8125rem', sm: '0.875rem' },
@@ -843,7 +873,7 @@ const FOOTER_BTN_SX = {
   whiteSpace: 'nowrap',
   justifyContent: 'center',
   '& .MuiButton-startIcon': {
-    marginRight: { xs: 0.45, sm: 0.6 },
+    marginRight: { xs: 0.4, sm: 0.55 },
     marginLeft: 0,
     flexShrink: 0,
     display: 'inline-flex',
@@ -887,13 +917,13 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         {telno ? (
           <Button
             variant="outlined"
-            startIcon={<Phone sx={{ fontSize: 20 }} />}
+            startIcon={<Phone sx={{ fontSize: 19 }} />}
             href={`tel:${telno}`}
             aria-label="전화 걸기"
             sx={{
               ...FOOTER_BTN_SX,
               flex: '1 1 0',
-              minWidth: 108,
+              minWidth: 100,
               borderColor: tokens.border.default,
               bgcolor: tokens.bg.paper,
               color: tokens.text.primary,
@@ -912,7 +942,7 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         ) : null}
         <Button
           variant="contained"
-          startIcon={<Directions sx={{ fontSize: 20 }} />}
+          startIcon={<Directions sx={{ fontSize: 19 }} />}
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
@@ -923,9 +953,9 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
             bgcolor: colors.blue.primary,
             color: tokens.text.onPrimary,
             fontWeight: 600,
-            boxShadow: `0 1px 4px rgba(31, 69, 255, 0.22)`,
+            boxShadow: `0 1px 3px rgba(31, 69, 255, 0.18)`,
             transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
-            '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 3px 10px ${tokens.blue.glowSoft}` },
+            '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 2px 8px ${tokens.blue.glowSoft}` },
             '&:active': { transform: 'scale(0.98)' },
           }}
         >

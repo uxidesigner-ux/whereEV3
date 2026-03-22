@@ -258,6 +258,17 @@ const BOOT_LOADING_ROTATION_MESSAGES = [
   '곧 충전소가 표시돼요',
 ]
 
+/** 목록 조회 시각: 로캘 기본 문자열 대비 읽기 쉬운 고정 패턴 */
+function formatDetailListFetchedLine(d) {
+  const m = d.getMonth() + 1
+  const day = d.getDate()
+  const h = d.getHours()
+  const min = d.getMinutes().toString().padStart(2, '0')
+  const ap = h < 12 ? '오전' : '오후'
+  const h12 = h % 12 || 12
+  return `${m}월 ${day}일 ${ap} ${h12}:${min} 갱신`
+}
+
 /** 모바일 상세 시트 헤더 좌우 인셋 (MUI spacing 2.5 ≈ 20px) */
 const MOBILE_DETAIL_HEADER_GUTTER = 2.5
 /** 상세 full 헤더 앱바 높이에 맞춘 최소 높이 */
@@ -2418,18 +2429,19 @@ function App() {
     }
   }, [items])
 
-  /** 상세 헤더 2행: 거리 · 주소(위계 분리, 스캔용) */
+  /** 상세 헤더 2행: 거리 · 주소(빈 값·`-` placeholder 제외) */
   const detailHeaderDistanceAddress = useMemo(() => {
     if (!detailStation) return ''
     const parts = []
     const dist = formatDistanceKm(detailStation.distanceKm)
     if (dist) parts.push(dist)
     const addrLines = formatAddressBlockLines(detailStation)
-    if (addrLines[0]) parts.push(addrLines[0])
+    const addr0 = (addrLines[0] || '').trim()
+    if (addr0 && addr0 !== '-') parts.push(addr0)
     return parts.join(' · ')
   }, [detailStation])
 
-  /** 상세 헤더 3행: 상태 갱신 시각 또는 목록 조회 시각(가장 약한 메타) */
+  /** 상세 헤더 3행: 상태 갱신 또는 목록 조회 시각 */
   const detailHeaderTimingLine = useMemo(() => {
     if (!detailStation) return ''
     const st = (detailStation.latestStatUpdDt || detailStation.statUpdDt || '').trim()
@@ -2437,7 +2449,8 @@ function App() {
     if (lastEvFetchAt) {
       try {
         const d = new Date(lastEvFetchAt)
-        return `요약 목록 조회 ${d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+        if (Number.isNaN(d.getTime())) return ''
+        return `목록 조회 · ${formatDetailListFetchedLine(d)}`
       } catch {
         return ''
       }
@@ -2459,7 +2472,7 @@ function App() {
 
   const mobileDetailRefreshIconBtnSx = useMemo(
     () => ({
-      color: tokens.text.muted,
+      color: tokens.text.tertiary,
       flexShrink: 0,
       width: 40,
       height: 40,
@@ -2468,10 +2481,11 @@ function App() {
       p: 0,
       borderRadius: radius.md,
       mt: 0.125,
-      '&:hover': { bgcolor: tokens.bg.muted },
-      '&.Mui-disabled': { color: tokens.text.muted },
+      opacity: 0.85,
+      '&:hover': { bgcolor: tokens.bg.muted, opacity: 1 },
+      '&.Mui-disabled': { color: tokens.text.muted, opacity: 0.45 },
     }),
-    [tokens.bg.muted, tokens.text.muted],
+    [tokens.bg.muted, tokens.text.muted, tokens.text.tertiary],
   )
 
   const chargerSummaryUpdatedInHeader = useMemo(
