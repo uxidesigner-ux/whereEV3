@@ -290,8 +290,7 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
 }
 
 /**
- * 헤더 한 줄: 급속/완속 → 커넥터 → 출력(kW). 출력 없으면 정제 문구.
- * `—` 그대로 노출하지 않음.
+ * 헤더 한 줄: 급속/완속 → 커넥터 → 출력(kW). 출력 없으면 해당 토막 생략.
  */
 function buildChargerHeaderSummaryLine(row, outDisp) {
   const speedLabel = row.speedCategory || getSpeedCategory(row.chgerTy)
@@ -300,8 +299,16 @@ function buildChargerHeaderSummaryLine(row, outDisp) {
   const segs = [speedLabel]
   if (conn) segs.push(conn)
   if (out) segs.push(out)
-  else segs.push('출력 미표시')
   return segs.join(' · ')
+}
+
+/** 상태 dot — badge·progress와 동일 토큰 계열 */
+function chargerHeaderStatusDotColors(stat, tokens) {
+  const s = String(stat ?? '').trim()
+  if (s === '2') return { fill: tokens.status.avail.fg, ring: tokens.status.avail.border }
+  if (s === '3') return { fill: tokens.status.use.fg, ring: tokens.status.use.border }
+  if (s === '5') return { fill: tokens.status.maint.fg, ring: tokens.status.maint.border }
+  return { fill: tokens.status.unknown.fg, ring: tokens.status.unknown.border }
 }
 
 /** 3단 정보 모듈 한 칸 — 아이콘·라벨·값(칩형) 정렬 통일 */
@@ -401,6 +408,7 @@ function ChargerCard({ row, idx }) {
     }
   }
   const chip = chipForStat()
+  const dotColors = chargerHeaderStatusDotColors(stat, tokens)
 
   const headerSummaryLine = buildChargerHeaderSummaryLine(row, outDisp)
   const typeLabel = row.displayChgerLabel ?? row.chgerTyLabel ?? '—'
@@ -502,97 +510,116 @@ function ChargerCard({ row, idx }) {
             outline: `2px solid ${tokens.border.strong}`,
             outlineOffset: 2,
           },
+          '&:active .ev-charger-chevron-hit': {
+            bgcolor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.11)',
+          },
         }}
       >
-        <Box sx={{ flex: '1 1 0%', minWidth: 0, pr: 0.5, overflow: 'hidden' }}>
-          <Typography
-            variant="subtitle2"
-            component="h3"
-            title={title}
+        <Box
+          sx={{
+            flex: '1 1 0%',
+            minWidth: 0,
+            pr: 0.5,
+            overflow: 'hidden',
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 0.75,
+          }}
+        >
+          <Box
+            aria-hidden
             sx={{
-              ...appMobileType.chargerCardTitle,
-              color: tokens.text.primary,
-              fontSize: { xs: '1rem', sm: '0.9375rem' },
-              fontWeight: 800,
-              lineHeight: 1.3,
-              letterSpacing: '-0.024em',
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              wordBreak: 'break-word',
+              width: 9,
+              height: 9,
+              minWidth: 9,
+              borderRadius: '50%',
+              flexShrink: 0,
+              mt: '0.42rem',
+              bgcolor: dotColors.fill,
+              boxShadow: `0 0 0 1px ${dotColors.ring}`,
             }}
-          >
-            {title}
-          </Typography>
-          <Typography
-            variant="caption"
-            component="p"
-            title={headerSummaryLine}
-            sx={{
-              display: '-webkit-box',
-              WebkitLineClamp: 2,
-              WebkitBoxOrient: 'vertical',
-              overflow: 'hidden',
-              mt: 0.35,
-              color: tokens.text.secondary,
-              fontSize: '0.75rem',
-              fontWeight: 600,
-              lineHeight: 1.4,
-              letterSpacing: '0.01em',
-              wordBreak: 'break-word',
-            }}
-          >
-            {headerSummaryLine}
-          </Typography>
+          />
+          <Box sx={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+            <Typography
+              variant="subtitle2"
+              component="h3"
+              title={title}
+              sx={{
+                ...appMobileType.chargerCardTitle,
+                color: tokens.text.primary,
+                fontSize: { xs: '1rem', sm: '0.9375rem' },
+                fontWeight: 800,
+                lineHeight: 1.3,
+                letterSpacing: '-0.024em',
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                wordBreak: 'break-word',
+              }}
+            >
+              {title}
+            </Typography>
+            <Typography
+              variant="caption"
+              component="p"
+              title={headerSummaryLine}
+              sx={{
+                display: '-webkit-box',
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: 'vertical',
+                overflow: 'hidden',
+                mt: 0.35,
+                color: tokens.text.tertiary,
+                fontSize: '0.75rem',
+                fontWeight: 500,
+                lineHeight: 1.4,
+                letterSpacing: '0.01em',
+                wordBreak: 'break-word',
+              }}
+            >
+              {headerSummaryLine}
+            </Typography>
+          </Box>
         </Box>
         <Box
           aria-hidden
           sx={{
             flex: '0 0 auto',
-            display: 'inline-flex',
+            display: 'flex',
             flexDirection: 'row',
-            alignItems: 'stretch',
+            alignItems: 'center',
             flexShrink: 0,
-            alignSelf: 'center',
-            pl: 0.625,
-            pr: 0,
-            py: 0.125,
-            borderRadius: `${radius.md}px`,
-            bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.045)',
-            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)'}`,
+            gap: 0.75,
+            pl: 0.25,
             pointerEvents: 'none',
           }}
         >
-          <Box sx={{ display: 'flex', alignItems: 'center', flexShrink: 0, pl: 0.125, pr: 0.35 }}>
-            <Chip label={chip.label} size="small" sx={headerChipSx} />
-          </Box>
+          <Chip label={chip.label} size="small" sx={headerChipSx} />
           <Box
+            className="ev-charger-chevron-hit"
             sx={{
-              width: '1px',
-              alignSelf: 'stretch',
-              my: 0.5,
-              flexShrink: 0,
-              bgcolor: isDark ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.12)',
-            }}
-          />
-          <Box
-            sx={{
+              width: 30,
+              height: 30,
+              minWidth: 30,
+              borderRadius: '50%',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              width: 30,
-              minWidth: 30,
               flexShrink: 0,
+              bgcolor: isDark ? 'rgba(255,255,255,0.09)' : 'rgba(15,23,42,0.07)',
+              transition: `background-color ${motion.duration.enter}ms ${motion.easing.standard}`,
             }}
           >
             <ExpandMore
               sx={{
                 display: 'block',
-                color: tokens.text.tertiary,
-                fontSize: 19,
+                color: tokens.text.secondary,
+                fontSize: 16,
+                opacity: 0.88,
                 transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                transition: `transform ${collapseMs.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}`,
+                transition: `transform ${collapseMs.enter}ms ${motion.easing.standard}`,
               }}
             />
           </Box>
