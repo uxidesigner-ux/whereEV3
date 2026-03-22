@@ -2504,6 +2504,11 @@ function App() {
                           sx={{
                             color: tokens.text.primary,
                             ...appMobileType.detailSheetTitle,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            wordBreak: 'break-word',
                           }}
                         >
                           {d.statNm}
@@ -2513,9 +2518,9 @@ function App() {
                             variant="body2"
                             sx={{
                               display: 'block',
-                              mt: 0.5,
+                              mt: 0.45,
                               color: tokens.text.secondary,
-                              lineHeight: 1.45,
+                              lineHeight: 1.4,
                               fontWeight: 500,
                               fontSize: '0.8125rem',
                               wordBreak: 'break-word',
@@ -2529,11 +2534,12 @@ function App() {
                             variant="caption"
                             sx={{
                               display: 'block',
-                              mt: detailHeaderLocationLine ? 0.35 : 0.5,
+                              mt: detailHeaderLocationLine ? 0.25 : 0.4,
                               color: tokens.text.tertiary,
-                              fontSize: '0.75rem',
-                              lineHeight: 1.4,
+                              fontSize: '0.6875rem',
+                              lineHeight: 1.35,
                               fontWeight: 500,
+                              letterSpacing: '0.01em',
                             }}
                           >
                             {detailHeaderSubtitle}
@@ -2546,7 +2552,8 @@ function App() {
                         aria-label="충전소 요약 데이터 새로고침"
                         size="small"
                         sx={{
-                          color: tokens.text.secondary,
+                          color: tokens.text.tertiary,
+                          opacity: 0.7,
                           flexShrink: 0,
                           width: 40,
                           height: 40,
@@ -2555,13 +2562,14 @@ function App() {
                           p: 0,
                           borderRadius: radius.md,
                           mt: 0.125,
+                          '&:hover': { opacity: 1, bgcolor: tokens.bg.muted },
                         }}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         {detailRefreshing ? (
-                          <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} />
+                          <CircularProgress size={18} thickness={5} sx={{ color: colors.blue.primary }} />
                         ) : (
-                          <Refresh sx={{ fontSize: 22 }} />
+                          <Refresh sx={{ fontSize: 19 }} />
                         )}
                       </IconButton>
                     </Box>
@@ -2596,7 +2604,19 @@ function App() {
                       }}
                     >
                       <Box sx={{ flex: 1, minWidth: 0 }}>
-                        <Typography variant="h6" component="h2" sx={{ color: tokens.text.primary, ...appMobileType.detailSheetTitle }}>
+                        <Typography
+                          variant="h6"
+                          component="h2"
+                          sx={{
+                            color: tokens.text.primary,
+                            ...appMobileType.detailSheetTitle,
+                            display: '-webkit-box',
+                            WebkitLineClamp: 2,
+                            WebkitBoxOrient: 'vertical',
+                            overflow: 'hidden',
+                            wordBreak: 'break-word',
+                          }}
+                        >
                           {d.statNm}
                         </Typography>
                         {detailHeaderLocationLine ? (
@@ -2604,9 +2624,9 @@ function App() {
                             variant="body2"
                             sx={{
                               display: 'block',
-                              mt: 0.45,
+                              mt: 0.4,
                               color: tokens.text.secondary,
-                              lineHeight: 1.45,
+                              lineHeight: 1.4,
                               fontWeight: 500,
                               fontSize: '0.8125rem',
                               wordBreak: 'break-word',
@@ -2620,11 +2640,12 @@ function App() {
                             variant="caption"
                             sx={{
                               display: 'block',
-                              mt: detailHeaderLocationLine ? 0.35 : 0.45,
+                              mt: detailHeaderLocationLine ? 0.22 : 0.38,
                               color: tokens.text.tertiary,
-                              fontSize: '0.75rem',
-                              lineHeight: 1.4,
+                              fontSize: '0.6875rem',
+                              lineHeight: 1.35,
                               fontWeight: 500,
+                              letterSpacing: '0.01em',
                             }}
                           >
                             {detailHeaderSubtitle}
@@ -2637,7 +2658,8 @@ function App() {
                         aria-label="충전소 요약 데이터 새로고침"
                         size="small"
                         sx={{
-                          color: tokens.text.secondary,
+                          color: tokens.text.tertiary,
+                          opacity: 0.7,
                           flexShrink: 0,
                           width: 40,
                           height: 40,
@@ -2646,13 +2668,14 @@ function App() {
                           p: 0,
                           mt: 0.125,
                           borderRadius: radius.md,
+                          '&:hover': { opacity: 1, bgcolor: tokens.bg.muted },
                         }}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         {detailRefreshing ? (
-                          <CircularProgress size={20} thickness={5} sx={{ color: colors.blue.primary }} />
+                          <CircularProgress size={18} thickness={5} sx={{ color: colors.blue.primary }} />
                         ) : (
-                          <Refresh sx={{ fontSize: 22 }} />
+                          <Refresh sx={{ fontSize: 19 }} />
                         )}
                       </IconButton>
                     </Box>

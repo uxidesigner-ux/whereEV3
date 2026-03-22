@@ -77,10 +77,10 @@ function buildDetailUi(colors, tokens, resolvedMode) {
         color: colors.gray[700],
       },
       active: {
-        border: `1px solid ${colors.blue.primary}`,
+        border: `1px solid ${tokens.blue.borderSoft}`,
         bgcolor: tokens.blue.mutedStrong,
         color: colors.blue.deep,
-        boxShadow: 'none',
+        boxShadow: `0 2px 10px ${tokens.blue.glowSoft}, 0 0 0 1px ${colors.blue.primary}22`,
       },
     },
     avail: {
@@ -93,7 +93,7 @@ function buildDetailUi(colors, tokens, resolvedMode) {
         border: `1px solid ${tokens.status.avail.border}`,
         bgcolor: tokens.status.avail.chipBg,
         color: tokens.status.avail.fg,
-        boxShadow: 'none',
+        boxShadow: `0 2px 10px rgba(22, 163, 74, 0.18)`,
       },
     },
     use: {
@@ -106,7 +106,7 @@ function buildDetailUi(colors, tokens, resolvedMode) {
         border: `1px solid ${tokens.status.use.border}`,
         bgcolor: tokens.status.use.chipBg,
         color: tokens.status.use.fg,
-        boxShadow: 'none',
+        boxShadow: `0 2px 10px rgba(245, 158, 11, 0.22)`,
       },
     },
     maint: {
@@ -119,21 +119,22 @@ function buildDetailUi(colors, tokens, resolvedMode) {
         border: `1px solid ${tokens.border.strong}`,
         bgcolor: tokens.status.maint.chipBg,
         color: tokens.text.primary,
-        boxShadow: 'none',
+        boxShadow: `0 2px 8px rgba(15, 23, 42, 0.08)`,
       },
     },
   }
-  /** 충전기 카드: 거의 화이트·소프트 섀도(라) / 레이어 분리(다) */
+  /** 프리미엄 카드: 표면·소프트 섀도, 경계는 최소 */
   const chargerCard =
     resolvedMode === 'dark'
       ? {
           bgcolor: tokens.bg.raised,
-          boxShadow:
-            '0 1px 0 rgba(255,255,255,0.05) inset, 0 2px 8px rgba(0,0,0,0.35), 0 12px 32px rgba(0,0,0,0.28)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          boxShadow: '0 4px 20px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.04) inset',
         }
       : {
-          bgcolor: tokens.bg.subtle,
-          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04), 0 6px 20px rgba(15, 23, 42, 0.055)',
+          bgcolor: tokens.bg.paper,
+          border: '1px solid rgba(15,23,42,0.06)',
+          boxShadow: '0 2px 16px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.04)',
         }
 
   return {
@@ -165,14 +166,54 @@ function useStationDetailUi() {
   return ctx
 }
 
-/** 앱형 가로 레일용 pill 칩 (높이 36~40px, 한 줄 스크롤) */
-function StatFilterChip({ label, selected, disabled, onClick, paletteKey }) {
+/** 상태 요약 세그먼트: 숫자 우선, 라벨 보조 (필터 칩이 아닌 요약 느낌) */
+function StatFilterChip({ count, segmentLabel, selected, disabled, onClick, paletteKey }) {
   const { statFilterPalettes } = useStationDetailUi()
   const pal = statFilterPalettes[paletteKey]
   const tone = selected ? pal.active : pal.idle
   return (
     <Chip
-      label={label}
+      label={
+        <Box
+          component="span"
+          sx={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 0.125,
+            py: 0.125,
+            minWidth: 36,
+          }}
+        >
+          <Typography
+            component="span"
+            sx={{
+              fontSize: '1.0625rem',
+              fontWeight: 800,
+              lineHeight: 1,
+              letterSpacing: '-0.03em',
+              fontVariantNumeric: 'tabular-nums',
+              color: 'inherit',
+            }}
+          >
+            {count}
+          </Typography>
+          <Typography
+            component="span"
+            sx={{
+              fontSize: '0.6875rem',
+              fontWeight: selected ? 700 : 600,
+              lineHeight: 1.15,
+              letterSpacing: '0.02em',
+              color: 'inherit',
+              opacity: selected ? 0.92 : 0.88,
+            }}
+          >
+            {segmentLabel}
+          </Typography>
+        </Box>
+      }
       size="medium"
       clickable={!disabled}
       onClick={disabled ? undefined : onClick}
@@ -180,16 +221,24 @@ function StatFilterChip({ label, selected, disabled, onClick, paletteKey }) {
       aria-pressed={selected}
       sx={{
         flexShrink: 0,
-        height: appMobileType.chipRail.height,
-        borderRadius: 999,
-        fontSize: appMobileType.chipRail.fontSize,
-        fontWeight: selected ? 700 : 500,
-        letterSpacing: selected ? '0.01em' : '0.005em',
-        transition: `border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}`,
-        '& .MuiChip-label': { px: 1.4, py: 0.125 },
+        height: 'auto',
+        minHeight: 50,
+        borderRadius: `${radius.md}px`,
+        transition: `border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+        '& .MuiChip-label': {
+          px: 1.25,
+          py: 0.5,
+          display: 'block',
+        },
         ...tone,
         ...(disabled
-          ? { opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none', boxShadow: 'none' }
+          ? {
+              opacity: 0.38,
+              cursor: 'not-allowed',
+              pointerEvents: 'none',
+              boxShadow: 'none',
+              filter: 'none',
+            }
           : {}),
       }}
     />
@@ -214,24 +263,92 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
       component="div"
       sx={{
         display: 'block',
-        mb: 1,
-        letterSpacing: '0.02em',
-        ...appMobileType.railHeading,
+        mb: 1.125,
+        letterSpacing: '0.03em',
+        fontSize: '0.75rem',
+        fontWeight: 600,
+        color: tokens.text.secondary,
+        textTransform: 'uppercase',
       }}
     >
       <Box component="span" sx={{ fontWeight: 700, color: tokens.text.primary }}>
         충전기
       </Box>
-      <Box component="span" sx={{ color: tokens.text.muted, fontWeight: 500, mx: 0.45 }}>
+      <Box component="span" sx={{ color: tokens.text.muted, fontWeight: 600, mx: 0.45 }}>
         ·
       </Box>
       <Box component="span" sx={{ fontWeight: 600, color: tokens.text.secondary }}>
         {label}
       </Box>
-      <Box component="span" sx={{ fontWeight: 500, color: tokens.text.tertiary, ml: 0.35 }}>
+      <Box component="span" sx={{ fontWeight: 600, color: tokens.text.tertiary, ml: 0.35, fontVariantNumeric: 'tabular-nums' }}>
         {count}대
       </Box>
     </Typography>
+  )
+}
+
+/** 3단 정보 모듈 한 칸 — 아이콘·라벨·값(칩형) 정렬 통일 */
+function ChargerMetricCell({ label, icon, valueNode, valuePillSx, tokens, cellBorder, cellBg }) {
+  return (
+    <Box
+      sx={{
+        flex: 1,
+        minWidth: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'stretch',
+        gap: 0.45,
+        p: 0.75,
+        borderRadius: `${radius.md}px`,
+        border: `1px solid ${cellBorder}`,
+        bgcolor: cellBg,
+        boxSizing: 'border-box',
+      }}
+    >
+      <Box
+        sx={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          height: 20,
+          flexShrink: 0,
+          color: tokens.text.secondary,
+          opacity: 0.92,
+        }}
+      >
+        {icon}
+      </Box>
+      <Typography
+        variant="caption"
+        sx={{
+          display: 'block',
+          textAlign: 'center',
+          fontSize: '0.625rem',
+          fontWeight: 600,
+          letterSpacing: '0.08em',
+          textTransform: 'uppercase',
+          color: tokens.text.muted,
+          lineHeight: 1.2,
+        }}
+      >
+        {label}
+      </Typography>
+      <Box
+        sx={{
+          flex: 1,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          minHeight: 40,
+          px: 0.5,
+          py: 0.5,
+          borderRadius: `${radius.sm}px`,
+          ...valuePillSx,
+        }}
+      >
+        {valueNode}
+      </Box>
+    </Box>
   )
 }
 
@@ -270,77 +387,62 @@ function ChargerCard({ row, idx }) {
   const typeLabel = row.displayChgerLabel ?? row.chgerTyLabel ?? '—'
 
   const isDark = resolvedMode === 'dark'
-  const moduleBorder = isDark ? 'rgba(255,255,255,0.09)' : tokens.border.default
-  const moduleBg = isDark ? tokens.bg.subtle : tokens.bg.paper
-  const iconWellBg = isDark ? 'rgba(255,255,255,0.06)' : tokens.bg.muted
-  const metricRowSx = {
-    display: 'flex',
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 1.125,
-    p: 1.125,
-    borderRadius: `${radius.md}px`,
-    border: `1px solid ${moduleBorder}`,
-    bgcolor: moduleBg,
-    boxSizing: 'border-box',
-    minWidth: 0,
-    flex: { xs: 'none', sm: 1 },
-  }
-  const metricLabelSx = {
-    display: 'block',
-    fontSize: '0.6875rem',
-    fontWeight: 600,
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase',
-    color: tokens.text.muted,
-    lineHeight: 1.2,
-    mb: 0.35,
+  const cellBorder = isDark ? 'rgba(255,255,255,0.12)' : 'rgba(55, 65, 81, 0.2)'
+  const cellBg = isDark ? 'rgba(0,0,0,0.18)' : 'rgba(249, 250, 251, 0.95)'
+  const valuePillNeutral = {
+    bgcolor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(255,255,255,0.97)',
+    border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : tokens.border.subtle}`,
   }
 
   const headerChipSx = {
     ...chip.sx,
     flexShrink: 0,
-    height: 28,
+    height: 26,
+    maxHeight: 26,
     borderRadius: 999,
-    fontSize: '0.75rem',
+    fontSize: '0.6875rem',
     fontWeight: 600,
-    letterSpacing: '0.01em',
-    maxWidth: 'min(52%, 160px)',
-    '& .MuiChip-label': { px: 1.125, py: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
-  }
-
-  const sessionInsetSx = {
-    mt: 1.25,
-    p: { xs: 1.25, sm: 1.375 },
-    borderRadius: `${radius.md}px`,
-    bgcolor: isDark ? tokens.bg.subtle : tokens.bg.muted,
-    border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
-    boxShadow: isDark ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'inset 0 1px 2px rgba(15,23,42,0.04)',
+    letterSpacing: '0.02em',
+    maxWidth: 'min(48%, 148px)',
+    '& .MuiChip-label': { px: 1, py: 0, overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 },
   }
 
   const StatusGlyph = detailSheetStatusGlyph(stat)
+  const useBarGradient = `linear-gradient(90deg, ${tokens.status.use.fg} 0%, ${colors.blue.primary} 55%, ${colors.blue.light} 100%)`
+
+  const valueTypographySx = {
+    m: 0,
+    width: '100%',
+    textAlign: 'center',
+    fontWeight: 700,
+    fontSize: '0.8125rem',
+    lineHeight: 1.35,
+    color: tokens.text.primary,
+    fontVariantNumeric: 'tabular-nums',
+    wordBreak: 'break-word',
+  }
 
   return (
     <Box
       sx={{
         mb: 2,
-        p: 1.625,
-        borderRadius: `${radius.md}px`,
-        border: 'none',
+        p: { xs: 1.375, sm: 1.5 },
+        borderRadius: `${radius.lg}px`,
         bgcolor: chargerCard.bgcolor,
         boxShadow: chargerCard.boxShadow,
+        ...(chargerCard.border ? { border: chargerCard.border } : {}),
         transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
       }}
     >
+      {/* 1) 헤더: 충전기명 + 상태 badge */}
       <Box
         sx={{
           display: 'flex',
           flexDirection: 'row',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           justifyContent: 'space-between',
           gap: 1,
-          mb: 1.25,
-          minHeight: 32,
+          mb: 1.375,
         }}
       >
         <Typography
@@ -351,25 +453,26 @@ function ChargerCard({ row, idx }) {
             flex: 1,
             minWidth: 0,
             color: tokens.text.primary,
-            fontSize: '1rem',
-            lineHeight: 1.35,
+            fontSize: '1.0625rem',
+            lineHeight: 1.32,
             fontWeight: 700,
-            letterSpacing: '-0.02em',
+            letterSpacing: '-0.022em',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
+            wordBreak: 'break-word',
           }}
         >
           {title}
         </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
-          {/* 사용 중은 칩만(세션·출력 행과 번개 중복 방지), 그 외 상태는 아이콘으로 구분 */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.45, flexShrink: 0, pt: 0.125 }}>
           {stat !== '3' ? (
             <StatusGlyph
-              size={22}
+              size={18}
               sx={{
                 color: chip.sx.color,
-                opacity: 0.92,
+                opacity: 0.9,
               }}
             />
           ) : null}
@@ -377,174 +480,146 @@ function ChargerCard({ row, idx }) {
         </Box>
       </Box>
 
-      {/* 모바일: 세로 스택 리스트 / sm+: 커넥터·출력 2열 — 상태는 헤더에만 표시해 중복 제거 */}
+      {/* 2) 핵심 3단: 커넥터 · 출력 · 상태 (가로 한 모듈) */}
       <Box
         sx={{
           display: 'flex',
-          flexDirection: { xs: 'column', sm: 'row' },
+          flexDirection: 'row',
           alignItems: 'stretch',
-          gap: { xs: 1, sm: 1.125 },
+          gap: 0.625,
         }}
       >
-        <Box sx={metricRowSx}>
-          <Box
-            sx={{
-              width: 44,
-              minWidth: 44,
-              height: 44,
-              borderRadius: `${radius.md}px`,
-              bgcolor: iconWellBg,
-              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <ChargerTypeGlyph
-              chgerTy={row.chgerTy}
-              size={28}
+        <ChargerMetricCell
+          label="커넥터"
+          tokens={tokens}
+          cellBorder={cellBorder}
+          cellBg={cellBg}
+          valuePillSx={valuePillNeutral}
+          icon={<ChargerTypeGlyph chgerTy={row.chgerTy} size={18} sx={{ display: 'block' }} />}
+          valueNode={
+            <Typography component="p" title={String(typeLabel)} sx={{ ...valueTypographySx, fontWeight: 600 }}>
+              {typeLabel}
+            </Typography>
+          }
+        />
+        <ChargerMetricCell
+          label="출력"
+          tokens={tokens}
+          cellBorder={cellBorder}
+          cellBg={cellBg}
+          valuePillSx={valuePillNeutral}
+          icon={<EvUserGlyphBolt size={18} sx={{ display: 'block' }} />}
+          valueNode={<Typography component="p" sx={valueTypographySx}>{outDisp || '—'}</Typography>}
+        />
+        <ChargerMetricCell
+          label="상태"
+          tokens={tokens}
+          cellBorder={cellBorder}
+          cellBg={cellBg}
+          valuePillSx={{
+            bgcolor: chip.sx.bgcolor,
+            border: chip.sx.border,
+          }}
+          icon={
+            <StatusGlyph
+              size={18}
               sx={{
-                color: tokens.text.secondary,
+                color: chip.sx.color,
                 opacity: 0.95,
               }}
             />
-          </Box>
-          <Box sx={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <Typography component="span" sx={metricLabelSx}>
-              커넥터
-            </Typography>
+          }
+          valueNode={
             <Typography
-              variant="body2"
-              component="p"
-              title={String(typeLabel)}
-              sx={{
-                m: 0,
-                color: tokens.text.primary,
-                fontWeight: 600,
-                fontSize: '0.9375rem',
-                lineHeight: 1.45,
-                wordBreak: 'break-word',
-              }}
-            >
-              {typeLabel}
-            </Typography>
-          </Box>
-        </Box>
-
-        <Box sx={metricRowSx}>
-          <Box
-            sx={{
-              width: 44,
-              minWidth: 44,
-              height: 44,
-              borderRadius: `${radius.md}px`,
-              bgcolor: iconWellBg,
-              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            {/* 출력 = 전력(kW) — 상태는 헤더 아이콘만 사용해 열 중복 없음 */}
-            <EvUserGlyphBolt
-              size={26}
-              sx={{
-                color: tokens.text.secondary,
-                opacity: 0.92,
-              }}
-            />
-          </Box>
-          <Box sx={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <Typography component="span" sx={metricLabelSx}>
-              출력
-            </Typography>
-            <Typography
-              variant="body1"
               component="p"
               sx={{
-                m: 0,
-                color: tokens.text.primary,
+                ...valueTypographySx,
+                color: chip.sx.color,
                 fontWeight: 700,
-                fontSize: '1.125rem',
-                lineHeight: 1.25,
-                fontVariantNumeric: 'tabular-nums',
-                letterSpacing: '-0.02em',
+                fontSize: '0.75rem',
               }}
             >
-              {outDisp || '—'}
+              {chip.label}
             </Typography>
-          </Box>
-        </Box>
+          }
+        />
       </Box>
 
+      {/* 3a) 사용 중 — 통합 상태 패널 */}
       {showSessionPanel ? (
-        <Box sx={sessionInsetSx}>
+        <Box
+          sx={{
+            mt: 1.375,
+            p: { xs: 1.25, sm: 1.375 },
+            borderRadius: `${radius.md}px`,
+            border: `1px solid ${tokens.status.use.border}`,
+            bgcolor: tokens.status.use.rowBg,
+            boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.25)' : '0 2px 10px rgba(245, 158, 11, 0.08)',
+          }}
+        >
           {showChargeBar ? (
             <>
-              <Typography
-                variant="caption"
-                component="div"
-                sx={{
-                  color: tokens.text.tertiary,
-                  fontSize: '0.6875rem',
-                  fontWeight: 600,
-                  letterSpacing: '0.05em',
-                  textTransform: 'uppercase',
-                  mb: 1,
-                }}
-              >
-                충전 진행
-              </Typography>
               <Box
                 sx={{
                   display: 'flex',
                   flexDirection: 'row',
-                  alignItems: 'baseline',
-                  flexWrap: 'wrap',
-                  gap: 0.5,
-                  columnGap: 0.75,
+                  alignItems: 'flex-start',
+                  justifyContent: 'space-between',
+                  gap: 1,
                   mb: 1.125,
                 }}
               >
                 <Typography
-                  component="span"
                   sx={{
-                    color: tokens.text.primary,
-                    fontSize: '1.5rem',
-                    fontWeight: 800,
-                    lineHeight: 1,
-                    fontVariantNumeric: 'tabular-nums',
-                    letterSpacing: '-0.04em',
+                    fontSize: '0.8125rem',
+                    fontWeight: 700,
+                    color: tokens.status.use.fg,
+                    letterSpacing: '0.02em',
+                    pt: 0.25,
                   }}
                 >
-                  {chargePair.current}%
+                  충전 중
                 </Typography>
-                <Typography
-                  component="span"
-                  sx={{
-                    color: tokens.text.secondary,
-                    fontSize: '0.875rem',
-                    fontWeight: 500,
-                    fontVariantNumeric: 'tabular-nums',
-                  }}
-                >
-                  / 목표 {chargePair.target}%
-                </Typography>
+                <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                  <Typography
+                    component="div"
+                    sx={{
+                      fontSize: '1.875rem',
+                      fontWeight: 800,
+                      lineHeight: 1,
+                      letterSpacing: '-0.04em',
+                      fontVariantNumeric: 'tabular-nums',
+                      color: tokens.text.primary,
+                    }}
+                  >
+                    {chargePair.current}%
+                  </Typography>
+                  <Typography
+                    component="div"
+                    sx={{
+                      mt: 0.35,
+                      fontSize: '0.75rem',
+                      fontWeight: 500,
+                      color: tokens.text.tertiary,
+                      fontVariantNumeric: 'tabular-nums',
+                    }}
+                  >
+                    목표 {chargePair.target}%
+                  </Typography>
+                </Box>
               </Box>
               <LinearProgress
                 className="ev-charger-session-progress"
                 variant="determinate"
                 value={chargePair.barValue}
                 sx={{
-                  height: 10,
+                  height: 8,
                   borderRadius: 999,
-                  bgcolor: isDark ? 'rgba(255,255,255,0.1)' : tokens.blue.muted,
+                  bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(245, 158, 11, 0.15)',
                   overflow: 'hidden',
                   '& .MuiLinearProgress-bar': {
                     borderRadius: 999,
-                    background: `linear-gradient(90deg, ${colors.blue.deep} 0%, ${colors.blue.primary} 55%, ${colors.blue.light} 100%)`,
+                    background: useBarGradient,
                   },
                 }}
               />
@@ -552,7 +627,7 @@ function ChargerCard({ row, idx }) {
                 variant="caption"
                 sx={{
                   display: 'block',
-                  mt: 0.5,
+                  mt: 0.65,
                   color: tokens.text.muted,
                   fontSize: '0.6875rem',
                   fontWeight: 500,
@@ -564,17 +639,27 @@ function ChargerCard({ row, idx }) {
             </>
           ) : null}
           {timeLine ? (
-            <Box sx={{ mt: showChargeBar ? 1 : 0 }}>
+            <Box
+              sx={{
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'baseline',
+                justifyContent: 'space-between',
+                gap: 1,
+                mt: showChargeBar ? 1.125 : 0,
+                pt: showChargeBar ? 1 : 0,
+                borderTop: showChargeBar ? `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(245,158,11,0.2)'}` : 'none',
+              }}
+            >
               <Typography
                 variant="caption"
-                component="div"
                 sx={{
                   color: tokens.text.tertiary,
                   fontSize: '0.6875rem',
-                  fontWeight: 500,
+                  fontWeight: 600,
                   letterSpacing: '0.04em',
                   textTransform: 'uppercase',
-                  mb: 0.35,
+                  flexShrink: 0,
                 }}
               >
                 남은 시간 · 완료 예상
@@ -584,9 +669,10 @@ function ChargerCard({ row, idx }) {
                 sx={{
                   color: tokens.text.primary,
                   fontSize: '0.875rem',
-                  fontWeight: 500,
-                  lineHeight: 1.45,
+                  fontWeight: 600,
+                  lineHeight: 1.4,
                   fontVariantNumeric: 'tabular-nums',
+                  textAlign: 'right',
                 }}
               >
                 {timeLine}
@@ -596,23 +682,47 @@ function ChargerCard({ row, idx }) {
         </Box>
       ) : null}
 
-      {stat === '5' && (
-        <Typography
-          variant="caption"
+      {/* 3b) 사용 가능 — 가벼운 안내 */}
+      {stat === '2' && !showSessionPanel ? (
+        <Box
           sx={{
-            color: tokens.text.muted,
-            display: 'block',
-            mt: 1.125,
-            pt: 1,
-            borderTop: `1px solid ${tokens.border.subtle}`,
-            fontSize: '0.75rem',
-            fontWeight: 500,
-            lineHeight: 1.45,
+            mt: 1.25,
+            p: 1,
+            borderRadius: `${radius.md}px`,
+            bgcolor: tokens.status.avail.rowBg,
+            border: `1px solid ${tokens.status.avail.border}`,
           }}
         >
-          점검으로 현재 이용할 수 없습니다.
-        </Typography>
-      )}
+          <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.45, color: tokens.status.avail.fg }}>
+            지금 바로 충전할 수 있어요.
+          </Typography>
+        </Box>
+      ) : null}
+
+      {/* 3c) 점검 — 보조 패널 */}
+      {stat === '5' ? (
+        <Box
+          sx={{
+            mt: 1.25,
+            p: 1,
+            borderRadius: `${radius.md}px`,
+            bgcolor: tokens.status.maint.rowBg,
+            border: `1px solid ${tokens.status.maint.border}`,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 0.875,
+          }}
+        >
+          <EvUserGlyphBatteryBrick
+            size={22}
+            sx={{ color: tokens.status.maint.fg, opacity: 0.85, flexShrink: 0, mt: 0.125 }}
+          />
+          <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.45, color: tokens.text.secondary }}>
+            점검으로 현재 이용할 수 없습니다.
+          </Typography>
+        </Box>
+      ) : null}
     </Box>
   )
 }
@@ -620,18 +730,18 @@ function ChargerCard({ row, idx }) {
 const FOOTER_BTN_SX = {
   flex: '1 1 0',
   minWidth: 0,
-  minHeight: 46,
-  maxHeight: 46,
+  minHeight: 48,
+  maxHeight: 48,
   py: 0,
-  px: { xs: 1, sm: 1.25 },
-  borderRadius: 999,
+  px: { xs: 1.125, sm: 1.25 },
+  borderRadius: `${radius.md}px`,
   fontWeight: 600,
   fontSize: { xs: '0.8125rem', sm: '0.875rem' },
   lineHeight: 1.2,
   textTransform: 'none',
   whiteSpace: 'nowrap',
   '& .MuiButton-startIcon': {
-    marginRight: { xs: 0.4, sm: 0.65 },
+    marginRight: { xs: 0.45, sm: 0.65 },
     marginLeft: 0,
     flexShrink: 0,
     display: 'inline-flex',
@@ -655,9 +765,11 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
     <Box
       sx={{
         ...footerBleed,
-        pt: isSheet ? 0 : 1.25,
-        pb: isSheet ? 'calc(4px + env(safe-area-inset-bottom, 0px))' : 1.5,
-        bgcolor: isSheet ? 'transparent' : tokens.bg.subtle,
+        pt: isSheet ? 1.125 : 1.25,
+        pb: isSheet ? 'calc(8px + env(safe-area-inset-bottom, 0px))' : 1.5,
+        px: isSheet ? 0 : undefined,
+        bgcolor: isSheet ? tokens.bg.paper : tokens.bg.subtle,
+        borderTop: isSheet ? `1px solid ${tokens.border.subtle}` : 'none',
       }}
     >
       <Box
@@ -665,13 +777,13 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'stretch',
-          gap: { xs: 0.875, sm: 1.125 },
+          gap: { xs: 0.75, sm: 1 },
         }}
       >
         {telno ? (
           <Button
             variant="outlined"
-            startIcon={<Phone sx={{ fontSize: 20 }} />}
+            startIcon={<Phone sx={{ fontSize: 21 }} />}
             href={`tel:${telno}`}
             aria-label="전화 걸기"
             sx={{
@@ -695,7 +807,7 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         ) : null}
         <Button
           variant="contained"
-          startIcon={<Directions sx={{ fontSize: 20 }} />}
+          startIcon={<Directions sx={{ fontSize: 21 }} />}
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
@@ -706,9 +818,9 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
             bgcolor: colors.blue.primary,
             color: tokens.text.onPrimary,
             fontWeight: 600,
-            boxShadow: `0 1px 2px rgba(0,0,0,0.06)`,
-            transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}`,
-            '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 2px 10px ${tokens.blue.glowSoft}` },
+            boxShadow: `0 2px 8px rgba(31, 69, 255, 0.22)`,
+            transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
+            '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 4px 14px ${tokens.blue.glowSoft}` },
             '&:active': { transform: 'scale(0.98)' },
           }}
         >
@@ -790,10 +902,10 @@ export function StationDetailContent({
                       mx: -2,
                       px: 2,
                       pt: 0,
-                      pb: 0,
+                      pb: 1,
                       mb: 0,
                       borderBottom: `1px solid ${tokens.border.subtle}`,
-                      boxShadow: `0 6px 12px -8px ${resolvedMode === 'dark' ? 'rgba(0,0,0,0.45)' : 'rgba(15,23,42,0.08)'}`,
+                      boxShadow: `0 8px 16px -10px ${resolvedMode === 'dark' ? 'rgba(0,0,0,0.5)' : 'rgba(15,23,42,0.1)'}`,
                     }
                   : {}
               }
@@ -809,35 +921,39 @@ export function StationDetailContent({
                   overflowX: 'auto',
                   overflowY: 'hidden',
                   WebkitOverflowScrolling: 'touch',
-                  py: 0.75,
+                  py: 0.875,
                   ...(stickyRail ? {} : { mx: -2, px: 2 }),
                   scrollbarWidth: 'none',
                   '&::-webkit-scrollbar': { display: 'none' },
                 }}
               >
                 <StatFilterChip
-                  label={`전체 ${totalChargers}`}
+                  count={totalChargers}
+                  segmentLabel="전체"
                   paletteKey="all"
                   selected={chargerStatFilter === 'all'}
                   disabled={totalChargers === 0}
                   onClick={() => setStatFilter('all')}
                 />
                 <StatFilterChip
-                  label={`사용 가능 ${cAvail}`}
+                  count={cAvail}
+                  segmentLabel="사용 가능"
                   paletteKey="avail"
                   selected={chargerStatFilter === '2'}
                   disabled={cAvail === 0}
                   onClick={() => setStatFilter('2')}
                 />
                 <StatFilterChip
-                  label={`사용 중 ${cUse}`}
+                  count={cUse}
+                  segmentLabel="사용 중"
                   paletteKey="use"
                   selected={chargerStatFilter === '3'}
                   disabled={cUse === 0}
                   onClick={() => setStatFilter('3')}
                 />
                 <StatFilterChip
-                  label={`점검중 ${cMaint}`}
+                  count={cMaint}
+                  segmentLabel="점검중"
                   paletteKey="maint"
                   selected={chargerStatFilter === '5'}
                   disabled={cMaint === 0}
@@ -861,17 +977,18 @@ export function StationDetailContent({
             sx={{
               color: tokens.text.tertiary,
               display: 'block',
-              mt: totalChargers > 0 ? 1 : 0,
+              mt: totalChargers > 0 ? 1.125 : 0,
               mb: 0,
               ...appMobileType.captionDense,
               fontStyle: 'italic',
               lineHeight: 1.45,
+              opacity: 0.92,
             }}
           >
             * 충전기 상태 및 충전율 정보는 MVP용 시뮬레이션 데이터입니다.
           </Typography>
 
-          <Box sx={{ mt: totalChargers > 0 ? 1.25 : 0 }}>
+          <Box sx={{ mt: totalChargers > 0 ? 1.375 : 0 }}>
             <ChargerListHeading
               filter={chargerStatFilter}
               totalChargers={totalChargers}
