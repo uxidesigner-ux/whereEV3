@@ -125,18 +125,18 @@ function buildDetailUi(colors, tokens, resolvedMode) {
       },
     },
   }
-  /** 프리미엄 카드: 표면·소프트 섀도, 경계는 최소 */
+  /** 앱 시트 셀: 과한 플로팅 카드 느낌 완화 */
   const chargerCard =
     resolvedMode === 'dark'
       ? {
           bgcolor: tokens.bg.raised,
-          border: '1px solid rgba(255,255,255,0.06)',
-          boxShadow: '0 4px 20px rgba(0,0,0,0.45), 0 1px 0 rgba(255,255,255,0.04) inset',
+          border: `1px solid rgba(255,255,255,0.07)`,
+          boxShadow: '0 1px 0 rgba(255,255,255,0.05) inset, 0 2px 10px rgba(0,0,0,0.35)',
         }
       : {
-          bgcolor: tokens.bg.paper,
-          border: '1px solid rgba(15,23,42,0.06)',
-          boxShadow: '0 2px 16px rgba(15, 23, 42, 0.07), 0 1px 3px rgba(15, 23, 42, 0.04)',
+          bgcolor: tokens.bg.subtle,
+          border: `1px solid ${tokens.border.subtle}`,
+          boxShadow: '0 1px 2px rgba(15, 23, 42, 0.05)',
         }
 
   return {
@@ -168,9 +168,9 @@ function useStationDetailUi() {
   return ctx
 }
 
-/** 상태 요약 세그먼트: 숫자 우선, 라벨 보조 (필터 칩이 아닌 요약 느낌) */
+/** 상태 요약 세그먼트: 숫자 중심·라벨은 약한 대문자( opacity 금지, 톤은 색만 ) */
 function StatFilterChip({ count, segmentLabel, selected, disabled, onClick, paletteKey }) {
-  const { statFilterPalettes } = useStationDetailUi()
+  const { statFilterPalettes, tokens } = useStationDetailUi()
   const pal = statFilterPalettes[paletteKey]
   const tone = selected ? pal.active : pal.idle
   return (
@@ -183,18 +183,18 @@ function StatFilterChip({ count, segmentLabel, selected, disabled, onClick, pale
             flexDirection: 'column',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 0.125,
-            py: 0.125,
-            minWidth: 36,
+            gap: 0.2,
+            py: 0.2,
+            minWidth: 40,
           }}
         >
           <Typography
             component="span"
             sx={{
-              fontSize: '1.0625rem',
+              fontSize: '1.1875rem',
               fontWeight: 800,
               lineHeight: 1,
-              letterSpacing: '-0.03em',
+              letterSpacing: '-0.035em',
               fontVariantNumeric: 'tabular-nums',
               color: 'inherit',
             }}
@@ -204,12 +204,12 @@ function StatFilterChip({ count, segmentLabel, selected, disabled, onClick, pale
           <Typography
             component="span"
             sx={{
-              fontSize: '0.6875rem',
+              fontSize: '0.625rem',
               fontWeight: selected ? 700 : 600,
-              lineHeight: 1.15,
-              letterSpacing: '0.02em',
-              color: 'inherit',
-              opacity: selected ? 0.92 : 0.88,
+              lineHeight: 1.2,
+              letterSpacing: '0.06em',
+              textTransform: 'uppercase',
+              color: selected ? 'inherit' : tokens.text.tertiary,
             }}
           >
             {segmentLabel}
@@ -224,12 +224,12 @@ function StatFilterChip({ count, segmentLabel, selected, disabled, onClick, pale
       sx={{
         flexShrink: 0,
         height: 'auto',
-        minHeight: 50,
+        minHeight: 52,
         borderRadius: `${radius.md}px`,
         transition: `border-color ${motion.duration.enter}ms ${motion.easing.standard}, background-color ${motion.duration.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
         '& .MuiChip-label': {
-          px: 1.25,
-          py: 0.5,
+          px: 1.35,
+          py: 0.55,
           display: 'block',
         },
         ...tone,
@@ -265,9 +265,9 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
       component="div"
       sx={{
         display: 'block',
-        mb: 1.125,
-        letterSpacing: '0.03em',
-        fontSize: '0.75rem',
+        mb: 1,
+        letterSpacing: '0.05em',
+        fontSize: '0.6875rem',
         fontWeight: 600,
         color: tokens.text.secondary,
         textTransform: 'uppercase',
@@ -287,6 +287,17 @@ function ChargerListHeading({ filter, totalChargers, filteredCount }) {
       </Box>
     </Typography>
   )
+}
+
+/** 어코디언 헤더 한 줄: 빈 값은 토막 생략(「—」 연속 방지) */
+function buildChargerHeaderSummaryLine(row, outDisp) {
+  const speedLabel = row.speedCategory || getSpeedCategory(row.chgerTy)
+  const segs = [speedLabel]
+  const out = (outDisp || '').trim()
+  if (out) segs.push(out)
+  const conn = (row.chgerTyLabel || '').trim()
+  if (conn) segs.push(conn)
+  return segs.join(' · ')
 }
 
 /** 3단 정보 모듈 한 칸 — 아이콘·라벨·값(칩형) 정렬 통일 */
@@ -387,11 +398,7 @@ function ChargerCard({ row, idx }) {
   }
   const chip = chipForStat()
 
-  /** 헤더 요약: 급속/완속 · 출력 · 커넥터(타입 라벨만 — displayChgerLabel은 속도 중복) */
-  const speedLabel = row.speedCategory || getSpeedCategory(row.chgerTy)
-  const connectorShort = (row.chgerTyLabel || '').trim() || '—'
-  const outputShort = (outDisp || '').trim() || '—'
-  const headerSummaryLine = `${speedLabel} · ${outputShort} · ${connectorShort}`
+  const headerSummaryLine = buildChargerHeaderSummaryLine(row, outDisp)
   const typeLabel = row.displayChgerLabel ?? row.chgerTyLabel ?? '—'
 
   const isDark = resolvedMode === 'dark'
@@ -411,7 +418,8 @@ function ChargerCard({ row, idx }) {
     fontSize: '0.6875rem',
     fontWeight: 600,
     letterSpacing: '0.02em',
-    maxWidth: 'min(46%, 152px)',
+    maxWidth: 'min(56%, 132px)',
+    boxShadow: 'none',
     '& .MuiChip-label': { px: 1, py: 0, overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 },
   }
 
@@ -440,7 +448,7 @@ function ChargerCard({ row, idx }) {
   return (
     <Box
       sx={{
-        mb: 2,
+        mb: 1.75,
         borderRadius: `${radius.lg}px`,
         bgcolor: chargerCard.bgcolor,
         boxShadow: chargerCard.boxShadow,
@@ -462,11 +470,11 @@ function ChargerCard({ row, idx }) {
           width: '100%',
           display: 'flex',
           flexDirection: 'row',
-          alignItems: 'flex-start',
+          alignItems: 'center',
           justifyContent: 'space-between',
           gap: 1,
           m: 0,
-          p: { xs: 1.375, sm: 1.5 },
+          p: { xs: 1.25, sm: 1.375 },
           textAlign: 'left',
           cursor: 'pointer',
           border: 'none',
@@ -480,17 +488,18 @@ function ChargerCard({ row, idx }) {
           },
         }}
       >
-        <Box sx={{ flex: 1, minWidth: 0, pr: 0.5 }}>
+        <Box sx={{ flex: 1, minWidth: 0, pr: 0.75 }}>
           <Typography
             variant="subtitle2"
             component="h3"
             title={title}
             sx={{
+              ...appMobileType.chargerCardTitle,
               color: tokens.text.primary,
-              fontSize: '1.0625rem',
-              lineHeight: 1.32,
-              fontWeight: 700,
-              letterSpacing: '-0.022em',
+              fontSize: { xs: '1rem', sm: '0.9375rem' },
+              fontWeight: 800,
+              lineHeight: 1.3,
+              letterSpacing: '-0.024em',
               display: '-webkit-box',
               WebkitLineClamp: 2,
               WebkitBoxOrient: 'vertical',
@@ -506,11 +515,11 @@ function ChargerCard({ row, idx }) {
             title={headerSummaryLine}
             sx={{
               display: 'block',
-              mt: 0.4,
+              mt: 0.35,
               color: tokens.text.secondary,
               fontSize: '0.75rem',
               fontWeight: 600,
-              lineHeight: 1.38,
+              lineHeight: 1.4,
               letterSpacing: '0.01em',
               wordBreak: 'break-word',
             }}
@@ -519,27 +528,44 @@ function ChargerCard({ row, idx }) {
           </Typography>
         </Box>
         <Box
+          aria-hidden
           sx={{
-            display: 'flex',
+            display: 'inline-flex',
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 0.35,
             flexShrink: 0,
-            pt: 0.125,
+            gap: 0,
+            pl: 0.5,
+            pr: 0.125,
+            py: 0.25,
+            minHeight: 36,
+            borderRadius: `${radius.md}px`,
+            bgcolor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(15,23,42,0.045)',
+            border: `1px solid ${isDark ? 'rgba(255,255,255,0.1)' : 'rgba(15,23,42,0.08)'}`,
             pointerEvents: 'none',
           }}
         >
           <Chip label={chip.label} size="small" sx={headerChipSx} />
-          <ExpandMore
-            aria-hidden
+          <Box
             sx={{
-              display: 'block',
-              color: tokens.text.tertiary,
-              fontSize: 26,
-              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-              transition: `transform ${collapseMs.enter}ms ${motion.easing.standard}`,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              width: 32,
+              height: 32,
+              flexShrink: 0,
             }}
-          />
+          >
+            <ExpandMore
+              sx={{
+                display: 'block',
+                color: tokens.text.muted,
+                fontSize: 22,
+                transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: `transform ${collapseMs.enter}ms ${motion.easing.standard}, color ${motion.duration.enter}ms ${motion.easing.standard}`,
+              }}
+            />
+          </Box>
         </Box>
       </Box>
 
@@ -815,12 +841,14 @@ const FOOTER_BTN_SX = {
   lineHeight: 1.2,
   textTransform: 'none',
   whiteSpace: 'nowrap',
+  justifyContent: 'center',
   '& .MuiButton-startIcon': {
-    marginRight: { xs: 0.45, sm: 0.65 },
+    marginRight: { xs: 0.45, sm: 0.6 },
     marginLeft: 0,
     flexShrink: 0,
     display: 'inline-flex',
     alignItems: 'center',
+    lineHeight: 1,
   },
 }
 
@@ -840,11 +868,12 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
     <Box
       sx={{
         ...footerBleed,
-        pt: isSheet ? 1.125 : 1.25,
-        pb: isSheet ? 'calc(8px + env(safe-area-inset-bottom, 0px))' : 1.5,
+        /* 시트: MobileBottomSheet footer 슬롯이 px·border·safe-area 처리 */
+        pt: isSheet ? 0 : 1.25,
+        pb: isSheet ? 0 : 1.5,
         px: isSheet ? 0 : undefined,
-        bgcolor: isSheet ? tokens.bg.paper : tokens.bg.subtle,
-        borderTop: isSheet ? `1px solid ${tokens.border.subtle}` : 'none',
+        bgcolor: isSheet ? 'transparent' : tokens.bg.subtle,
+        borderTop: 'none',
       }}
     >
       <Box
@@ -852,20 +881,21 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'stretch',
-          gap: { xs: 0.75, sm: 1 },
+          gap: { xs: 0.875, sm: 1 },
         }}
       >
         {telno ? (
           <Button
             variant="outlined"
-            startIcon={<Phone sx={{ fontSize: 21 }} />}
+            startIcon={<Phone sx={{ fontSize: 20 }} />}
             href={`tel:${telno}`}
             aria-label="전화 걸기"
             sx={{
               ...FOOTER_BTN_SX,
               flex: '1 1 0',
+              minWidth: 108,
               borderColor: tokens.border.default,
-              bgcolor: tokens.bg.subtle,
+              bgcolor: tokens.bg.paper,
               color: tokens.text.primary,
               fontWeight: 600,
               boxShadow: 'none',
@@ -882,20 +912,20 @@ export function StationDetailFooterActions({ station, variant = 'dialog' }) {
         ) : null}
         <Button
           variant="contained"
-          startIcon={<Directions sx={{ fontSize: 21 }} />}
+          startIcon={<Directions sx={{ fontSize: 20 }} />}
           href={mapsUrl}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="충전소 위치 길찾기"
-            sx={{
+          sx={{
             ...FOOTER_BTN_SX,
             flex: telno ? '1 1 0' : '1 1 auto',
             bgcolor: colors.blue.primary,
             color: tokens.text.onPrimary,
             fontWeight: 600,
-            boxShadow: `0 2px 8px rgba(31, 69, 255, 0.22)`,
+            boxShadow: `0 1px 4px rgba(31, 69, 255, 0.22)`,
             transition: `transform ${motion.duration.enter}ms ${motion.easing.standard}, box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
-            '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 4px 14px ${tokens.blue.glowSoft}` },
+            '&:hover': { bgcolor: colors.blue.deep, boxShadow: `0 3px 10px ${tokens.blue.glowSoft}` },
             '&:active': { transform: 'scale(0.98)' },
           }}
         >
@@ -985,55 +1015,65 @@ export function StationDetailContent({
                   : {}
               }
             >
-              <Box
-                role="tablist"
-                aria-label="충전기 상태 필터"
-                sx={{
-                  display: 'flex',
-                  flexWrap: 'nowrap',
-                  alignItems: 'center',
-                  gap: 0.625,
-                  overflowX: 'auto',
-                  overflowY: 'hidden',
-                  WebkitOverflowScrolling: 'touch',
-                  py: 0.875,
-                  ...(stickyRail ? {} : { mx: -2, px: 2 }),
-                  scrollbarWidth: 'none',
-                  '&::-webkit-scrollbar': { display: 'none' },
-                }}
-              >
-                <StatFilterChip
-                  count={totalChargers}
-                  segmentLabel="전체"
-                  paletteKey="all"
-                  selected={chargerStatFilter === 'all'}
-                  disabled={totalChargers === 0}
-                  onClick={() => setStatFilter('all')}
-                />
-                <StatFilterChip
-                  count={cAvail}
-                  segmentLabel="사용 가능"
-                  paletteKey="avail"
-                  selected={chargerStatFilter === '2'}
-                  disabled={cAvail === 0}
-                  onClick={() => setStatFilter('2')}
-                />
-                <StatFilterChip
-                  count={cUse}
-                  segmentLabel="사용 중"
-                  paletteKey="use"
-                  selected={chargerStatFilter === '3'}
-                  disabled={cUse === 0}
-                  onClick={() => setStatFilter('3')}
-                />
-                <StatFilterChip
-                  count={cMaint}
-                  segmentLabel="점검중"
-                  paletteKey="maint"
-                  selected={chargerStatFilter === '5'}
-                  disabled={cMaint === 0}
-                  onClick={() => setStatFilter('5')}
-                />
+              <Box sx={stickyRail ? {} : { mx: -2, px: 2 }}>
+                <Box
+                  sx={{
+                    borderRadius: `${radius.lg}px`,
+                    border: `1px solid ${tokens.border.subtle}`,
+                    bgcolor: tokens.bg.subtle,
+                    p: 0.5,
+                  }}
+                >
+                  <Box
+                    role="tablist"
+                    aria-label="충전기 상태 요약"
+                    sx={{
+                      display: 'flex',
+                      flexWrap: 'nowrap',
+                      alignItems: 'center',
+                      gap: 0.5,
+                      overflowX: 'auto',
+                      overflowY: 'hidden',
+                      WebkitOverflowScrolling: 'touch',
+                      py: 0.25,
+                      scrollbarWidth: 'none',
+                      '&::-webkit-scrollbar': { display: 'none' },
+                    }}
+                  >
+                    <StatFilterChip
+                      count={totalChargers}
+                      segmentLabel="전체"
+                      paletteKey="all"
+                      selected={chargerStatFilter === 'all'}
+                      disabled={totalChargers === 0}
+                      onClick={() => setStatFilter('all')}
+                    />
+                    <StatFilterChip
+                      count={cAvail}
+                      segmentLabel="사용 가능"
+                      paletteKey="avail"
+                      selected={chargerStatFilter === '2'}
+                      disabled={cAvail === 0}
+                      onClick={() => setStatFilter('2')}
+                    />
+                    <StatFilterChip
+                      count={cUse}
+                      segmentLabel="사용 중"
+                      paletteKey="use"
+                      selected={chargerStatFilter === '3'}
+                      disabled={cUse === 0}
+                      onClick={() => setStatFilter('3')}
+                    />
+                    <StatFilterChip
+                      count={cMaint}
+                      segmentLabel="점검중"
+                      paletteKey="maint"
+                      selected={chargerStatFilter === '5'}
+                      disabled={cMaint === 0}
+                      onClick={() => setStatFilter('5')}
+                    />
+                  </Box>
+                </Box>
               </Box>
               {!chargerSummaryUpdatedInHeader && latestStatUpdDt && (
                 <Typography

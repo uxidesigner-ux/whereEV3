@@ -2418,23 +2418,8 @@ function App() {
     }
   }, [items])
 
-  const detailHeaderSubtitle = useMemo(() => {
-    if (!detailStation) return ''
-    const st = (detailStation.latestStatUpdDt || detailStation.statUpdDt || '').trim()
-    if (st) return `공공데이터 목록 갱신 시각 ${st}`
-    if (lastEvFetchAt) {
-      try {
-        const d = new Date(lastEvFetchAt)
-        return `목록 조회 ${d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
-      } catch {
-        return ''
-      }
-    }
-    return ''
-  }, [detailStation, lastEvFetchAt])
-
-  /** 헤더 2행: 거리·주소(가독 secondary) — 갱신 시각과 분리 */
-  const detailHeaderLocationLine = useMemo(() => {
+  /** 상세 헤더 2행: 거리 · 주소(위계 분리, 스캔용) */
+  const detailHeaderDistanceAddress = useMemo(() => {
     if (!detailStation) return ''
     const parts = []
     const dist = formatDistanceKm(detailStation.distanceKm)
@@ -2443,6 +2428,51 @@ function App() {
     if (addrLines[0]) parts.push(addrLines[0])
     return parts.join(' · ')
   }, [detailStation])
+
+  /** 상세 헤더 3행: 상태 갱신 시각 또는 목록 조회 시각(가장 약한 메타) */
+  const detailHeaderTimingLine = useMemo(() => {
+    if (!detailStation) return ''
+    const st = (detailStation.latestStatUpdDt || detailStation.statUpdDt || '').trim()
+    if (st) return `충전기 상태 기준 ${st}`
+    if (lastEvFetchAt) {
+      try {
+        const d = new Date(lastEvFetchAt)
+        return `요약 목록 조회 ${d.toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}`
+      } catch {
+        return ''
+      }
+    }
+    return ''
+  }, [detailStation, lastEvFetchAt])
+
+  const mobileDetailTitleSx = useMemo(
+    () => ({
+      ...appMobileType.detailSheetTitle,
+      color: tokens.text.primary,
+      fontWeight: 800,
+      fontSize: { xs: '1.375rem', md: '1.125rem' },
+      lineHeight: { xs: 1.22, md: 1.32 },
+      letterSpacing: '-0.025em',
+    }),
+    [tokens.text.primary],
+  )
+
+  const mobileDetailRefreshIconBtnSx = useMemo(
+    () => ({
+      color: tokens.text.muted,
+      flexShrink: 0,
+      width: 40,
+      height: 40,
+      minWidth: 40,
+      minHeight: 40,
+      p: 0,
+      borderRadius: radius.md,
+      mt: 0.125,
+      '&:hover': { bgcolor: tokens.bg.muted },
+      '&.Mui-disabled': { color: tokens.text.muted },
+    }),
+    [tokens.bg.muted, tokens.text.muted],
+  )
 
   const chargerSummaryUpdatedInHeader = useMemo(
     () => !!(detailStation && (detailStation.latestStatUpdDt || detailStation.statUpdDt)),
@@ -2514,8 +2544,7 @@ function App() {
                           variant="h6"
                           component="h2"
                           sx={{
-                            color: tokens.text.primary,
-                            ...appMobileType.detailSheetTitle,
+                            ...mobileDetailTitleSx,
                             display: '-webkit-box',
                             WebkitLineClamp: 2,
                             WebkitBoxOrient: 'vertical',
@@ -2525,36 +2554,36 @@ function App() {
                         >
                           {d.statNm}
                         </Typography>
-                        {detailHeaderLocationLine ? (
+                        {detailHeaderDistanceAddress ? (
                           <Typography
                             variant="body2"
                             sx={{
                               display: 'block',
-                              mt: 0.45,
+                              mt: 0.5,
                               color: tokens.text.secondary,
-                              lineHeight: 1.4,
-                              fontWeight: 500,
+                              lineHeight: 1.42,
+                              fontWeight: 600,
                               fontSize: '0.8125rem',
                               wordBreak: 'break-word',
                             }}
                           >
-                            {detailHeaderLocationLine}
+                            {detailHeaderDistanceAddress}
                           </Typography>
                         ) : null}
-                        {detailHeaderSubtitle ? (
+                        {detailHeaderTimingLine ? (
                           <Typography
                             variant="caption"
                             sx={{
                               display: 'block',
-                              mt: detailHeaderLocationLine ? 0.25 : 0.4,
+                              mt: detailHeaderDistanceAddress ? 0.3 : 0.45,
                               color: tokens.text.tertiary,
-                              fontSize: '0.6875rem',
-                              lineHeight: 1.35,
+                              fontSize: '0.7rem',
+                              lineHeight: 1.38,
                               fontWeight: 500,
                               letterSpacing: '0.01em',
                             }}
                           >
-                            {detailHeaderSubtitle}
+                            {detailHeaderTimingLine}
                           </Typography>
                         ) : null}
                       </Box>
@@ -2563,25 +2592,13 @@ function App() {
                         disabled={detailRefreshing}
                         aria-label="충전소 요약 데이터 새로고침"
                         size="small"
-                        sx={{
-                          color: tokens.text.tertiary,
-                          opacity: 0.7,
-                          flexShrink: 0,
-                          width: 40,
-                          height: 40,
-                          minWidth: 40,
-                          minHeight: 40,
-                          p: 0,
-                          borderRadius: radius.md,
-                          mt: 0.125,
-                          '&:hover': { opacity: 1, bgcolor: tokens.bg.muted },
-                        }}
+                        sx={mobileDetailRefreshIconBtnSx}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         {detailRefreshing ? (
                           <CircularProgress size={18} thickness={5} sx={{ color: colors.blue.primary }} />
                         ) : (
-                          <Refresh sx={{ fontSize: 19 }} />
+                          <Refresh sx={{ fontSize: 18 }} />
                         )}
                       </IconButton>
                     </Box>
@@ -2620,8 +2637,7 @@ function App() {
                           variant="h6"
                           component="h2"
                           sx={{
-                            color: tokens.text.primary,
-                            ...appMobileType.detailSheetTitle,
+                            ...mobileDetailTitleSx,
                             display: '-webkit-box',
                             WebkitLineClamp: 2,
                             WebkitBoxOrient: 'vertical',
@@ -2631,36 +2647,36 @@ function App() {
                         >
                           {d.statNm}
                         </Typography>
-                        {detailHeaderLocationLine ? (
+                        {detailHeaderDistanceAddress ? (
                           <Typography
                             variant="body2"
                             sx={{
                               display: 'block',
-                              mt: 0.4,
+                              mt: 0.45,
                               color: tokens.text.secondary,
-                              lineHeight: 1.4,
-                              fontWeight: 500,
+                              lineHeight: 1.42,
+                              fontWeight: 600,
                               fontSize: '0.8125rem',
                               wordBreak: 'break-word',
                             }}
                           >
-                            {detailHeaderLocationLine}
+                            {detailHeaderDistanceAddress}
                           </Typography>
                         ) : null}
-                        {detailHeaderSubtitle ? (
+                        {detailHeaderTimingLine ? (
                           <Typography
                             variant="caption"
                             sx={{
                               display: 'block',
-                              mt: detailHeaderLocationLine ? 0.22 : 0.38,
+                              mt: detailHeaderDistanceAddress ? 0.28 : 0.4,
                               color: tokens.text.tertiary,
-                              fontSize: '0.6875rem',
-                              lineHeight: 1.35,
+                              fontSize: '0.7rem',
+                              lineHeight: 1.38,
                               fontWeight: 500,
                               letterSpacing: '0.01em',
                             }}
                           >
-                            {detailHeaderSubtitle}
+                            {detailHeaderTimingLine}
                           </Typography>
                         ) : null}
                       </Box>
@@ -2669,25 +2685,13 @@ function App() {
                         disabled={detailRefreshing}
                         aria-label="충전소 요약 데이터 새로고침"
                         size="small"
-                        sx={{
-                          color: tokens.text.tertiary,
-                          opacity: 0.7,
-                          flexShrink: 0,
-                          width: 40,
-                          height: 40,
-                          minWidth: 40,
-                          minHeight: 40,
-                          p: 0,
-                          mt: 0.125,
-                          borderRadius: radius.md,
-                          '&:hover': { opacity: 1, bgcolor: tokens.bg.muted },
-                        }}
+                        sx={mobileDetailRefreshIconBtnSx}
                         onPointerDown={(e) => e.stopPropagation()}
                       >
                         {detailRefreshing ? (
                           <CircularProgress size={18} thickness={5} sx={{ color: colors.blue.primary }} />
                         ) : (
-                          <Refresh sx={{ fontSize: 19 }} />
+                          <Refresh sx={{ fontSize: 18 }} />
                         )}
                       </IconButton>
                     </Box>
