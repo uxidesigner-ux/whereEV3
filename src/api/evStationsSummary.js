@@ -91,6 +91,29 @@ function summaryUrlWithoutQuery(url) {
 }
 
 /**
+ * 대용량 JSON.parse 직전 메인 스레드 양보 — 페인트·입력·idle 콜백 기회.
+ * 모바일 WebKit 등에서 장시간 동기 파싱으로 인한 비정상 종료 완화에 도움.
+ */
+function yieldMainThreadBeforeHeavyParse() {
+  return new Promise((resolve) => {
+    const finish = () => {
+      if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => resolve(), { timeout: 64 })
+      } else {
+        setTimeout(resolve, 0)
+      }
+    }
+    if (typeof requestAnimationFrame === 'function') {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(finish)
+      })
+    } else {
+      finish()
+    }
+  })
+}
+
+/**
  * @param {{ url?: string, signal?: AbortSignal, cache?: RequestCache, maxAttempts?: number }} [opts]
  * - `maxAttempts`: 502/503/504 시 재시도 횟수(기본 2). 재시도 시 쿼리 제거·`no-store`로 엣지 캐시 꼬임 완화.
  */
@@ -129,6 +152,7 @@ export async function fetchEvStationsSummaryDataset(opts = {}) {
           '요약 JSON 대신 Git LFS 포인터만 받았습니다. Vercel이면 Project Settings → Git에서 Git LFS를 켜고 재배포하세요. 로컬이면 git lfs checkout public/data/ev-stations-summary.json 후 다시 빌드하세요.'
         )
       }
+      await yieldMainThreadBeforeHeavyParse()
       let json
       try {
         json = JSON.parse(text)

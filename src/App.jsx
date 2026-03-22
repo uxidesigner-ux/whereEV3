@@ -186,6 +186,23 @@ function easeBootProgressEaseOutCubic(setProgress, from, to, durationMs) {
   })
 }
 
+/**
+ * ev-stations-summary.json fetch 동안 세그먼트 바가 멈춘 것처럼 보이지 않게,
+ * 약 0.5초마다 1%씩 상한(71%)까지 올림. 완료 후 72% 단계로 이어짐.
+ * @param {React.Dispatch<React.SetStateAction<number>>} setProgress
+ * @returns {() => void}
+ */
+function startBootSummaryFetchProgressCreep(setProgress) {
+  const CAP = 71
+  const id = window.setInterval(() => {
+    setProgress((p) => {
+      if (p >= CAP) return p
+      return p + 1
+    })
+  }, 520)
+  return () => window.clearInterval(id)
+}
+
 function getBootstrapGeolocationPosition() {
   return new Promise((resolve) => {
     const fallback = () =>
@@ -574,6 +591,8 @@ function App() {
   const [bootReduceMotion, setBootReduceMotion] = useState(false)
   /** 첫 마커 이후 ~1s 마무리 연출 중(순환 문구 대신 단계 메시지) */
   const [bootFinalizing, setBootFinalizing] = useState(false)
+  /** 부트 종료 직전 차·프로그레스·문구 페이드아웃 */
+  const [bootChromeVisible, setBootChromeVisible] = useState(true)
   const bootReduceMotionRef = useRef(false)
   /** DEV proof: API 1페이지 샘플 좌표 → CircleMarker 직접 렌더 */
   const [mapProofApiDots, setMapProofApiDots] = useState([])
@@ -615,6 +634,10 @@ function App() {
   useEffect(() => {
     bootReduceMotionRef.current = bootReduceMotion
   }, [bootReduceMotion])
+
+  useEffect(() => {
+    if (bootOverlayOpen) setBootChromeVisible(true)
+  }, [bootOverlayOpen])
   const harnessBootMarkerCount = useMemo(
     () => evMapDiagHarnessBootMarkerCount(evMapDiag),
     [evMapDiag],
@@ -1087,17 +1110,22 @@ function App() {
         if (reduce) {
           setBootProgress(100)
           setBootStageMessage('준비했어요')
-          await new Promise((r) => setTimeout(r, 380))
+          await new Promise((r) => setTimeout(r, 280))
+          setBootChromeVisible(false)
+          await new Promise((r) => setTimeout(r, 220))
         } else {
           await easeBootProgressEaseOutCubic(setBootProgress, 88, 100, 980)
           setBootStageMessage('준비했어요')
-          await new Promise((r) => setTimeout(r, 160))
+          await new Promise((r) => setTimeout(r, 140))
+          setBootChromeVisible(false)
+          await new Promise((r) => setTimeout(r, 400))
         }
       } finally {
         viewportSummaryTelemetry('boot', 'boot-overlay-off', {})
         setAwaitingInitialMapPaint(false)
         setBootOverlayOpen(false)
         setBootFinalizing(false)
+        setBootChromeVisible(true)
       }
     })()
   }, [])
@@ -1557,18 +1585,23 @@ function App() {
         await easeBootProgress(setBootProgress, 40, 62, 360)
         if (cancelled || ac.signal.aborted) return
 
+        const stopSummaryCreep = startBootSummaryFetchProgressCreep(setBootProgress)
         let ds = null
         try {
-          ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal: ac.signal, maxAttempts: 2 })
-        } catch (e) {
-          if (import.meta.env.DEV) {
-            fullEvCatalogRef.current = getDevMockEvChargers()
-            viewportSummaryTelemetry('boot', 'mock-summary-fallback-dev', {})
-            // eslint-disable-next-line no-console -- DEV 안내
-            console.info('[whereEV3] summary JSON 로드 실패 — DEV mock 사용:', e?.message || e)
-          } else {
-            throw e
+          try {
+            ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal: ac.signal, maxAttempts: 2 })
+          } catch (e) {
+            if (import.meta.env.DEV) {
+              fullEvCatalogRef.current = getDevMockEvChargers()
+              viewportSummaryTelemetry('boot', 'mock-summary-fallback-dev', {})
+              // eslint-disable-next-line no-console -- DEV 안내
+              console.info('[whereEV3] summary JSON 로드 실패 — DEV mock 사용:', e?.message || e)
+            } else {
+              throw e
+            }
           }
+        } finally {
+          stopSummaryCreep()
         }
 
         if (ds) {
@@ -2974,62 +3007,54 @@ function App() {
                 {bootStageMessage}
               </Typography>
             ) : (
-              <>
-                <BootEvCarAnimation reduceMotion={bootReduceMotion} />
+              <Fade in={bootChromeVisible} timeout={bootReduceMotion ? 0 : 420}>
                 <Box
                   sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 0.75,
                     width: '100%',
-                    maxWidth: 272,
-                    mt: -0.25,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    textAlign: 'center',
+                    gap: 1,
                   }}
                 >
-                  <BootSegmentedProgress
-                    value={bootPct}
-                    indeterminate={bootLinearIndeterminate}
-                    reduceMotion={bootReduceMotion}
-                    sx={{ flex: 1, minWidth: 0, maxWidth: 'none', mx: 0 }}
-                  />
-                  {!bootLinearIndeterminate ? (
-                    <Typography
-                      component="span"
-                      variant="body2"
-                      sx={{
-                        flexShrink: 0,
-                        color: 'rgba(255,255,255,0.92)',
-                        fontWeight: 700,
-                        fontSize: '0.8125rem',
-                        fontVariantNumeric: 'tabular-nums',
-                        minWidth: '2.35em',
-                        textAlign: 'right',
-                        lineHeight: 1.2,
-                      }}
-                    >
-                      {bootPct}%
-                    </Typography>
-                  ) : null}
-                </Box>
-                {bootFinalizing ? (
-                  <Typography
-                    variant="body2"
+                  <BootEvCarAnimation reduceMotion={bootReduceMotion} />
+                  <Box
                     sx={{
-                      fontWeight: 600,
-                      lineHeight: 1.45,
-                      px: 0.5,
-                      mt: -0.125,
-                      minHeight: '2.75em',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      color: 'rgba(255,255,255,0.88)',
+                      gap: 0.75,
+                      width: '100%',
+                      maxWidth: 272,
+                      mt: -0.25,
                     }}
                   >
-                    {bootStageMessage}
-                  </Typography>
-                ) : (
-                  <Fade in timeout={bootReduceMotion ? 0 : 320} key={bootMessageIndex}>
+                    <BootSegmentedProgress
+                      value={bootPct}
+                      indeterminate={bootLinearIndeterminate}
+                      reduceMotion={bootReduceMotion}
+                      sx={{ flex: 1, minWidth: 0, maxWidth: 'none', mx: 0 }}
+                    />
+                    {!bootLinearIndeterminate ? (
+                      <Typography
+                        component="span"
+                        variant="body2"
+                        sx={{
+                          flexShrink: 0,
+                          color: 'rgba(255,255,255,0.92)',
+                          fontWeight: 700,
+                          fontSize: '0.8125rem',
+                          fontVariantNumeric: 'tabular-nums',
+                          minWidth: '2.35em',
+                          textAlign: 'right',
+                          lineHeight: 1.2,
+                        }}
+                      >
+                        {bootPct}%
+                      </Typography>
+                    ) : null}
+                  </Box>
+                  {bootFinalizing ? (
                     <Typography
                       variant="body2"
                       sx={{
@@ -3041,14 +3066,33 @@ function App() {
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
-                        color: 'rgba(255,255,255,0.78)',
+                        color: 'rgba(255,255,255,0.88)',
                       }}
                     >
-                      {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
+                      {bootStageMessage}
                     </Typography>
-                  </Fade>
-                )}
-              </>
+                  ) : (
+                    <Fade in timeout={bootReduceMotion ? 0 : 320} key={bootMessageIndex}>
+                      <Typography
+                        variant="body2"
+                        sx={{
+                          fontWeight: 600,
+                          lineHeight: 1.45,
+                          px: 0.5,
+                          mt: -0.125,
+                          minHeight: '2.75em',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'rgba(255,255,255,0.78)',
+                        }}
+                      >
+                        {BOOT_LOADING_ROTATION_MESSAGES[bootMessageIndex % BOOT_LOADING_ROTATION_MESSAGES.length]}
+                      </Typography>
+                    </Fade>
+                  )}
+                </Box>
+              </Fade>
             )}
             {bootMarkerGateFailed ? (
               <BootSegmentedProgress indeterminate reduceMotion={bootReduceMotion} sx={{ maxWidth: 272, mx: 0 }} />
