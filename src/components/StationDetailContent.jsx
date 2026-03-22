@@ -11,6 +11,7 @@ import {
   parseExplicitChargePercentPair,
 } from '../api/safemapEv.js'
 import { getChargerSessionForUi } from '../data/chargerSessionMvp.js'
+import { ChargerTypeGlyph } from './ChargerTypeGlyph.jsx'
 
 function chargerRowsFromStation(station) {
   if (!station) return []
@@ -397,9 +398,33 @@ function ChargerCard({ row, idx }) {
           <Typography component="span" sx={statCellLabelSx}>
             커넥터
           </Typography>
-          <Typography component="span" sx={valueChipMultilineSx} title={String(typeLabel)}>
-            {typeLabel}
-          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 0.75,
+              minWidth: 0,
+              width: '100%',
+            }}
+          >
+            <ChargerTypeGlyph
+              chgerTy={row.chgerTy}
+              size={36}
+              sx={{
+                color: tokens.text.secondary,
+                mt: 0.12,
+                opacity: 0.92,
+                flexShrink: 0,
+              }}
+            />
+            <Typography
+              component="span"
+              sx={{ ...valueChipMultilineSx, flex: 1, minWidth: 0 }}
+              title={String(typeLabel)}
+            >
+              {typeLabel}
+            </Typography>
+          </Box>
         </Box>
         <Box sx={infoCellShellSx}>
           <Typography component="span" sx={statCellLabelSx}>

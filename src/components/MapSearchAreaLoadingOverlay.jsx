@@ -1,5 +1,5 @@
 import { Box, Typography } from '@mui/material'
-import FlashOn from '@mui/icons-material/FlashOn'
+import { EvMapStyleBoltCluster } from './EvMapStyleBoltCluster.jsx'
 import './MapSearchAreaLoadingOverlay.css'
 
 /**
@@ -23,11 +23,7 @@ export function MapSearchAreaLoadingOverlay({
       style={rootStyle}
     >
       <Box className="ev-map-search-loading-content">
-        <Box className="ev-map-search-lightnings" aria-hidden>
-          <FlashOn className="ev-map-search-bolt ev-map-search-bolt--1" />
-          <FlashOn className="ev-map-search-bolt ev-map-search-bolt--2" />
-          <FlashOn className="ev-map-search-bolt ev-map-search-bolt--3" />
-        </Box>
+        <EvMapStyleBoltCluster />
         <Typography className="ev-map-search-title" component="p">
           {title}
         </Typography>

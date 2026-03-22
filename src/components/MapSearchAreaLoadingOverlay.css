@@ -53,30 +53,36 @@
 .ev-map-search-bolt {
   position: absolute;
   bottom: 0;
-  color: var(--ev-search-area-bolt, #2563eb);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 0;
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.2));
   will-change: transform;
 }
 
-/* 중앙 메인 — 좌우를 좁혀 한 덩어리로 */
+/* 중앙 메인 — 지도 마커 SVG 크기에 맞춤 */
 .ev-map-search-bolt--1 {
   left: 50%;
   margin-left: -13px;
-  font-size: 26px !important;
+  width: 26px;
+  height: 26px;
   animation: ev-search-bolt-nudge-1 1.1s ease-in-out infinite;
 }
 
 .ev-map-search-bolt--2 {
   left: 50%;
   margin-left: -22px;
-  font-size: 18px !important;
+  width: 18px;
+  height: 18px;
   animation: ev-search-bolt-nudge-2 1.1s ease-in-out infinite;
 }
 
 .ev-map-search-bolt--3 {
   left: 50%;
   margin-left: 2px;
-  font-size: 16px !important;
+  width: 16px;
+  height: 16px;
   animation: ev-search-bolt-nudge-3 1.1s ease-in-out infinite;
 }
 

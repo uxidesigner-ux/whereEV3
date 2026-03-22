@@ -146,7 +146,7 @@ import {
   evPipelineSlowHint,
 } from './dev/evPipelinePerfLog.js'
 import { EvPipelineDebugPanel } from './dev/EvPipelineDebugPanel.jsx'
-import { BootEvCarAnimation } from './components/BootEvCarAnimation.jsx'
+import { BootEvSvgSequence } from './components/BootEvSvgSequence.jsx'
 import { BootSegmentedProgress } from './components/BootSegmentedProgress.jsx'
 
 /**
@@ -3032,7 +3032,7 @@ function App() {
                     gap: 1,
                   }}
                 >
-                  <BootEvCarAnimation reduceMotion={bootReduceMotion} />
+                  <BootEvSvgSequence reduceMotion={bootReduceMotion} />
                   <Box
                     sx={{
                       display: 'flex',
@@ -3452,12 +3452,18 @@ function App() {
                     '--ev-search-area-title': 'rgba(255,255,255,0.96)',
                     '--ev-search-area-subtitle': 'rgba(255,255,255,0.72)',
                     '--ev-search-area-bolt': colors.blue.primary,
+                    '--ev-search-area-marker-fill': tokens.map.markerDot,
+                    '--ev-search-area-marker-stroke': 'rgba(255,255,255,0.94)',
+                    '--ev-search-area-marker-bolt': tokens.map.markerBolt,
                   }
                 : {
                     '--ev-search-area-dim': 'rgba(15,23,42,0.44)',
                     '--ev-search-area-title': 'rgba(255,255,255,0.98)',
                     '--ev-search-area-subtitle': 'rgba(255,255,255,0.74)',
                     '--ev-search-area-bolt': colors.blue.primary,
+                    '--ev-search-area-marker-fill': tokens.map.markerDot,
+                    '--ev-search-area-marker-stroke': tokens.map.markerStroke,
+                    '--ev-search-area-marker-bolt': tokens.map.markerBolt,
                   }
             }
           />

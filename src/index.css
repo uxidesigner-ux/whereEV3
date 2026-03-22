@@ -442,41 +442,6 @@ code {
   background: var(--code-bg);
 }
 
-/* 부트 로딩: 정면 EV — 절제된 서스펜션(작은 수직 + 미세 피치만) */
-@keyframes ev-boot-suspension {
-  0%,
-  100% {
-    transform: translateY(0) rotate(0deg);
-  }
-  22% {
-    transform: translateY(-2px) rotate(-0.65deg);
-  }
-  44% {
-    transform: translateY(-3px) rotate(0.35deg);
-  }
-  66% {
-    transform: translateY(-1px) rotate(-0.2deg);
-  }
-  88% {
-    transform: translateY(0) rotate(0deg);
-  }
-}
-
-.ev-boot-car--static .ev-boot-car__body {
-  animation: none !important;
-}
-
-.ev-boot-car__body {
-  animation: ev-boot-suspension 2.75s cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  will-change: transform;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .ev-boot-car__body {
-    animation: none !important;
-  }
-}
-
 /* 부트 세그먼트 바: indeterminate 시 순차 웨이브(스케일만, opacity 1 유지) */
 @keyframes ev-boot-seg-wave {
   0%,
