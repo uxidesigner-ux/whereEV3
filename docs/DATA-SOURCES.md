@@ -61,7 +61,7 @@ UI는 **기본 row(실데이터 필드) + 표시용 `stat` + `getChargerSessionF
 ## 목록·지도 데이터 (whereEV3) — summary JSON 스냅샷
 
 - **런타임:** 앱은 IF_0042를 **전 페이지 순회하지 않는다.** 부팅 시 **`/data/ev-stations-summary.json`**(정적 파일)을 **1회 로드**하고, `parseEvStationsSummaryJson` → 정적 `rows`에 `applyMvpChargerOverlay`만 적용한 뒤 `fullEvCatalogRef`에 보관한다.
-- **뷰포트:** `filterNormalizedRowsToBounds`로 **현재 지도 bounds**에 들어가는 충전기 행만 `items`로 올린다. **이 지역 검색·검색 fit·칩**도 동일하게 **메모리 summary에서만** 재필터링한다(목록용 IF_0042 재호출 없음).
+- **뷰포트:** 메모리에 올린 전국 `rows`에 대해 `evCatalogSpatialIndex.js`의 **고정 셀 그리드**로 후보를 줄인 뒤 `literalBoundsContains`로 bounds 안만 골라 `items`로 올린다(소량·DEV mock은 선형 `filterNormalizedRowsToBounds`와 동일 결과). **이 지역 검색·검색 fit·칩**도 동일하게 **메모리 summary에서만** 재필터링한다(목록용 IF_0042 재호출 없음).
 - **배치 생성:** `npm run build:ev-summary` → `scripts/build-ev-stations-summary.mjs`가 서비스 키로 IF_0042 전 페이지 수집·`normalizeChargerCore`(overlay 제외)·한국·`id` 중복 제거·`placeKey` 단위로 `places[]`를 만들어 `public/data/ev-stations-summary.json`에 쓴다. 배포 전 또는 cron으로 주기 갱신(예: 일 1회). **운영·CI·크기 점검:** [`docs/EV-SUMMARY-OPS.md`](./EV-SUMMARY-OPS.md).
 - **상태값:** 스냅샷 JSON에는 API 원본 `stat`만 두고, UI용 `stat`/`apiStat`는 기존과 같이 **`applyMvpChargerOverlay`**(MVP 시드)로 런타임 합성.
 - **DEV:** summary 로드 실패 또는 **빈 `places`** 이면 `getDevMockEvChargers()`로 대체. 프로덕션은 빈 JSON이면 빈 지도(오류는 네트워크/404 시).

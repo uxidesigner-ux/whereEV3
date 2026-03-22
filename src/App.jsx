@@ -27,6 +27,7 @@ import {
   formatAddressBlockLines,
 } from './api/safemapEv.js'
 import { filterNormalizedRowsToBounds } from './api/evViewportSummary.js'
+import { assignFullEvCatalogWithIndex } from './utils/evCatalogSpatialIndex.js'
 import { fetchEvStationsSummaryDataset, resolveEvStationsSummaryUrl } from './api/evStationsSummary.js'
 import { fetchDetailRowsForStatId, clearDetailRowsCache } from './api/evPlaceDetail.js'
 import { getDevMockEvChargers } from './dev/mockEvChargers.js'
@@ -605,6 +606,8 @@ function App() {
   const itemsRef = useRef(items)
   /** summary JSON(+ MVP overlay) 전체 충전기 행. 뷰포트 `items`는 여기서 필터 */
   const fullEvCatalogRef = useRef(/** @type {object[] | null} */ (null))
+  /** 대용량 카탈로그 뷰포트 필터용 공간 그리드( `assignFullEvCatalogWithIndex`와 동기 ) */
+  const evSpatialIndexRef = useRef(/** @type {null | { queryBounds: (b: object) => object[] }} */ (null))
   const mapLayerStationsLenRef = useRef(0)
   /** 부트 summary bbox와 일치시키기: onBootMapPaintReady의 좁은 getBounds()로 applied를 덮어쓰지 않음 */
   const suppressBootMapBoundsSnapshotRef = useRef(false)
@@ -1157,7 +1160,7 @@ function App() {
     setAwaitingInitialMapPaint(true)
     const v = bootViewportForRetryRef.current
     if (v) {
-      fullEvCatalogRef.current = null
+      assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, null)
       await runViewportSummaryFetchRef.current({
         reason: 'boot',
         viewport: v,
@@ -1289,7 +1292,7 @@ function App() {
             viewportSummaryMarkAbort()
             return { ok: false }
           }
-          fullEvCatalogRef.current = ds.allRowsWithOverlay
+          assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, ds.allRowsWithOverlay)
           if (summaryFetchGenerationRef.current !== gen) {
             viewportSummaryMarkStale()
             return { ok: false }
@@ -1301,21 +1304,29 @@ function App() {
               viewportSummaryMarkAbort()
               return { ok: false }
             }
-            fullEvCatalogRef.current =
+            assignFullEvCatalogWithIndex(
+              fullEvCatalogRef,
+              evSpatialIndexRef,
               import.meta.env.DEV && ds.allRowsWithOverlay.length === 0
                 ? getDevMockEvChargers()
-                : ds.allRowsWithOverlay
+                : ds.allRowsWithOverlay,
+            )
           } catch (loadErr) {
             if (import.meta.env.DEV) {
-              fullEvCatalogRef.current = getDevMockEvChargers()
+              assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
             } else {
               throw loadErr
             }
           }
         }
 
+        if (showLoading) {
+          await new Promise((r) => requestAnimationFrame(r))
+          await new Promise((r) => requestAnimationFrame(r))
+        }
         const catalog = fullEvCatalogRef.current ?? []
-        const rows = filterNormalizedRowsToBounds(catalog, viewport)
+        const idx = evSpatialIndexRef.current
+        const rows = idx ? idx.queryBounds(viewport) : filterNormalizedRowsToBounds(catalog, viewport)
         const fetchMs = Math.round(performance.now() - t0)
 
         if (import.meta.env.DEV && timingSession) {
@@ -1368,7 +1379,7 @@ function App() {
   const onSearchViewportBoundsApplied = useCallback(
     (boundsLiteral) => {
       if (!boundsLiteral) return
-      void runViewportSummaryFetch({ reason: 'search', viewport: boundsLiteral, showLoading: false })
+      void runViewportSummaryFetch({ reason: 'search', viewport: boundsLiteral, showLoading: true })
     },
     [runViewportSummaryFetch],
   )
@@ -1440,7 +1451,7 @@ function App() {
       void runViewportSummaryFetch({
         reason: 'suggestion-chip',
         viewport: boundsLiteral,
-        showLoading: false,
+        showLoading: true,
       })
     },
     [runViewportSummaryFetch],
@@ -1540,7 +1551,10 @@ function App() {
       }
 
       const applyViewportFromCatalog = (boundsLiteral) => {
-        const scoped = filterNormalizedRowsToBounds(fullEvCatalogRef.current || [], boundsLiteral)
+        const idx = evSpatialIndexRef.current
+        const scoped = idx
+          ? idx.queryBounds(boundsLiteral)
+          : filterNormalizedRowsToBounds(fullEvCatalogRef.current || [], boundsLiteral)
         setItems(scoped)
         setTotalCount(scoped.length)
         setLastEvFetchAt(new Date().toISOString())
@@ -1592,7 +1606,7 @@ function App() {
             ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal: ac.signal, maxAttempts: 2 })
           } catch (e) {
             if (import.meta.env.DEV) {
-              fullEvCatalogRef.current = getDevMockEvChargers()
+              assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
               viewportSummaryTelemetry('boot', 'mock-summary-fallback-dev', {})
               // eslint-disable-next-line no-console -- DEV 안내
               console.info('[whereEV3] summary JSON 로드 실패 — DEV mock 사용:', e?.message || e)
@@ -1606,10 +1620,10 @@ function App() {
 
         if (ds) {
           if (import.meta.env.DEV && ds.allRowsWithOverlay.length === 0) {
-            fullEvCatalogRef.current = getDevMockEvChargers()
+            assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
             viewportSummaryTelemetry('boot', 'empty-summary-use-mock-dev', {})
           } else {
-            fullEvCatalogRef.current = ds.allRowsWithOverlay
+            assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, ds.allRowsWithOverlay)
           }
         }
 
@@ -1628,7 +1642,7 @@ function App() {
       } catch (err) {
         if (!cancelled && !ac.signal.aborted) {
           setApiError(err.message || '데이터를 불러오지 못했습니다.')
-          fullEvCatalogRef.current = null
+          assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, null)
           setItems([])
           setTotalCount(null)
           setBootLinearIndeterminate(false)
