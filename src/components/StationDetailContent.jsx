@@ -20,11 +20,11 @@ import {
 } from './EvUserProvidedIcons.jsx'
 
 /**
- * 상세 시트 상태 칩과 같은 맥락의 사용자 제공 SVG.
- * - 사용 가능: 정면 차(연결·충전 대기)
- * - 사용 중: 번개(에너지 공급)
- * - 점검: 급속기 실루엣(장비)
- * - 기타: 핀(위치·상태 미확인)
+ * 상세 시트 헤더 상태 칩 옆 전용 (본문에는 상태 칩만 한 번 표시).
+ * - 사용 가능: 차량
+ * - 사용 중: 번개
+ * - 점검: 충전기 본체
+ * - 기타: 핀
  */
 function detailSheetStatusGlyph(stat) {
   const s = String(stat ?? '').trim()
@@ -272,90 +272,46 @@ function ChargerCard({ row, idx }) {
   const isDark = resolvedMode === 'dark'
   const moduleBorder = isDark ? 'rgba(255,255,255,0.09)' : tokens.border.default
   const moduleBg = isDark ? tokens.bg.subtle : tokens.bg.paper
-
-  const statCellLabelSx = {
-    display: 'block',
-    mb: 0.45,
-    fontSize: '0.625rem',
-    fontWeight: 500,
-    letterSpacing: '0.07em',
-    textTransform: 'uppercase',
-    color: tokens.text.muted,
-    lineHeight: 1.2,
-  }
-  const infoCellShellSx = {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 76,
-    p: 0.875,
+  const iconWellBg = isDark ? 'rgba(255,255,255,0.06)' : tokens.bg.muted
+  const metricRowSx = {
+    display: 'flex',
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: 1.125,
+    p: 1.125,
     borderRadius: `${radius.md}px`,
     border: `1px solid ${moduleBorder}`,
     bgcolor: moduleBg,
     boxSizing: 'border-box',
-    display: 'flex',
-    flexDirection: 'column',
-    justifyContent: 'flex-start',
+    minWidth: 0,
+    flex: { xs: 'none', sm: 1 },
   }
-  const valueChipBase = {
+  const metricLabelSx = {
     display: 'block',
-    width: '100%',
-    mt: 'auto',
-    px: 0.65,
-    py: 0.45,
-    borderRadius: `${radius.sm}px`,
-    bgcolor: isDark ? 'rgba(0,0,0,0.22)' : tokens.bg.subtle,
-    border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
-    fontSize: '0.8125rem',
+    fontSize: '0.6875rem',
     fontWeight: 600,
-    lineHeight: 1.38,
-    color: tokens.text.primary,
-    fontVariantNumeric: 'tabular-nums',
-    textAlign: 'center',
-  }
-  const valueChipSx = {
-    ...valueChipBase,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap',
-  }
-  const valueChipMultilineSx = {
-    ...valueChipBase,
-    whiteSpace: 'normal',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    wordBreak: 'break-word',
-  }
-  const statusValueSx = {
-    ...valueChipBase,
-    bgcolor: chip.sx.bgcolor,
-    color: chip.sx.color,
-    border: chip.sx.border,
-    fontWeight: chip.sx.fontWeight ?? 600,
-    fontSize: '0.75rem',
-    letterSpacing: '0.008em',
-    whiteSpace: 'normal',
-    display: '-webkit-box',
-    WebkitLineClamp: 2,
-    WebkitBoxOrient: 'vertical',
-    wordBreak: 'break-word',
+    letterSpacing: '0.06em',
+    textTransform: 'uppercase',
+    color: tokens.text.muted,
+    lineHeight: 1.2,
+    mb: 0.35,
   }
 
   const headerChipSx = {
     ...chip.sx,
     flexShrink: 0,
-    height: 24,
-    borderRadius: `${radius.control}px`,
-    fontSize: '0.6875rem',
+    height: 28,
+    borderRadius: 999,
+    fontSize: '0.75rem',
     fontWeight: 600,
-    letterSpacing: '0.02em',
-    maxWidth: 'min(46%, 140px)',
-    '& .MuiChip-label': { px: 1, py: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
+    letterSpacing: '0.01em',
+    maxWidth: 'min(52%, 160px)',
+    '& .MuiChip-label': { px: 1.125, py: 0, overflow: 'hidden', textOverflow: 'ellipsis' },
   }
 
   const sessionInsetSx = {
     mt: 1.25,
-    p: 1.125,
+    p: { xs: 1.25, sm: 1.375 },
     borderRadius: `${radius.md}px`,
     bgcolor: isDark ? tokens.bg.subtle : tokens.bg.muted,
     border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
@@ -383,8 +339,8 @@ function ChargerCard({ row, idx }) {
           alignItems: 'center',
           justifyContent: 'space-between',
           gap: 1,
-          mb: 1.125,
-          minHeight: 28,
+          mb: 1.25,
+          minHeight: 32,
         }}
       >
         <Typography
@@ -395,10 +351,10 @@ function ChargerCard({ row, idx }) {
             flex: 1,
             minWidth: 0,
             color: tokens.text.primary,
-            fontSize: '0.9375rem',
-            lineHeight: 1.3,
-            fontWeight: 600,
-            letterSpacing: '-0.018em',
+            fontSize: '1rem',
+            lineHeight: 1.35,
+            fontWeight: 700,
+            letterSpacing: '-0.02em',
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -406,101 +362,118 @@ function ChargerCard({ row, idx }) {
         >
           {title}
         </Typography>
-        <Chip label={chip.label} size="small" sx={headerChipSx} />
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexShrink: 0 }}>
+          {/* 사용 중은 칩만(세션·출력 행과 번개 중복 방지), 그 외 상태는 아이콘으로 구분 */}
+          {stat !== '3' ? (
+            <StatusGlyph
+              size={22}
+              sx={{
+                color: chip.sx.color,
+                opacity: 0.92,
+              }}
+            />
+          ) : null}
+          <Chip label={chip.label} size="small" sx={headerChipSx} />
+        </Box>
       </Box>
 
+      {/* 모바일: 세로 스택 리스트 / sm+: 커넥터·출력 2열 — 상태는 헤더에만 표시해 중복 제거 */}
       <Box
         sx={{
           display: 'flex',
-          flexDirection: 'row',
+          flexDirection: { xs: 'column', sm: 'row' },
           alignItems: 'stretch',
-          gap: 0.625,
+          gap: { xs: 1, sm: 1.125 },
         }}
       >
-        <Box sx={infoCellShellSx}>
-          <Typography component="span" sx={statCellLabelSx}>
-            커넥터
-          </Typography>
+        <Box sx={metricRowSx}>
           <Box
             sx={{
+              width: 44,
+              minWidth: 44,
+              height: 44,
+              borderRadius: `${radius.md}px`,
+              bgcolor: iconWellBg,
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
               display: 'flex',
-              alignItems: 'flex-start',
-              gap: 0.75,
-              minWidth: 0,
-              width: '100%',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
             <ChargerTypeGlyph
               chgerTy={row.chgerTy}
-              size={36}
+              size={28}
               sx={{
                 color: tokens.text.secondary,
-                mt: 0.12,
-                opacity: 0.92,
-                flexShrink: 0,
+                opacity: 0.95,
               }}
             />
+          </Box>
+          <Box sx={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <Typography component="span" sx={metricLabelSx}>
+              커넥터
+            </Typography>
             <Typography
-              component="span"
-              sx={{ ...valueChipMultilineSx, flex: 1, minWidth: 0 }}
+              variant="body2"
+              component="p"
               title={String(typeLabel)}
+              sx={{
+                m: 0,
+                color: tokens.text.primary,
+                fontWeight: 600,
+                fontSize: '0.9375rem',
+                lineHeight: 1.45,
+                wordBreak: 'break-word',
+              }}
             >
               {typeLabel}
             </Typography>
           </Box>
         </Box>
-        <Box sx={infoCellShellSx}>
-          <Typography component="span" sx={statCellLabelSx}>
-            출력
-          </Typography>
+
+        <Box sx={metricRowSx}>
           <Box
             sx={{
+              width: 44,
+              minWidth: 44,
+              height: 44,
+              borderRadius: `${radius.md}px`,
+              bgcolor: iconWellBg,
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : tokens.border.subtle}`,
               display: 'flex',
               alignItems: 'center',
-              gap: 0.65,
-              mt: 'auto',
-              minWidth: 0,
-              width: '100%',
+              justifyContent: 'center',
+              flexShrink: 0,
             }}
           >
+            {/* 출력 = 전력(kW) — 상태는 헤더 아이콘만 사용해 열 중복 없음 */}
             <EvUserGlyphBolt
-              size={28}
+              size={26}
               sx={{
                 color: tokens.text.secondary,
-                opacity: 0.9,
-                flexShrink: 0,
+                opacity: 0.92,
               }}
             />
-            <Typography component="span" sx={{ ...valueChipSx, mt: 0, flex: 1, minWidth: 0 }}>
-              {outDisp || '—'}
-            </Typography>
           </Box>
-        </Box>
-        <Box sx={infoCellShellSx}>
-          <Typography component="span" sx={statCellLabelSx}>
-            상태
-          </Typography>
-          <Box
-            sx={{
-              display: 'flex',
-              alignItems: 'flex-start',
-              gap: 0.6,
-              mt: 'auto',
-              minWidth: 0,
-              width: '100%',
-            }}
-          >
-            <StatusGlyph
-              size={28}
+          <Box sx={{ minWidth: 0, flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+            <Typography component="span" sx={metricLabelSx}>
+              출력
+            </Typography>
+            <Typography
+              variant="body1"
+              component="p"
               sx={{
-                color: chip.sx.color,
-                opacity: 0.88,
-                flexShrink: 0,
-                mt: 0.1,
+                m: 0,
+                color: tokens.text.primary,
+                fontWeight: 700,
+                fontSize: '1.125rem',
+                lineHeight: 1.25,
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: '-0.02em',
               }}
-            />
-            <Typography component="span" sx={{ ...statusValueSx, mt: 0, flex: 1, minWidth: 0 }}>
-              {chip.label}
+            >
+              {outDisp || '—'}
             </Typography>
           </Box>
         </Box>
@@ -510,35 +483,20 @@ function ChargerCard({ row, idx }) {
         <Box sx={sessionInsetSx}>
           {showChargeBar ? (
             <>
-              <Box
+              <Typography
+                variant="caption"
+                component="div"
                 sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.55,
-                  mb: 0.75,
+                  color: tokens.text.tertiary,
+                  fontSize: '0.6875rem',
+                  fontWeight: 600,
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                  mb: 1,
                 }}
               >
-                <EvUserGlyphBolt
-                  size={18}
-                  sx={{
-                    color: tokens.text.tertiary,
-                    opacity: 0.92,
-                    flexShrink: 0,
-                  }}
-                />
-                <Typography
-                  variant="caption"
-                  sx={{
-                    color: tokens.text.tertiary,
-                    fontSize: '0.6875rem',
-                    fontWeight: 500,
-                    letterSpacing: '0.04em',
-                    textTransform: 'uppercase',
-                  }}
-                >
-                  충전 진행
-                </Typography>
-              </Box>
+                충전 진행
+              </Typography>
               <Box
                 sx={{
                   display: 'flex',
@@ -547,18 +505,18 @@ function ChargerCard({ row, idx }) {
                   flexWrap: 'wrap',
                   gap: 0.5,
                   columnGap: 0.75,
-                  mb: 1,
+                  mb: 1.125,
                 }}
               >
                 <Typography
                   component="span"
                   sx={{
                     color: tokens.text.primary,
-                    fontSize: '1.375rem',
-                    fontWeight: 700,
-                    lineHeight: 1.1,
+                    fontSize: '1.5rem',
+                    fontWeight: 800,
+                    lineHeight: 1,
                     fontVariantNumeric: 'tabular-nums',
-                    letterSpacing: '-0.03em',
+                    letterSpacing: '-0.04em',
                   }}
                 >
                   {chargePair.current}%
@@ -567,7 +525,7 @@ function ChargerCard({ row, idx }) {
                   component="span"
                   sx={{
                     color: tokens.text.secondary,
-                    fontSize: '0.8125rem',
+                    fontSize: '0.875rem',
                     fontWeight: 500,
                     fontVariantNumeric: 'tabular-nums',
                   }}
@@ -580,9 +538,9 @@ function ChargerCard({ row, idx }) {
                 variant="determinate"
                 value={chargePair.barValue}
                 sx={{
-                  height: 7,
+                  height: 10,
                   borderRadius: 999,
-                  bgcolor: isDark ? 'rgba(255,255,255,0.08)' : tokens.blue.muted,
+                  bgcolor: isDark ? 'rgba(255,255,255,0.1)' : tokens.blue.muted,
                   overflow: 'hidden',
                   '& .MuiLinearProgress-bar': {
                     borderRadius: 999,
