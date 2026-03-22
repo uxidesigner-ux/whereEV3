@@ -37,11 +37,69 @@ export function applyMvpOverlayToSummaryRows(rows) {
   return rows.map((r) => applyMvpChargerOverlay(stripPriorMvpOverlay(r)))
 }
 
+function yieldMainThreadTick() {
+  return new Promise((resolve) => {
+    setTimeout(resolve, 0)
+  })
+}
+
 /**
- * @param {object} json
- * @returns {{ meta: object, generatedAt?: string, schemaVersion: number, places: object[], allStaticRows: object[], allRowsWithOverlay: object[] }}
+ * 대용량 rows에 MVP 오버레이 적용 시 메인 스레드 양보(모바일 탭 크래시 완화).
+ * @param {object[]} rows
+ * @param {number} [chunkSize]
  */
-export function parseEvStationsSummaryJson(json) {
+export async function applyMvpOverlayToSummaryRowsAsync(rows, chunkSize = 3500) {
+  if (!Array.isArray(rows) || rows.length === 0) return []
+  if (rows.length <= chunkSize) return applyMvpOverlayToSummaryRows(rows)
+  const out = []
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const slice = rows.slice(i, i + chunkSize)
+    for (let j = 0; j < slice.length; j += 1) {
+      out.push(applyMvpChargerOverlay(stripPriorMvpOverlay(slice[j])))
+    }
+    await yieldMainThreadTick()
+  }
+  return out
+}
+
+/** json.rows → places 그룹핑 (동기) */
+function buildPlacesFromRowsSync(rows) {
+  const byPlace = new Map()
+  for (const r of rows) {
+    const k = placeKey(r)
+    if (!byPlace.has(k)) byPlace.set(k, [])
+    byPlace.get(k).push(r)
+  }
+  return Array.from(byPlace.entries()).map(([placeId, rowList]) => ({
+    placeId,
+    stationName: rowList[0]?.statNm,
+    lat: rowList[0]?.lat,
+    lng: rowList[0]?.lng,
+    rows: rowList,
+  }))
+}
+
+/** 대용량 json.rows 그룹핑 시 청크마다 양보 */
+async function buildPlacesFromRowsAsync(rows, yieldEvery = 8000) {
+  const byPlace = new Map()
+  for (let i = 0; i < rows.length; i += 1) {
+    const r = rows[i]
+    const k = placeKey(r)
+    if (!byPlace.has(k)) byPlace.set(k, [])
+    byPlace.get(k).push(r)
+    if (i > 0 && i % yieldEvery === 0) await yieldMainThreadTick()
+  }
+  return Array.from(byPlace.entries()).map(([placeId, rowList]) => ({
+    placeId,
+    stationName: rowList[0]?.statNm,
+    lat: rowList[0]?.lat,
+    lng: rowList[0]?.lng,
+    rows: rowList,
+  }))
+}
+
+/** @param {object} json */
+function parseEvStationsSummaryStructure(json) {
   if (!json || typeof json !== 'object') {
     throw new Error('summary JSON 형식이 올바르지 않습니다.')
   }
@@ -49,19 +107,7 @@ export function parseEvStationsSummaryJson(json) {
   let places = json.places
 
   if (!Array.isArray(places) && Array.isArray(json.rows)) {
-    const byPlace = new Map()
-    for (const r of json.rows) {
-      const k = placeKey(r)
-      if (!byPlace.has(k)) byPlace.set(k, [])
-      byPlace.get(k).push(r)
-    }
-    places = Array.from(byPlace.entries()).map(([placeId, rows]) => ({
-      placeId,
-      stationName: rows[0]?.statNm,
-      lat: rows[0]?.lat,
-      lng: rows[0]?.lng,
-      rows,
-    }))
+    places = buildPlacesFromRowsSync(json.rows)
   }
 
   if (!Array.isArray(places)) {
@@ -69,7 +115,50 @@ export function parseEvStationsSummaryJson(json) {
   }
 
   const allStaticRows = places.flatMap((p) => (Array.isArray(p.rows) ? p.rows : []))
-  const allRowsWithOverlay = applyMvpOverlayToSummaryRows(allStaticRows)
+
+  return {
+    meta: json.meta && typeof json.meta === 'object' ? json.meta : {},
+    generatedAt: json.generatedAt,
+    schemaVersion,
+    places,
+    allStaticRows,
+  }
+}
+
+/**
+ * @param {object} json
+ * @returns {{ meta: object, generatedAt?: string, schemaVersion: number, places: object[], allStaticRows: object[], allRowsWithOverlay: object[] }}
+ */
+export function parseEvStationsSummaryJson(json) {
+  const base = parseEvStationsSummaryStructure(json)
+  const allRowsWithOverlay = applyMvpOverlayToSummaryRows(base.allStaticRows)
+  return {
+    ...base,
+    allRowsWithOverlay,
+  }
+}
+
+/**
+ * fetch 부트용: 그룹핑·오버레이를 청크로 나눠 메인 스레드 블로킹 완화.
+ * @param {object} json
+ */
+export async function parseEvStationsSummaryJsonAsync(json) {
+  if (!json || typeof json !== 'object') {
+    throw new Error('summary JSON 형식이 올바르지 않습니다.')
+  }
+  const schemaVersion = Number(json.schemaVersion) || 1
+  let places = json.places
+
+  if (!Array.isArray(places) && Array.isArray(json.rows)) {
+    places = await buildPlacesFromRowsAsync(json.rows)
+  }
+
+  if (!Array.isArray(places)) {
+    throw new Error('summary에 places(또는 rows) 배열이 없습니다.')
+  }
+
+  const allStaticRows = places.flatMap((p) => (Array.isArray(p.rows) ? p.rows : []))
+  const allRowsWithOverlay = await applyMvpOverlayToSummaryRowsAsync(allStaticRows)
 
   return {
     meta: json.meta && typeof json.meta === 'object' ? json.meta : {},
@@ -164,7 +253,7 @@ export async function fetchEvStationsSummaryDataset(opts = {}) {
             : `summary JSON 파싱 실패: ${e.message}`
         )
       }
-      return parseEvStationsSummaryJson(json)
+      return parseEvStationsSummaryJsonAsync(json)
     }
 
     const retryable = SUMMARY_RETRYABLE_STATUS.has(res.status)

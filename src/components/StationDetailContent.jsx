@@ -1,5 +1,6 @@
-import { useEffect, useMemo, createContext, useContext } from 'react'
-import { Typography, Box, Button, Chip, Stack, LinearProgress } from '@mui/material'
+import { useEffect, useMemo, useState, createContext, useContext } from 'react'
+import { Typography, Box, Button, Chip, Stack, LinearProgress, Collapse } from '@mui/material'
+import ExpandMore from '@mui/icons-material/ExpandMore'
 import Directions from '@mui/icons-material/Directions'
 import Phone from '@mui/icons-material/Phone'
 import { appMobileType, radius, motion } from '../theme/dashboardTheme.js'
@@ -10,6 +11,7 @@ import {
   getStatLabel,
   parseExplicitChargePercentPair,
 } from '../api/safemapEv.js'
+import { getSpeedCategory } from '../api/evChargerTy.js'
 import { getChargerSessionForUi } from '../data/chargerSessionMvp.js'
 import { ChargerTypeGlyph } from './ChargerTypeGlyph.jsx'
 import {
@@ -354,6 +356,7 @@ function ChargerMetricCell({ label, icon, valueNode, valuePillSx, tokens, cellBo
 
 function ChargerCard({ row, idx }) {
   const { colors, chipSx, tokens, chargerCard, resolvedMode } = useStationDetailUi()
+  const [expanded, setExpanded] = useState(false)
   const stat = String(row.stat ?? '').trim()
   const title = (row.chgerNm || '').trim() || `충전기 ${(row.chgerId || '').toString().trim() || idx + 1}`
   const outRaw = (row.outputKw || '').toString().trim()
@@ -384,6 +387,11 @@ function ChargerCard({ row, idx }) {
   }
   const chip = chipForStat()
 
+  /** 헤더 요약: 급속/완속 · 출력 · 커넥터(타입 라벨만 — displayChgerLabel은 속도 중복) */
+  const speedLabel = row.speedCategory || getSpeedCategory(row.chgerTy)
+  const connectorShort = (row.chgerTyLabel || '').trim() || '—'
+  const outputShort = (outDisp || '').trim() || '—'
+  const headerSummaryLine = `${speedLabel} · ${outputShort} · ${connectorShort}`
   const typeLabel = row.displayChgerLabel ?? row.chgerTyLabel ?? '—'
 
   const isDark = resolvedMode === 'dark'
@@ -403,7 +411,7 @@ function ChargerCard({ row, idx }) {
     fontSize: '0.6875rem',
     fontWeight: 600,
     letterSpacing: '0.02em',
-    maxWidth: 'min(48%, 148px)',
+    maxWidth: 'min(46%, 152px)',
     '& .MuiChip-label': { px: 1, py: 0, overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.2 },
   }
 
@@ -422,307 +430,374 @@ function ChargerCard({ row, idx }) {
     wordBreak: 'break-word',
   }
 
+  const rowKey = row.id ?? row.chgerId ?? idx
+  const headerDomId = `ev-charger-acc-h-${rowKey}`
+  const panelDomId = `ev-charger-acc-p-${rowKey}`
+  const collapseMs = { enter: motion.duration.enter, exit: motion.duration.exit }
+
+  const toggleExpanded = () => setExpanded((v) => !v)
+
   return (
     <Box
       sx={{
         mb: 2,
-        p: { xs: 1.375, sm: 1.5 },
         borderRadius: `${radius.lg}px`,
         bgcolor: chargerCard.bgcolor,
         boxShadow: chargerCard.boxShadow,
         ...(chargerCard.border ? { border: chargerCard.border } : {}),
+        overflow: 'hidden',
         transition: `box-shadow ${motion.duration.enter}ms ${motion.easing.standard}`,
       }}
     >
-      {/* 1) 헤더: 충전기명 + 상태 badge */}
+      {/* 헤더: 전체 탭으로 토글 — 제목·요약(왼) / 상태·chevron(오른) */}
       <Box
+        component="button"
+        type="button"
+        id={headerDomId}
+        aria-expanded={expanded}
+        aria-controls={panelDomId}
+        aria-label={expanded ? `${title}, 상세 접기` : `${title}, 상세 펼치기`}
+        onClick={toggleExpanded}
         sx={{
+          width: '100%',
           display: 'flex',
           flexDirection: 'row',
           alignItems: 'flex-start',
           justifyContent: 'space-between',
           gap: 1,
-          mb: 1.375,
+          m: 0,
+          p: { xs: 1.375, sm: 1.5 },
+          textAlign: 'left',
+          cursor: 'pointer',
+          border: 'none',
+          bgcolor: 'transparent',
+          font: 'inherit',
+          color: 'inherit',
+          WebkitTapHighlightColor: 'transparent',
+          '&:focus-visible': {
+            outline: `2px solid ${tokens.border.strong}`,
+            outlineOffset: 2,
+          },
         }}
       >
-        <Typography
-          variant="subtitle2"
-          component="h3"
-          title={title}
+        <Box sx={{ flex: 1, minWidth: 0, pr: 0.5 }}>
+          <Typography
+            variant="subtitle2"
+            component="h3"
+            title={title}
+            sx={{
+              color: tokens.text.primary,
+              fontSize: '1.0625rem',
+              lineHeight: 1.32,
+              fontWeight: 700,
+              letterSpacing: '-0.022em',
+              display: '-webkit-box',
+              WebkitLineClamp: 2,
+              WebkitBoxOrient: 'vertical',
+              overflow: 'hidden',
+              wordBreak: 'break-word',
+            }}
+          >
+            {title}
+          </Typography>
+          <Typography
+            variant="caption"
+            component="p"
+            title={headerSummaryLine}
+            sx={{
+              display: 'block',
+              mt: 0.4,
+              color: tokens.text.secondary,
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              lineHeight: 1.38,
+              letterSpacing: '0.01em',
+              wordBreak: 'break-word',
+            }}
+          >
+            {headerSummaryLine}
+          </Typography>
+        </Box>
+        <Box
           sx={{
-            flex: 1,
-            minWidth: 0,
-            color: tokens.text.primary,
-            fontSize: '1.0625rem',
-            lineHeight: 1.32,
-            fontWeight: 700,
-            letterSpacing: '-0.022em',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-            overflow: 'hidden',
-            wordBreak: 'break-word',
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 0.35,
+            flexShrink: 0,
+            pt: 0.125,
+            pointerEvents: 'none',
           }}
         >
-          {title}
-        </Typography>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.45, flexShrink: 0, pt: 0.125 }}>
-          {stat !== '3' ? (
-            <StatusGlyph
-              size={18}
-              sx={{
-                color: chip.sx.color,
-                opacity: 0.9,
-              }}
-            />
-          ) : null}
           <Chip label={chip.label} size="small" sx={headerChipSx} />
+          <ExpandMore
+            aria-hidden
+            sx={{
+              display: 'block',
+              color: tokens.text.tertiary,
+              fontSize: 26,
+              transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: `transform ${collapseMs.enter}ms ${motion.easing.standard}`,
+            }}
+          />
         </Box>
       </Box>
 
-      {/* 2) 핵심 3단: 커넥터 · 출력 · 상태 (가로 한 모듈) */}
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'row',
-          alignItems: 'stretch',
-          gap: 0.625,
-        }}
-      >
-        <ChargerMetricCell
-          label="커넥터"
-          tokens={tokens}
-          cellBorder={cellBorder}
-          cellBg={cellBg}
-          valuePillSx={valuePillNeutral}
-          icon={<ChargerTypeGlyph chgerTy={row.chgerTy} size={18} sx={{ display: 'block' }} />}
-          valueNode={
-            <Typography component="p" title={String(typeLabel)} sx={{ ...valueTypographySx, fontWeight: 600 }}>
-              {typeLabel}
-            </Typography>
-          }
-        />
-        <ChargerMetricCell
-          label="출력"
-          tokens={tokens}
-          cellBorder={cellBorder}
-          cellBg={cellBg}
-          valuePillSx={valuePillNeutral}
-          icon={<EvUserGlyphBolt size={18} sx={{ display: 'block' }} />}
-          valueNode={<Typography component="p" sx={valueTypographySx}>{outDisp || '—'}</Typography>}
-        />
-        <ChargerMetricCell
-          label="상태"
-          tokens={tokens}
-          cellBorder={cellBorder}
-          cellBg={cellBg}
-          valuePillSx={{
-            bgcolor: chip.sx.bgcolor,
-            border: chip.sx.border,
-          }}
-          icon={
-            <StatusGlyph
-              size={18}
-              sx={{
-                color: chip.sx.color,
-                opacity: 0.95,
-              }}
-            />
-          }
-          valueNode={
-            <Typography
-              component="p"
-              sx={{
-                ...valueTypographySx,
-                color: chip.sx.color,
-                fontWeight: 700,
-                fontSize: '0.75rem',
-              }}
-            >
-              {chip.label}
-            </Typography>
-          }
-        />
-      </Box>
-
-      {/* 3a) 사용 중 — 통합 상태 패널 */}
-      {showSessionPanel ? (
+      <Collapse in={expanded} timeout={collapseMs} unmountOnExit>
         <Box
+          id={panelDomId}
+          role="region"
+          aria-labelledby={headerDomId}
           sx={{
-            mt: 1.375,
-            p: { xs: 1.25, sm: 1.375 },
-            borderRadius: `${radius.md}px`,
-            border: `1px solid ${tokens.status.use.border}`,
-            bgcolor: tokens.status.use.rowBg,
-            boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.25)' : '0 2px 10px rgba(245, 158, 11, 0.08)',
+            px: { xs: 1.375, sm: 1.5 },
+            pt: 0,
+            pb: { xs: 1.375, sm: 1.5 },
+            borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(15,23,42,0.07)'}`,
           }}
         >
-          {showChargeBar ? (
-            <>
-              <Box
-                sx={{
-                  display: 'flex',
-                  flexDirection: 'row',
-                  alignItems: 'flex-start',
-                  justifyContent: 'space-between',
-                  gap: 1,
-                  mb: 1.125,
-                }}
-              >
-                <Typography
+          {/* 핵심 3단: 커넥터 · 출력 · 상태 */}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              alignItems: 'stretch',
+              gap: 0.625,
+              pt: 1.125,
+            }}
+          >
+            <ChargerMetricCell
+              label="커넥터"
+              tokens={tokens}
+              cellBorder={cellBorder}
+              cellBg={cellBg}
+              valuePillSx={valuePillNeutral}
+              icon={<ChargerTypeGlyph chgerTy={row.chgerTy} size={18} sx={{ display: 'block' }} />}
+              valueNode={
+                <Typography component="p" title={String(typeLabel)} sx={{ ...valueTypographySx, fontWeight: 600 }}>
+                  {typeLabel}
+                </Typography>
+              }
+            />
+            <ChargerMetricCell
+              label="출력"
+              tokens={tokens}
+              cellBorder={cellBorder}
+              cellBg={cellBg}
+              valuePillSx={valuePillNeutral}
+              icon={<EvUserGlyphBolt size={18} sx={{ display: 'block' }} />}
+              valueNode={<Typography component="p" sx={valueTypographySx}>{outDisp || '—'}</Typography>}
+            />
+            <ChargerMetricCell
+              label="상태"
+              tokens={tokens}
+              cellBorder={cellBorder}
+              cellBg={cellBg}
+              valuePillSx={{
+                bgcolor: chip.sx.bgcolor,
+                border: chip.sx.border,
+              }}
+              icon={
+                <StatusGlyph
+                  size={18}
                   sx={{
-                    fontSize: '0.8125rem',
+                    color: chip.sx.color,
+                    opacity: 0.95,
+                  }}
+                />
+              }
+              valueNode={
+                <Typography
+                  component="p"
+                  sx={{
+                    ...valueTypographySx,
+                    color: chip.sx.color,
                     fontWeight: 700,
-                    color: tokens.status.use.fg,
-                    letterSpacing: '0.02em',
-                    pt: 0.25,
+                    fontSize: '0.75rem',
                   }}
                 >
-                  충전 중
+                  {chip.label}
                 </Typography>
-                <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
-                  <Typography
-                    component="div"
-                    sx={{
-                      fontSize: '1.875rem',
-                      fontWeight: 800,
-                      lineHeight: 1,
-                      letterSpacing: '-0.04em',
-                      fontVariantNumeric: 'tabular-nums',
-                      color: tokens.text.primary,
-                    }}
-                  >
-                    {chargePair.current}%
-                  </Typography>
-                  <Typography
-                    component="div"
-                    sx={{
-                      mt: 0.35,
-                      fontSize: '0.75rem',
-                      fontWeight: 500,
-                      color: tokens.text.tertiary,
-                      fontVariantNumeric: 'tabular-nums',
-                    }}
-                  >
-                    목표 {chargePair.target}%
-                  </Typography>
-                </Box>
-              </Box>
-              <LinearProgress
-                className="ev-charger-session-progress"
-                variant="determinate"
-                value={chargePair.barValue}
-                sx={{
-                  height: 8,
-                  borderRadius: 999,
-                  bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(245, 158, 11, 0.15)',
-                  overflow: 'hidden',
-                  '& .MuiLinearProgress-bar': {
-                    borderRadius: 999,
-                    background: useBarGradient,
-                  },
-                }}
-              />
-              <Typography
-                variant="caption"
-                sx={{
-                  display: 'block',
-                  mt: 0.65,
-                  color: tokens.text.muted,
-                  fontSize: '0.6875rem',
-                  fontWeight: 500,
-                  lineHeight: 1.4,
-                }}
-              >
-                목표 충전량 대비 진행(시뮬레이션)
-              </Typography>
-            </>
-          ) : null}
-          {timeLine ? (
+              }
+            />
+          </Box>
+
+          {showSessionPanel ? (
             <Box
               sx={{
-                display: 'flex',
-                flexDirection: 'row',
-                alignItems: 'baseline',
-                justifyContent: 'space-between',
-                gap: 1,
-                mt: showChargeBar ? 1.125 : 0,
-                pt: showChargeBar ? 1 : 0,
-                borderTop: showChargeBar ? `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(245,158,11,0.2)'}` : 'none',
+                mt: 1.375,
+                p: { xs: 1.25, sm: 1.375 },
+                borderRadius: `${radius.md}px`,
+                border: `1px solid ${tokens.status.use.border}`,
+                bgcolor: tokens.status.use.rowBg,
+                boxShadow: isDark ? '0 2px 12px rgba(0,0,0,0.25)' : '0 2px 10px rgba(245, 158, 11, 0.08)',
               }}
             >
-              <Typography
-                variant="caption"
-                sx={{
-                  color: tokens.text.tertiary,
-                  fontSize: '0.6875rem',
-                  fontWeight: 600,
-                  letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
-                  flexShrink: 0,
-                }}
-              >
-                남은 시간 · 완료 예상
+              {showChargeBar ? (
+                <>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      flexDirection: 'row',
+                      alignItems: 'flex-start',
+                      justifyContent: 'space-between',
+                      gap: 1,
+                      mb: 1.125,
+                    }}
+                  >
+                    <Typography
+                      sx={{
+                        fontSize: '0.8125rem',
+                        fontWeight: 700,
+                        color: tokens.status.use.fg,
+                        letterSpacing: '0.02em',
+                        pt: 0.25,
+                      }}
+                    >
+                      충전 중
+                    </Typography>
+                    <Box sx={{ textAlign: 'right', flexShrink: 0 }}>
+                      <Typography
+                        component="div"
+                        sx={{
+                          fontSize: '1.875rem',
+                          fontWeight: 800,
+                          lineHeight: 1,
+                          letterSpacing: '-0.04em',
+                          fontVariantNumeric: 'tabular-nums',
+                          color: tokens.text.primary,
+                        }}
+                      >
+                        {chargePair.current}%
+                      </Typography>
+                      <Typography
+                        component="div"
+                        sx={{
+                          mt: 0.35,
+                          fontSize: '0.75rem',
+                          fontWeight: 500,
+                          color: tokens.text.tertiary,
+                          fontVariantNumeric: 'tabular-nums',
+                        }}
+                      >
+                        목표 {chargePair.target}%
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <LinearProgress
+                    className="ev-charger-session-progress"
+                    variant="determinate"
+                    value={chargePair.barValue}
+                    sx={{
+                      height: 8,
+                      borderRadius: 999,
+                      bgcolor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(245, 158, 11, 0.15)',
+                      overflow: 'hidden',
+                      '& .MuiLinearProgress-bar': {
+                        borderRadius: 999,
+                        background: useBarGradient,
+                      },
+                    }}
+                  />
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      display: 'block',
+                      mt: 0.65,
+                      color: tokens.text.muted,
+                      fontSize: '0.6875rem',
+                      fontWeight: 500,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    목표 충전량 대비 진행(시뮬레이션)
+                  </Typography>
+                </>
+              ) : null}
+              {timeLine ? (
+                <Box
+                  sx={{
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'baseline',
+                    justifyContent: 'space-between',
+                    gap: 1,
+                    mt: showChargeBar ? 1.125 : 0,
+                    pt: showChargeBar ? 1 : 0,
+                    borderTop: showChargeBar ? `1px solid ${isDark ? 'rgba(255,255,255,0.08)' : 'rgba(245,158,11,0.2)'}` : 'none',
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: tokens.text.tertiary,
+                      fontSize: '0.6875rem',
+                      fontWeight: 600,
+                      letterSpacing: '0.04em',
+                      textTransform: 'uppercase',
+                      flexShrink: 0,
+                    }}
+                  >
+                    남은 시간 · 완료 예상
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      color: tokens.text.primary,
+                      fontSize: '0.875rem',
+                      fontWeight: 600,
+                      lineHeight: 1.4,
+                      fontVariantNumeric: 'tabular-nums',
+                      textAlign: 'right',
+                    }}
+                  >
+                    {timeLine}
+                  </Typography>
+                </Box>
+              ) : null}
+            </Box>
+          ) : null}
+
+          {stat === '2' && !showSessionPanel ? (
+            <Box
+              sx={{
+                mt: 1.25,
+                p: 1,
+                borderRadius: `${radius.md}px`,
+                bgcolor: tokens.status.avail.rowBg,
+                border: `1px solid ${tokens.status.avail.border}`,
+              }}
+            >
+              <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.45, color: tokens.status.avail.fg }}>
+                지금 바로 충전할 수 있어요.
               </Typography>
-              <Typography
-                variant="body2"
-                sx={{
-                  color: tokens.text.primary,
-                  fontSize: '0.875rem',
-                  fontWeight: 600,
-                  lineHeight: 1.4,
-                  fontVariantNumeric: 'tabular-nums',
-                  textAlign: 'right',
-                }}
-              >
-                {timeLine}
+            </Box>
+          ) : null}
+
+          {stat === '5' ? (
+            <Box
+              sx={{
+                mt: 1.25,
+                p: 1,
+                borderRadius: `${radius.md}px`,
+                bgcolor: tokens.status.maint.rowBg,
+                border: `1px solid ${tokens.status.maint.border}`,
+                display: 'flex',
+                flexDirection: 'row',
+                alignItems: 'flex-start',
+                gap: 0.875,
+              }}
+            >
+              <EvUserGlyphBatteryBrick
+                size={22}
+                sx={{ color: tokens.status.maint.fg, opacity: 0.85, flexShrink: 0, mt: 0.125 }}
+              />
+              <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.45, color: tokens.text.secondary }}>
+                점검으로 현재 이용할 수 없습니다.
               </Typography>
             </Box>
           ) : null}
         </Box>
-      ) : null}
-
-      {/* 3b) 사용 가능 — 가벼운 안내 */}
-      {stat === '2' && !showSessionPanel ? (
-        <Box
-          sx={{
-            mt: 1.25,
-            p: 1,
-            borderRadius: `${radius.md}px`,
-            bgcolor: tokens.status.avail.rowBg,
-            border: `1px solid ${tokens.status.avail.border}`,
-          }}
-        >
-          <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.45, color: tokens.status.avail.fg }}>
-            지금 바로 충전할 수 있어요.
-          </Typography>
-        </Box>
-      ) : null}
-
-      {/* 3c) 점검 — 보조 패널 */}
-      {stat === '5' ? (
-        <Box
-          sx={{
-            mt: 1.25,
-            p: 1,
-            borderRadius: `${radius.md}px`,
-            bgcolor: tokens.status.maint.rowBg,
-            border: `1px solid ${tokens.status.maint.border}`,
-            display: 'flex',
-            flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 0.875,
-          }}
-        >
-          <EvUserGlyphBatteryBrick
-            size={22}
-            sx={{ color: tokens.status.maint.fg, opacity: 0.85, flexShrink: 0, mt: 0.125 }}
-          />
-          <Typography sx={{ fontSize: '0.8125rem', fontWeight: 500, lineHeight: 1.45, color: tokens.text.secondary }}>
-            점검으로 현재 이용할 수 없습니다.
-          </Typography>
-        </Box>
-      ) : null}
+      </Collapse>
     </Box>
   )
 }

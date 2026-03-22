@@ -27,7 +27,7 @@ import {
   formatAddressBlockLines,
 } from './api/safemapEv.js'
 import { filterNormalizedRowsToBounds } from './api/evViewportSummary.js'
-import { assignFullEvCatalogWithIndex } from './utils/evCatalogSpatialIndex.js'
+import { assignFullEvCatalogWithIndex, assignFullEvCatalogWithIndexAsync } from './utils/evCatalogSpatialIndex.js'
 import { fetchEvStationsSummaryDataset, resolveEvStationsSummaryUrl } from './api/evStationsSummary.js'
 import { fetchDetailRowsForStatId, clearDetailRowsCache } from './api/evPlaceDetail.js'
 import { getDevMockEvChargers } from './dev/mockEvChargers.js'
@@ -1292,7 +1292,11 @@ function App() {
             viewportSummaryMarkAbort()
             return { ok: false }
           }
-          assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, ds.allRowsWithOverlay)
+          await assignFullEvCatalogWithIndexAsync(fullEvCatalogRef, evSpatialIndexRef, ds.allRowsWithOverlay)
+          if (signal.aborted) {
+            viewportSummaryMarkAbort()
+            return { ok: false }
+          }
           if (summaryFetchGenerationRef.current !== gen) {
             viewportSummaryMarkStale()
             return { ok: false }
@@ -1304,16 +1308,24 @@ function App() {
               viewportSummaryMarkAbort()
               return { ok: false }
             }
-            assignFullEvCatalogWithIndex(
+            await assignFullEvCatalogWithIndexAsync(
               fullEvCatalogRef,
               evSpatialIndexRef,
               import.meta.env.DEV && ds.allRowsWithOverlay.length === 0
                 ? getDevMockEvChargers()
                 : ds.allRowsWithOverlay,
             )
+            if (signal.aborted) {
+              viewportSummaryMarkAbort()
+              return { ok: false }
+            }
           } catch (loadErr) {
             if (import.meta.env.DEV) {
-              assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
+              await assignFullEvCatalogWithIndexAsync(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
+              if (signal.aborted) {
+                viewportSummaryMarkAbort()
+                return { ok: false }
+              }
             } else {
               throw loadErr
             }
@@ -1606,7 +1618,7 @@ function App() {
             ds = await fetchEvStationsSummaryDataset({ url: summaryUrl, signal: ac.signal, maxAttempts: 2 })
           } catch (e) {
             if (import.meta.env.DEV) {
-              assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
+              await assignFullEvCatalogWithIndexAsync(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
               viewportSummaryTelemetry('boot', 'mock-summary-fallback-dev', {})
               // eslint-disable-next-line no-console -- DEV 안내
               console.info('[whereEV3] summary JSON 로드 실패 — DEV mock 사용:', e?.message || e)
@@ -1620,10 +1632,10 @@ function App() {
 
         if (ds) {
           if (import.meta.env.DEV && ds.allRowsWithOverlay.length === 0) {
-            assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
+            await assignFullEvCatalogWithIndexAsync(fullEvCatalogRef, evSpatialIndexRef, getDevMockEvChargers())
             viewportSummaryTelemetry('boot', 'empty-summary-use-mock-dev', {})
           } else {
-            assignFullEvCatalogWithIndex(fullEvCatalogRef, evSpatialIndexRef, ds.allRowsWithOverlay)
+            await assignFullEvCatalogWithIndexAsync(fullEvCatalogRef, evSpatialIndexRef, ds.allRowsWithOverlay)
           }
         }
 
