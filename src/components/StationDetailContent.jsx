@@ -12,6 +12,27 @@ import {
 } from '../api/safemapEv.js'
 import { getChargerSessionForUi } from '../data/chargerSessionMvp.js'
 import { ChargerTypeGlyph } from './ChargerTypeGlyph.jsx'
+import {
+  EvUserGlyphBatteryBrick,
+  EvUserGlyphBolt,
+  EvUserGlyphMapPin,
+  EvUserGlyphCarFront,
+} from './EvUserProvidedIcons.jsx'
+
+/**
+ * 상세 시트 상태 칩과 같은 맥락의 사용자 제공 SVG.
+ * - 사용 가능: 정면 차(연결·충전 대기)
+ * - 사용 중: 번개(에너지 공급)
+ * - 점검: 급속기 실루엣(장비)
+ * - 기타: 핀(위치·상태 미확인)
+ */
+function detailSheetStatusGlyph(stat) {
+  const s = String(stat ?? '').trim()
+  if (s === '2') return EvUserGlyphCarFront
+  if (s === '3') return EvUserGlyphBolt
+  if (s === '5') return EvUserGlyphBatteryBrick
+  return EvUserGlyphMapPin
+}
 
 function chargerRowsFromStation(station) {
   if (!station) return []
@@ -341,6 +362,8 @@ function ChargerCard({ row, idx }) {
     boxShadow: isDark ? 'inset 0 1px 0 rgba(255,255,255,0.04)' : 'inset 0 1px 2px rgba(15,23,42,0.04)',
   }
 
+  const StatusGlyph = detailSheetStatusGlyph(stat)
+
   return (
     <Box
       sx={{
@@ -430,17 +453,56 @@ function ChargerCard({ row, idx }) {
           <Typography component="span" sx={statCellLabelSx}>
             출력
           </Typography>
-          <Typography component="span" sx={valueChipSx}>
-            {outDisp || '—'}
-          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 0.65,
+              mt: 'auto',
+              minWidth: 0,
+              width: '100%',
+            }}
+          >
+            <EvUserGlyphBolt
+              size={28}
+              sx={{
+                color: tokens.text.secondary,
+                opacity: 0.9,
+                flexShrink: 0,
+              }}
+            />
+            <Typography component="span" sx={{ ...valueChipSx, mt: 0, flex: 1, minWidth: 0 }}>
+              {outDisp || '—'}
+            </Typography>
+          </Box>
         </Box>
         <Box sx={infoCellShellSx}>
           <Typography component="span" sx={statCellLabelSx}>
             상태
           </Typography>
-          <Typography component="span" sx={statusValueSx}>
-            {chip.label}
-          </Typography>
+          <Box
+            sx={{
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: 0.6,
+              mt: 'auto',
+              minWidth: 0,
+              width: '100%',
+            }}
+          >
+            <StatusGlyph
+              size={28}
+              sx={{
+                color: chip.sx.color,
+                opacity: 0.88,
+                flexShrink: 0,
+                mt: 0.1,
+              }}
+            />
+            <Typography component="span" sx={{ ...statusValueSx, mt: 0, flex: 1, minWidth: 0 }}>
+              {chip.label}
+            </Typography>
+          </Box>
         </Box>
       </Box>
 
@@ -448,20 +510,35 @@ function ChargerCard({ row, idx }) {
         <Box sx={sessionInsetSx}>
           {showChargeBar ? (
             <>
-              <Typography
-                variant="caption"
+              <Box
                 sx={{
-                  display: 'block',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.55,
                   mb: 0.75,
-                  color: tokens.text.tertiary,
-                  fontSize: '0.6875rem',
-                  fontWeight: 500,
-                  letterSpacing: '0.04em',
-                  textTransform: 'uppercase',
                 }}
               >
-                충전 진행
-              </Typography>
+                <EvUserGlyphBolt
+                  size={18}
+                  sx={{
+                    color: tokens.text.tertiary,
+                    opacity: 0.92,
+                    flexShrink: 0,
+                  }}
+                />
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: tokens.text.tertiary,
+                    fontSize: '0.6875rem',
+                    fontWeight: 500,
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                  }}
+                >
+                  충전 진행
+                </Typography>
+              </Box>
               <Box
                 sx={{
                   display: 'flex',
